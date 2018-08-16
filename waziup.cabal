@@ -1,0 +1,42 @@
+name:                waziup
+version:             0.1.0.0
+synopsis:            Auto-generated API bindings for waziup
+description:         Please see README.md
+homepage:            https://github.com/swagger-api/swagger-codegen#readme
+author:              Author Name Here
+maintainer:          author.name@email.com
+copyright:           YEAR - AUTHOR
+category:            Web
+build-type:          Simple
+cabal-version:       >=1.10
+
+Executable waziup-servant
+  hs-source-dirs:      src
+  Main-Is:             Main.hs
+  other-modules:       Waziup.API
+                     , Waziup.Types
+  ghc-options:         -Wall
+  build-depends:       base
+                     , aeson
+                     , text
+                     , containers
+                     , network-uri
+                     , servant
+                     , http-api-data
+                     , servant-client
+                     , servant-server
+                     , servant
+                     , warp
+                     , transformers
+                     , mtl
+                     , http-client
+                     , http-types
+                     , wai
+                     , wreq
+                     , lens
+                     , lens-aeson
+                     , http-querystring
+                     , base64-bytestring
+                     , split
+                     , bytestring
+  default-language:    Haskell2010

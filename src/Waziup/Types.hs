@@ -26,85 +26,6 @@ instance FromJSON AuthBody where
   parseJSON (Object v) = AuthBody <$> v .: "username" <*> v .: "password"
   parseJSON _          = mzero 
   
-instance FromJSON Domain where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "domain")
-instance ToJSON Domain where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "domain")
-
--- | An entity is a general object with type and name, implementing different userdefined attributes.
-data Entity = Entity
-  { entityId :: Text -- ^ Unique name (ID) of the entity.
-  , entityType :: EntityType -- ^ 
-  } deriving (Show, Eq, Generic)
-
-instance FromJSON Entity where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "entity")
-instance ToJSON Entity where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "entity")
-
--- | An entity attribute value that could be any type.
-data EntityAttr = EntityAttr
-  { 
-  } deriving (Show, Eq, Generic)
-
-instance FromJSON EntityAttr where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "entityAttr")
-instance ToJSON EntityAttr where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "entityAttr")
-
--- | A type of an entity.
-newtype EntityType = EntityType Text deriving (Show, Eq, FromJSON, ToJSON, Generic)
-
--- | An entity is a general object with type and name, implementing different userdefined attributes.
-data EntityWithAttr = EntityWithAttr
-  { entityWithAttrId :: Text -- ^ Unique name (ID) of the entity.
-  , entityWithAttrType :: EntityType -- ^ 
-  , entityWithAttrAttribute1 :: [Text] -- ^ An example attribute with string values.
-  , entityWithAttrAttribute2 :: [Double] -- ^ An example attribute with number values.
-  , entityWithAttrAttributeN :: [EntityWithAttr_attributeN] -- ^ An example attribute with object values.
-  } deriving (Show, Eq, Generic)
-
-instance FromJSON EntityWithAttr where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "entityWithAttr")
-instance ToJSON EntityWithAttr where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "entityWithAttr")
-
--- | 
-data EntityWithAttr_attributeN = EntityWithAttr_attributeN
-  { entityWithAttrAttributeNLatitude :: Double -- ^ 
-  , entityWithAttrAttributeNLongitude :: Double -- ^ 
-  } deriving (Show, Eq, Generic)
-
-instance FromJSON EntityWithAttr_attributeN where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "entityWithAttrAttributeN")
-instance ToJSON EntityWithAttr_attributeN where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "entityWithAttrAttributeN")
-
--- | An entity is a general object with type and name, implementing different userdefined attributes.
-data EntityWithCurrentAttr = EntityWithCurrentAttr
-  { entityWithCurrentAttrId :: Text -- ^ Unique name (ID) of the entity.
-  , entityWithCurrentAttrType :: EntityType -- ^ 
-  , entityWithCurrentAttrAttribute1 :: Text -- ^ An example attribute with string values.
-  , entityWithCurrentAttrAttribute2 :: Double -- ^ An example attribute with number values.
-  , entityWithCurrentAttrAttributeN :: EntityWithCurrentAttr_attributeN -- ^ 
-  } deriving (Show, Eq, Generic)
-
-instance FromJSON EntityWithCurrentAttr where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "entityWithCurrentAttr")
-instance ToJSON EntityWithCurrentAttr where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "entityWithCurrentAttr")
-
--- | An example attribute with object values.
-data EntityWithCurrentAttr_attributeN = EntityWithCurrentAttr_attributeN
-  { entityWithCurrentAttrAttributeNLatitude :: Double -- ^ 
-  , entityWithCurrentAttrAttributeNLongitude :: Double -- ^ 
-  } deriving (Show, Eq, Generic)
-
-instance FromJSON EntityWithCurrentAttr_attributeN where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "entityWithCurrentAttrAttributeN")
-instance ToJSON EntityWithCurrentAttr_attributeN where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "entityWithCurrentAttrAttributeN")
-
 -- | 
 data Error = Error
   { errorError :: Text -- ^ 
@@ -141,30 +62,30 @@ instance ToJSON Location where
 
 -- | 
 data Measurement = Measurement
-  { measurementId :: Text -- ^ ID of the measurement
-  , measurementName :: Text -- ^ name of the measurement
-  , measurementSensing'Underscoredevice :: Text -- ^ sensing platform used for the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/SensingDevices.js
-  , measurementQuantity'Underscorekind :: Text -- ^ quantity measured, from https://github.com/Waziup/waziup-js/blob/master/src/model/QuantityKinds.js
-  , measurementUnit :: Text -- ^ unit of the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/Units.js
-  , measurementLast'Underscorevalue :: MeasurementValue -- ^ last value received by the platform
+  { measId :: Text                  -- ^ ID of the measurement
+  , measName :: Maybe Text          -- ^ name of the measurement
+  , measSensingDevice :: Maybe Text -- ^ sensing platform used for the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/SensingDevices.js
+  , measQuantityKind :: Maybe Text  -- ^ quantity measured, from https://github.com/Waziup/waziup-js/blob/master/src/model/QuantityKinds.js
+  , measUnit :: Maybe Text          -- ^ unit of the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/Units.js
+  , measLastValue :: Maybe MeasurementValue -- ^ last value received by the platform
   } deriving (Show, Eq, Generic)
 
 instance FromJSON Measurement where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "measurement")
+  parseJSON = genericParseJSON (removeFieldLabelPrefix True "meas")
 instance ToJSON Measurement where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "measurement")
+  toJSON = genericToJSON (removeFieldLabelPrefix False "meas")
 
 -- | 
 data MeasurementValue = MeasurementValue
-  { measurementValueValue :: Float -- ^ value of the measurement
-  , measurementValueTimestamp :: Text -- ^ time of the measurement
-  , measurementValueDate'Underscorereceived :: Text -- ^ time at which the measurement has been received on the Cloud
+  { measValue :: Float                -- ^ value of the measurement
+  , measTimestamp :: Maybe UTCTime    -- ^ time of the measurement
+  , measDateReceived :: Maybe UTCTime -- ^ time at which the measurement has been received on the Cloud
   } deriving (Show, Eq, Generic)
 
 instance FromJSON MeasurementValue where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "measurementValue")
+  parseJSON = genericParseJSON (removeFieldLabelPrefix True "meas")
 instance ToJSON MeasurementValue where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "measurementValue")
+  toJSON = genericToJSON (removeFieldLabelPrefix False "meas")
 
 -- | 
 data Notification = Notification
@@ -215,15 +136,16 @@ instance ToJSON Perm where
 
 -- | 
 data Sensor = Sensor
-  { sensorId :: Text -- ^ Unique ID of the sensor node
-  , sensorGateway'Underscoreid :: Text -- ^ Unique ID of the gateway
-  , sensorName :: Text -- ^ name of the sensor node
-  , sensorOwner :: Text -- ^ owner of the sensor node
-  , sensorMeasurements :: [Measurement] -- ^ 
-  , sensorLocation :: Location -- ^ 
-  , sensorDomain :: Text -- ^ the domain of this sensor.
-  , sensorDate'Underscorecreated :: Text -- ^ creation date of the sensor node
-  , sensorDate'Underscoreupdated :: Text -- ^ last update date of the sensor node
+  { sensorId :: Text                    -- ^ Unique ID of the sensor node
+  , sensorGatewayId :: Maybe Text       -- ^ Unique ID of the gateway
+  , sensorName :: Maybe Text            -- ^ name of the sensor node
+  , sensorOwner :: Maybe Text           -- ^ owner of the sensor node
+  , sensorMeasurements :: [Measurement]
+  , sensorLocation :: Maybe Location
+  , sensorDomain :: Maybe Text          -- ^ the domain of this sensor.
+  , sensorDateCreated :: Maybe UTCTime     -- ^ creation date of the sensor node
+  , sensorDateUpdated :: Maybe UTCTime     -- ^ last update date of the sensor nodei
+  , sensorVisibility :: Maybe Visibility
   } deriving (Show, Eq, Generic)
 
 instance FromJSON Sensor where

@@ -39,6 +39,7 @@ import Servant.Client (Scheme(Http), ServantError, client)
 import Servant.Common.BaseUrl (BaseUrl(..))
 import Web.HttpApiData
 import Keycloak.Client as KC
+import Orion.Client as O
 
 
 -- For the form data code generation.
@@ -54,6 +55,7 @@ lookupEither key assocs =
 -- | Servant type-level API
 type WaziupAPI = "auth" :> "permissions" :> Verb 'GET 200 '[JSON] [Perm]
             :<|> "auth" :> "token" :> ReqBody '[JSON] AuthBody :> Verb 'POST 200 '[JSON] (Maybe Text)
+            :<|> "sensors" :> Verb 'GET 200 '[JSON] [Sensor]
 
 
 -- | Server or client configuration, specifying the host and port to query or serve on.
@@ -63,7 +65,9 @@ data ServerConfig = ServerConfig
   } deriving (Eq, Ord, Show, Read)
 
 server :: Server WaziupAPI
-server = (getPerms "cdupont" "password") :<|> postAuth
+server = (getPerms "cdupont" "password") 
+     :<|> postAuth
+     :<|> getSensors
 
 getPerms :: Text -> Text -> ExceptT ServantErr IO [Perm]
 getPerms username password = do
@@ -74,6 +78,10 @@ getPerms username password = do
 
 postAuth :: AuthBody -> ExceptT ServantErr IO (Maybe Text)
 postAuth (AuthBody username password) = liftIO $ getUserAuthToken username password
+
+getSensors :: ExceptT ServantErr IO [Sensor]
+getSensors = liftIO $ O.getSensorsOrion
+
 
 waziupAPI :: Proxy WaziupAPI
 waziupAPI = Proxy

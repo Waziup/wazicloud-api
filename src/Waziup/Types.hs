@@ -14,7 +14,8 @@ import qualified Data.Text as T
 import qualified Data.Map as Map
 import GHC.Generics (Generic)
 import Data.Function ((&))
-
+import Data.Time
+import Control.Monad
 
 -- | 
 data AuthBody = AuthBody
@@ -51,8 +52,8 @@ instance ToJSON HistoricalValue where
 
 -- | location is a pair [latitude, longitude] with the coordinates on earth in decimal notation (e.g. [40.418889, 35.89389]).
 data Location = Location
-  { locationLatitude :: Double -- ^ 
-  , locationLongitude :: Double -- ^ 
+  { latitude :: Double
+  , longitude :: Double
   } deriving (Show, Eq, Generic)
 
 instance FromJSON Location where
@@ -152,6 +153,12 @@ instance FromJSON Sensor where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "sensor")
 instance ToJSON Sensor where
   toJSON = genericToJSON (removeFieldLabelPrefix False "sensor")
+
+data Visibility = Public | Private
+  deriving (Show, Eq, Generic)
+
+instance FromJSON Visibility
+instance ToJSON Visibility
 
 -- | One social network message
 data SocialMessage = SocialMessage

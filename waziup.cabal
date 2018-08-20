@@ -42,4 +42,9 @@ Executable waziup-servant
                      , bytestring
                      , time
                      , unordered-containers
+                     , safe
+                     , iso8601-time
+                     , aeson-casing
+                     , vector
+                     , scientific
   default-language:    Haskell2010

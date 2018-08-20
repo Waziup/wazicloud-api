@@ -2,6 +2,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# OPTIONS_GHC -fno-warn-unused-binds -fno-warn-unused-imports #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Waziup.Types where
 
@@ -9,6 +10,7 @@ import Data.List (stripPrefix)
 import Data.Maybe (fromMaybe)
 import Data.Aeson
 import Data.Aeson.Types (Options(..), defaultOptions)
+import Data.Aeson.Casing
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Map as Map
@@ -16,6 +18,7 @@ import GHC.Generics (Generic)
 import Data.Function ((&))
 import Data.Time
 import Control.Monad
+import Data.Time.ISO8601
 
 -- | 
 data AuthBody = AuthBody
@@ -39,16 +42,44 @@ instance ToJSON Error where
   toJSON = genericToJSON (removeFieldLabelPrefix False "error")
 
 -- | 
-data HistoricalValue = HistoricalValue
-  { historicalValueId :: Text -- ^ UUID of the sensor
-  , historicalValueAttribute'Underscoreid :: Text -- ^ UUID of the measurement
-  , historicalValueDatapoint :: MeasurementValue -- ^ 
+
+-- | 
+data Sensor = Sensor
+  { sensorId :: Text                    -- ^ Unique ID of the sensor node
+  , sensorGatewayId :: Maybe Text       -- ^ Unique ID of the gateway
+  , sensorName :: Maybe Text            -- ^ name of the sensor node
+  , sensorOwner :: Maybe Text           -- ^ owner of the sensor node
+  , sensorMeasurements :: [Measurement]
+  , sensorLocation :: Maybe Location
+  , sensorDomain :: Maybe Text          -- ^ the domain of this sensor.
+  , sensorDateCreated :: Maybe UTCTime     -- ^ creation date of the sensor node
+  , sensorDateUpdated :: Maybe UTCTime     -- ^ last update date of the sensor nodei
+  , sensorVisibility :: Maybe Visibility
   } deriving (Show, Eq, Generic)
 
-instance FromJSON HistoricalValue where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "historicalValue")
-instance ToJSON HistoricalValue where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "historicalValue")
+instance ToJSON Sensor where
+   toJSON = genericToJSON $ aesonPrefix snakeCase
+instance FromJSON Sensor where
+   parseJSON = genericParseJSON $ aesonPrefix snakeCase
+
+
+data Visibility = Public | Private
+  deriving (Eq, Generic)
+
+instance ToJSON Visibility where
+   toJSON Public  = "public" 
+   toJSON Private = "private" 
+instance FromJSON Visibility where
+
+instance Show Visibility where
+  show Public = "public"
+  show Private = "private"
+
+readVisibility :: Text -> Maybe Visibility
+readVisibility "public" = Just Public
+readVisibility "private" = Just Private
+readVisibility _ = Nothing
+
 
 -- | location is a pair [latitude, longitude] with the coordinates on earth in decimal notation (e.g. [40.418889, 35.89389]).
 data Location = Location
@@ -57,9 +88,9 @@ data Location = Location
   } deriving (Show, Eq, Generic)
 
 instance FromJSON Location where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "location")
+  parseJSON = genericParseJSON defaultOptions
 instance ToJSON Location where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "location")
+  toJSON = genericToJSON defaultOptions
 
 -- | 
 data Measurement = Measurement
@@ -72,21 +103,32 @@ data Measurement = Measurement
   } deriving (Show, Eq, Generic)
 
 instance FromJSON Measurement where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "meas")
+  parseJSON = genericParseJSON $ aesonDrop 4 snakeCase 
 instance ToJSON Measurement where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "meas")
+  toJSON = genericToJSON $ aesonDrop 4 snakeCase
 
+
+data HistoricalValue = HistoricalValue
+  { historicalValueId :: Text -- ^ UUID of the sensor
+  , historicalValueAttribute'Underscoreid :: Text -- ^ UUID of the measurement
+  , historicalValueDatapoint :: MeasurementValue -- ^ 
+  } deriving (Show, Eq, Generic)
+
+instance FromJSON HistoricalValue where
+  parseJSON = genericParseJSON (removeFieldLabelPrefix True "historicalValue")
+instance ToJSON HistoricalValue where
+  toJSON = genericToJSON (removeFieldLabelPrefix False "historicalValue")
 -- | 
 data MeasurementValue = MeasurementValue
-  { measValue :: Float                -- ^ value of the measurement
+  { measValue :: Value           -- ^ value of the measurement
   , measTimestamp :: Maybe UTCTime    -- ^ time of the measurement
   , measDateReceived :: Maybe UTCTime -- ^ time at which the measurement has been received on the Cloud
   } deriving (Show, Eq, Generic)
 
 instance FromJSON MeasurementValue where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "meas")
+  parseJSON = genericParseJSON $ aesonDrop 4 snakeCase
 instance ToJSON MeasurementValue where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "meas")
+  toJSON = genericToJSON $ aesonDrop 4 snakeCase
 
 -- | 
 data Notification = Notification
@@ -134,32 +176,6 @@ instance FromJSON Perm where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "permission")
 instance ToJSON Perm where
   toJSON = genericToJSON (removeFieldLabelPrefix False "permission")
-
--- | 
-data Sensor = Sensor
-  { sensorId :: Text                    -- ^ Unique ID of the sensor node
-  , sensorGatewayId :: Maybe Text       -- ^ Unique ID of the gateway
-  , sensorName :: Maybe Text            -- ^ name of the sensor node
-  , sensorOwner :: Maybe Text           -- ^ owner of the sensor node
-  , sensorMeasurements :: [Measurement]
-  , sensorLocation :: Maybe Location
-  , sensorDomain :: Maybe Text          -- ^ the domain of this sensor.
-  , sensorDateCreated :: Maybe UTCTime     -- ^ creation date of the sensor node
-  , sensorDateUpdated :: Maybe UTCTime     -- ^ last update date of the sensor nodei
-  , sensorVisibility :: Maybe Visibility
-  } deriving (Show, Eq, Generic)
-
-instance FromJSON Sensor where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "sensor")
-instance ToJSON Sensor where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "sensor")
-
-data Visibility = Public | Private
-  deriving (Show, Eq, Generic)
-
-instance FromJSON Visibility
-instance ToJSON Visibility
-
 -- | One social network message
 data SocialMessage = SocialMessage
   { socialMessageUsername :: Text -- ^ User name in Keycloak

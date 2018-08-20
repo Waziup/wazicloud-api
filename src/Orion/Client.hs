@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Orion.Client where
 
@@ -9,7 +10,7 @@ import Network.Wreq
 import Control.Lens
 import Control.Monad
 import Data.Aeson as JSON
--- import Data.Aeson.BetterErrors as AB
+import Data.Aeson.BetterErrors as AB
 import Data.Aeson.Types
 import Data.Aeson.Lens
 import Data.Map (Map)
@@ -25,6 +26,17 @@ import Data.List
 import qualified Data.HashMap.Strict as H
 import Control.Monad.IO.Class
 import Debug.Trace
+import Control.Monad.Reader
+import Data.Aeson.BetterErrors.Internal
+import Safe
+import Data.Time.ISO8601
+import Data.Foldable as F
+import Control.Lens
+import qualified Data.Vector as V
+import Data.Scientific
+
+
+makeLenses ''Value
 
 data Entity = Entity {
   entId :: Text,
@@ -32,50 +44,41 @@ data Entity = Entity {
   entAttributes :: [(Text, Attribute)]
   } deriving (Generic, Show)
 
-instance FromJSON Entity where
-  parseJSON = withObject "" $ \o -> do
-    id    <- o .: "id"
-    eType <- o .: "type"
-    attrs <- getAttrs o
-    return $ Entity id eType attrs 
-
-getAttrs :: Object -> Parser [(Text, Attribute)]
-getAttrs v = do
-  let fil = filter (\(key, val) -> key /= "id" && key /= "type") $ H.toList v
-  mapM (\(key, val) -> do v <- parseJSON val; return (key, v)) fil
+getEntity :: Parse e Entity
+getEntity = do
+    id    <- AB.key "id" asText
+    eType <- AB.key "type" asText
+    attrs <- forEachInObject (\k -> if (k == "id" || k == "type") then return Nothing else (\a -> Just (k, a)) <$> getAttribute)
+    return $ Entity id eType (catMaybes attrs)
 
 data Attribute = Attribute {
   attType :: Text,
-  attValue :: Maybe Text,
+  attValue :: Maybe Value,
   attMetadata :: [(Text, Metadata)]
   } deriving (Generic, Show)
 
-instance FromJSON Attribute where
-  parseJSON = withObject "" $ \o -> do
-    attType  <- o .: "type"
-    attValue <- o .: "value"
-    attMet   <- o .: "metadata"
-    mets <- getMetadata attMet
-    return $ Attribute attType attValue mets
-
-getMetadata :: Object -> Parser [(Text, Metadata)]
-getMetadata v = do
-  let fil = filter (\(key, val) -> key /= "id" && key /= "type") $ H.toList v
-  mapM (\(key, val) -> do v <- parseJSON val; return (key, v)) fil
+getAttribute :: Parse e Attribute
+getAttribute = do
+    (ParseReader _ t) <- ask
+    trace (show t) (return ()) 
+    attType  <- AB.key "type" asText
+    attValue <- AB.keyMay "value" AB.asValue
+    mets     <- AB.keyMay "metadata" getMetadatas
+    return $ Attribute attType attValue (F.concat mets)
 
 data Metadata = Metadata {
-  metType :: Text,
-  metValue :: Maybe Text
+  metType :: Maybe Text,
+  metValue :: Maybe Value
   } deriving (Generic, Show)
 
-instance FromJSON Metadata where
-  parseJSON (Object v) = trace ("Metadata" ++ (show v)) $ Metadata <$> v .: "type"
-                                  <*> v .:? "value"
-  parseJSON (Array _) = fail "array"
-  parseJSON (String s) = return $ Metadata "string" (Just s)
-  parseJSON (Number _) = fail "num"
-  parseJSON (Bool _) = fail "bool"
-  parseJSON (Null) = fail "null"
+getMetadatas :: Parse e [(Text, Metadata)]
+getMetadatas = forEachInObject $ \a -> do
+  m <- getMetadata
+  return (a, m)
+
+getMetadata :: Parse e Metadata
+getMetadata = Metadata <$> AB.keyMay "type" asText
+                       <*> AB.keyMay "value" AB.asValue
 
 getSensorsOrion :: IO [Sensor]
 getSensorsOrion = do
@@ -85,11 +88,12 @@ getSensorsOrion = do
              param "metadata" .~ ["dateModified,dateCreated,*"] 
   res <- getWith opts "http://localhost:1026/v2/entities"
   let res2 = fromJust $ res ^? responseBody
-  putStrLn $ show $ (JSON.decode res2 :: Maybe JSON.Value)
-  case JSON.eitherDecode res2 of
-     Right es -> return $ mapMaybe getSensor es
+  case AB.parse (eachInArray getEntity) res2 of
+     Right es -> do
+       return $ mapMaybe getSensor es
      Left err -> do
-       putStrLn $ "Error while decoding JSON: " ++ err
+       mapM_ (putStrLn.unpack) (displayError' err)
+       putStrLn $ "Error while decoding JSON: " ++ (show err)
        return []
 
 getSensor :: Entity -> Maybe Sensor
@@ -100,12 +104,15 @@ getSensor (Entity id etype attrs) = if etype == "SensingDevice" then Just sensor
                     sensorOwner = getSimpleAttribute "owner" attrs,
                     sensorLocation = getLocation attrs,
                     sensorDomain = getSimpleAttribute "domain" attrs,
-                    sensorDateCreated = read . unpack <$> getSimpleAttribute "dateCreated" attrs,
-                    sensorDateUpdated = read . unpack <$> getSimpleAttribute "dateModified" attrs,
+                    sensorVisibility = getSimpleAttribute "visibility" attrs >>= readVisibility,
+                    sensorDateCreated = getSimpleAttribute "dateCreated" attrs >>= parseISO8601.unpack,
+                    sensorDateUpdated = getSimpleAttribute "dateModified" attrs >>= parseISO8601.unpack,
                     sensorMeasurements = getMeasurements attrs}
                          
 getSimpleAttribute :: Text -> [(Text, Attribute)] -> Maybe Text
-getSimpleAttribute attName attrs = join $ attValue <$> lookup attName attrs
+getSimpleAttribute attName attrs = Just $ s where 
+   (Just (Just (String s))) = attValue <$> lookup attName attrs
+   _ = Nothing
 
 getMeasurements :: [(Text, Attribute)] -> [Measurement]
 getMeasurements attrs = mapMaybe getMeas attrs where 
@@ -113,23 +120,34 @@ getMeasurements attrs = mapMaybe getMeas attrs where
      then Just $ Measurement { measId = name,
                                measName = getSimpleMetadata "name" mets,
                                measQuantityKind = getSimpleMetadata "quantity_kind" mets,
-                               measSensingDevice = getSimpleMetadata "sensind_device" mets,
+                               measSensingDevice = getSimpleMetadata "sensing_device" mets,
                                measUnit = getSimpleMetadata "unit" mets,
-                               measLastValue = if (isJust val) then getMeasLastValue (fromJust val) mets else Nothing}
+                               measLastValue = getMeasLastValue val mets}
      else Nothing
 
+
 getLocation :: [(Text, Attribute)] -> Maybe Location
-getLocation attrs = Nothing --do 
-    --(Attribute _ _ val _) <- find (\(Attribute name aType _ _) -> name == "location" ) attrs
-    --lat <- getSimpleMetadata "latitude" mets
-    --lon <- getSimpleMetadata "longitude" mets
-    --return $ Just $ Location {latitude = lat, longitude = lon}
+getLocation attrs = do 
+    (Attribute _ mval _) <- lookup "location" attrs
+    (Object o) <- mval
+    (Array a) <- lookup "coordinates" $ H.toList o
+    let [Number lat, Number lon] = V.toList a
+    return $ Location (toRealFloat lat) (toRealFloat lon)
  
 getSimpleMetadata :: Text -> [(Text, Metadata)] -> Maybe Text
-getSimpleMetadata name mets = join $ metValue <$> lookup name mets
+getSimpleMetadata name mets = do
+   (Metadata _ mval) <- lookup name mets
+   val <- mval
+   getString val
 
-getMeasLastValue :: Text -> [(Text, Metadata)] -> Maybe MeasurementValue
-getMeasLastValue value mets = Nothing --if (isJust value) 
---  then Just $ MeasurementValue value (read $ getSimpleMetadata "timestamp" mets) (read $ getSimpleMetadata "date_received" mets)
---  else Nothing
+getString :: Value -> Maybe Text
+getString (String s) = Just s
+getString _ = Nothing
+
+getMeasLastValue :: Maybe Value -> [(Text, Metadata)] -> Maybe MeasurementValue
+getMeasLastValue mval mets = do
+   value <- mval
+   return $ MeasurementValue value 
+                             (getSimpleMetadata "timestamp" mets >>= parseISO8601.unpack)
+                             (getSimpleMetadata "dateModified" mets >>= parseISO8601.unpack)
 

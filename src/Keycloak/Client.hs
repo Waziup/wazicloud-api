@@ -10,11 +10,8 @@ import Control.Lens
 import Control.Monad
 import Data.Aeson as JSON
 import Data.Aeson.Lens
-import Data.Map (Map)
 import Data.Text hiding (head, tail)
 import GHC.Generics (Generic)
-import Network.HTTP.QueryString
-import Data.ByteString.Base64 as B64
 import Data.Text.Encoding
 import Data.Maybe
 import Data.Foldable

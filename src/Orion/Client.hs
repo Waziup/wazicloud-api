@@ -33,8 +33,13 @@ getEntity :: Parse e Entity
 getEntity = do
     eId    <- AB.key "id" asText
     eType <- AB.key "type" asText
-    attrs <- forEachInObject (\k -> if (k == "id" || k == "type") then return Nothing else (\a -> Just (k, a)) <$> getAttribute)
-    return $ Entity eId eType (catMaybes attrs)
+    attrs <- forEachInObject getAtt
+    return $ Entity eId eType (catMaybes attrs) where
+      getAtt "id" = return Nothing 
+      getAtt "type" = return Nothing 
+      getAtt k = do
+        a <- getAttribute
+        return $ Just (k, a)
 
 data Attribute = Attribute {
   attType :: Text,
@@ -45,10 +50,9 @@ data Attribute = Attribute {
 getAttribute :: Parse e Attribute
 getAttribute = do
     (ParseReader _ t) <- ask
-    trace (show t) (return ()) 
     aType  <- AB.key "type" asText
     aValue <- AB.keyMay "value" AB.asValue
-    mets     <- AB.keyMay "metadata" getMetadatas
+    mets   <- AB.keyMay "metadata" getMetadatas
     return $ Attribute aType aValue (F.concat mets)
 
 data Metadata = Metadata {
@@ -64,13 +68,13 @@ getMetadatas = forEachInObject $ \a -> do
 getMetadata :: Parse e Metadata
 getMetadata = Metadata <$> AB.keyMay "type" asText
                        <*> AB.keyMay "value" AB.asValue
+opts = defaults &
+       header "Fiware-Service" .~ ["waziup"] &
+       param  "attrs"          .~ ["dateModified,dateCreated,*"] &
+       param  "metadata"       .~ ["dateModified,dateCreated,*"] 
 
 getSensorsOrion :: IO [Sensor]
 getSensorsOrion = do
-  let opts = defaults &
-             header "Fiware-Service" .~ ["waziup"] &
-             param  "attrs"          .~ ["dateModified,dateCreated,*"] &
-             param  "metadata"       .~ ["dateModified,dateCreated,*"] 
   res <- getWith opts "http://localhost:1026/v2/entities"
   let res2 = fromJust $ res ^? responseBody
   case AB.parse (eachInArray getEntity) res2 of
@@ -80,6 +84,18 @@ getSensorsOrion = do
        mapM_ (putStrLn.unpack) (displayError' err)
        putStrLn $ "Error while decoding JSON: " ++ (show err)
        return []
+
+getSensorOrion :: Text -> IO (Maybe Sensor)
+getSensorOrion id = do
+  res <- getWith opts $ "http://localhost:1026/v2/entities/" ++ unpack id
+  let res2 = fromJust $ res ^? responseBody
+  case AB.parse getEntity res2 of
+     Right es -> do
+       return $ getSensor es
+     Left err -> do
+       mapM_ (putStrLn.unpack) (displayError' err)
+       putStrLn $ "Error while decoding JSON: " ++ (show err)
+       return Nothing
 
 getSensor :: Entity -> Maybe Sensor
 getSensor (Entity eId etype attrs) = if etype == "SensingDevice" then Just sensor  else Nothing where

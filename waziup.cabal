@@ -47,4 +47,5 @@ Executable waziup-servant
                      , aeson-casing
                      , vector
                      , scientific
+                     , lifted-base
   default-language:    Haskell2010

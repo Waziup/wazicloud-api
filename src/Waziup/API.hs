@@ -9,6 +9,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC
 -fno-warn-unused-binds -fno-warn-unused-imports -fcontext-stack=328 #-}
 
@@ -39,24 +40,19 @@ import Servant.Client (Scheme(Http), ServantError, client)
 import Servant.Common.BaseUrl (BaseUrl(..))
 import Web.HttpApiData
 import Keycloak.Client as KC
-import Orion.Client as O
-
-
--- For the form data code generation.
-lookupEither :: FromHttpApiData b => Text -> [(Text, Text)] -> Either String b
-lookupEither key assocs =
-  case lookup key assocs of
-    Nothing -> Left $ "Could not find parameter " <> (T.unpack key) <> " in form data"
-    Just value ->
-      case parseQueryParam value of
-        Left result -> Left $ T.unpack result
-        Right result -> Right $ result
+import qualified Orion.Client as O
+import Control.Exception.Lifted
+import Network.HTTP.Client hiding (Proxy)
+import Network.Wreq hiding (Proxy)
 
 -- | Servant type-level API
-type WaziupAPI = "auth" :> "permissions" :> Verb 'GET 200 '[JSON] [Perm]
-            :<|> "auth" :> "token" :> ReqBody '[JSON] AuthBody :> Verb 'POST 200 '[JSON] (Maybe Text)
-            :<|> "sensors" :> Verb 'GET 200 '[JSON] [Sensor]
+type WaziupAPI = AuthAPI :<|> SensorsAPI
 
+type AuthAPI = "auth" :> "permissions" :> Get '[JSON] [Perm]
+          :<|> "auth" :> "token" :> ReqBody '[JSON] AuthBody :> Post '[JSON] (Maybe Text)
+
+type SensorsAPI = "sensors" :> Get '[JSON] [Sensor]
+              :<|>"sensors" :> Capture "id" Text :> Get '[JSON] Sensor
 
 -- | Server or client configuration, specifying the host and port to query or serve on.
 data ServerConfig = ServerConfig
@@ -65,9 +61,8 @@ data ServerConfig = ServerConfig
   } deriving (Eq, Ord, Show, Read)
 
 server :: Server WaziupAPI
-server = (getPerms "cdupont" "password") 
-     :<|> postAuth
-     :<|> getSensors
+server = ((getPerms "cdupont" "password") :<|> postAuth)
+     :<|> (getSensors :<|> getSensor)
 
 getPerms :: Text -> Text -> ExceptT ServantErr IO [Perm]
 getPerms username password = do
@@ -82,6 +77,17 @@ postAuth (AuthBody username password) = liftIO $ getUserAuthToken username passw
 getSensors :: ExceptT ServantErr IO [Sensor]
 getSensors = liftIO $ O.getSensorsOrion
 
+getSensor :: Text -> ExceptT ServantErr IO Sensor
+getSensor id = getS `catch` handler where
+  getS :: ExceptT ServantErr IO Sensor
+  getS = do
+    sensor <- (liftIO $ O.getSensorOrion id) -- `catch` (\(e:: HttpException) -> Left err404)
+    case sensor of
+      Just s -> return s
+      Nothing -> throwError err404
+  handler :: HttpException -> ExceptT ServantErr IO Sensor
+  handler e = throwError err404
+    
 
 waziupAPI :: Proxy WaziupAPI
 waziupAPI = Proxy

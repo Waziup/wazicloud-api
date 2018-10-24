@@ -1,4 +1,5 @@
-# Auto-Generated Swagger Bindings to `WAZIUP`
+WAZIUP API Server
+=================
 
 The library in `lib` provides auto-generated-from-Swagger bindings to the WAZIUP API.
 

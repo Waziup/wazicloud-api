@@ -19,11 +19,15 @@ import Data.Function ((&))
 import Data.Time
 import Control.Monad
 import Data.Time.ISO8601
+import qualified Keycloak.Types as KC
+
+type Username = Text
+type Password = Text
 
 -- | 
 data AuthBody = AuthBody
-  { authBodyUsername :: Text -- ^ username
-  , authBodyPassword :: Text -- ^ password
+  { authBodyUsername :: Username
+  , authBodyPassword :: Password
   } deriving (Show, Eq, Generic)
 
 instance FromJSON AuthBody where
@@ -41,26 +45,32 @@ instance FromJSON Error where
 instance ToJSON Error where
   toJSON = genericToJSON (removeFieldLabelPrefix False "error")
 
--- | 
+
+
+type SensorId   = Text
+type SensorName = Text
+type GatewayId  = Text
+type Domain     = Text
 
 -- | 
 data Sensor = Sensor
-  { sensorId :: Text                    -- ^ Unique ID of the sensor node
-  , sensorGatewayId :: Maybe Text       -- ^ Unique ID of the gateway
-  , sensorName :: Maybe Text            -- ^ name of the sensor node
-  , sensorOwner :: Maybe Text           -- ^ owner of the sensor node
-  , sensorMeasurements :: [Measurement]
-  , sensorLocation :: Maybe Location
-  , sensorDomain :: Maybe Text          -- ^ the domain of this sensor.
-  , sensorDateCreated :: Maybe UTCTime     -- ^ creation date of the sensor node
-  , sensorDateUpdated :: Maybe UTCTime     -- ^ last update date of the sensor nodei
-  , sensorVisibility :: Maybe Visibility
+  { senId           :: SensorId         -- ^ Unique ID of the sensor node
+  , senGatewayId    :: Maybe GatewayId  -- ^ Unique ID of the gateway
+  , senName         :: Maybe SensorName -- ^ name of the sensor node
+  , senOwner        :: Maybe Text       -- ^ owner of the sensor node
+  , senMeasurements :: [Measurement]
+  , senLocation     :: Maybe Location
+  , senDomain       :: Maybe Domain     -- ^ the domain of this sensor.
+  , senDateCreated  :: Maybe UTCTime    -- ^ creation date of the sensor node
+  , senDateUpdated  :: Maybe UTCTime    -- ^ last update date of the sensor nodei
+  , senVisibility   :: Maybe Visibility
+  , senKeycloakId   :: Maybe KC.ResourceId
   } deriving (Show, Eq, Generic)
 
 instance ToJSON Sensor where
-   toJSON = genericToJSON $ aesonPrefix snakeCase
+   toJSON = genericToJSON $ aesonDrop 3 snakeCase
 instance FromJSON Sensor where
-   parseJSON = genericParseJSON $ aesonPrefix snakeCase
+   parseJSON = genericParseJSON $ aesonDrop 3 snakeCase
 
 
 data Visibility = Public | Private
@@ -83,7 +93,7 @@ readVisibility _ = Nothing
 
 -- | location is a pair [latitude, longitude] with the coordinates on earth in decimal notation (e.g. [40.418889, 35.89389]).
 data Location = Location
-  { latitude :: Double
+  { latitude  :: Double
   , longitude :: Double
   } deriving (Show, Eq, Generic)
 
@@ -92,14 +102,20 @@ instance FromJSON Location where
 instance ToJSON Location where
   toJSON = genericToJSON defaultOptions
 
+type MeasId        = Text
+type MeasName      = Text
+type SensingDevice = Text
+type QuantityKind  = Text
+type Unit          = Text
+
 -- | 
 data Measurement = Measurement
-  { measId :: Text                  -- ^ ID of the measurement
-  , measName :: Maybe Text          -- ^ name of the measurement
-  , measSensingDevice :: Maybe Text -- ^ sensing platform used for the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/SensingDevices.js
-  , measQuantityKind :: Maybe Text  -- ^ quantity measured, from https://github.com/Waziup/waziup-js/blob/master/src/model/QuantityKinds.js
-  , measUnit :: Maybe Text          -- ^ unit of the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/Units.js
-  , measLastValue :: Maybe MeasurementValue -- ^ last value received by the platform
+  { measId            :: MeasId                 -- ^ ID of the measurement
+  , measName          :: Maybe MeasName         -- ^ name of the measurement
+  , measSensingDevice :: Maybe SensingDevice    -- ^ sensing platform used for the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/SensingDevices.js
+  , measQuantityKind  :: Maybe QuantityKind     -- ^ quantity measured, from https://github.com/Waziup/waziup-js/blob/master/src/model/QuantityKinds.js
+  , measUnit          :: Maybe Unit             -- ^ unit of the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/Units.js
+  , measLastValue     :: Maybe MeasurementValue -- ^ last value received by the platform
   } deriving (Show, Eq, Generic)
 
 instance FromJSON Measurement where
@@ -108,20 +124,10 @@ instance ToJSON Measurement where
   toJSON = genericToJSON $ aesonDrop 4 snakeCase
 
 
-data HistoricalValue = HistoricalValue
-  { historicalValueId :: Text -- ^ UUID of the sensor
-  , historicalValueAttribute'Underscoreid :: Text -- ^ UUID of the measurement
-  , historicalValueDatapoint :: MeasurementValue -- ^ 
-  } deriving (Show, Eq, Generic)
-
-instance FromJSON HistoricalValue where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "historicalValue")
-instance ToJSON HistoricalValue where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "historicalValue")
 -- | 
 data MeasurementValue = MeasurementValue
-  { measValue :: Value           -- ^ value of the measurement
-  , measTimestamp :: Maybe UTCTime    -- ^ time of the measurement
+  { measValue        :: Value           -- ^ value of the measurement
+  , measTimestamp    :: Maybe UTCTime    -- ^ time of the measurement
   , measDateReceived :: Maybe UTCTime -- ^ time at which the measurement has been received on the Cloud
   } deriving (Show, Eq, Generic)
 
@@ -132,26 +138,26 @@ instance ToJSON MeasurementValue where
 
 -- | 
 data Notification = Notification
-  { notificationId :: Text -- ^ id of the notification (attributed by the server)
-  , notificationDescription :: Text -- ^ Description of the notification
-  , notificationSubject :: NotificationSubject -- ^ 
-  , notificationNotification :: SocialMessageBatch -- ^ 
-  , notificationThrottling :: Double -- ^ minimum interval between two messages in seconds
+  { notifId           :: Text -- ^ id of the notification (attributed by the server)
+  , notifDescription  :: Text -- ^ Description of the notification
+  , notifSubject      :: NotificationSubject -- ^ 
+  , notifNotification :: SocialMessageBatch -- ^ 
+  , notifThrottling   :: Double -- ^ minimum interval between two messages in seconds
   } deriving (Show, Eq, Generic)
 
 instance FromJSON Notification where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "notification")
+  parseJSON = genericParseJSON $ aesonDrop 5 snakeCase
 instance ToJSON Notification where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "notification")
+  toJSON = genericToJSON $ aesonDrop 5 snakeCase
 
 -- | 
 data NotificationCondition = NotificationCondition
-  { notificationConditionAttrs :: [Text] -- ^ 
-  , notificationConditionExpression :: Text -- ^ 
+  { notifCondAttrs      :: [Text] -- ^ 
+  , notifCondExpression :: Text -- ^ 
   } deriving (Show, Eq, Generic)
 
 instance FromJSON NotificationCondition where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "notificationCondition")
+  parseJSON = genericParseJSON $ aesonDrop 5 snakeCase
 instance ToJSON NotificationCondition where
   toJSON = genericToJSON (removeFieldLabelPrefix False "notificationCondition")
 
@@ -168,14 +174,43 @@ instance ToJSON NotificationSubject where
 
 -- | 
 data Perm = Perm
-  { permissionResource :: Text -- ^ 
-  , permissionScopes :: [Text] -- ^ 
+  { permResource :: Text -- ^ 
+  , permScopes :: [Scope] -- ^ 
   } deriving (Show, Eq, Generic)
 
 instance FromJSON Perm where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "permission")
+  parseJSON = genericParseJSON (removeFieldLabelPrefix True "perm")
 instance ToJSON Perm where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "permission")
+  toJSON = genericToJSON (removeFieldLabelPrefix False "perm")
+
+data Scope = SensorsCreate
+           | SensorsUpdate
+           | SensorsView
+           | SensorsDelete
+           | SensorsDataCreate
+           | SensorsDataView
+   deriving (Generic, Show, Eq)
+
+instance ToJSON Scope where
+  toJSON SensorsCreate     = "sensors:create"
+  toJSON SensorsUpdate     = "sensors:update"
+  toJSON SensorsView       = "sensors:view"
+  toJSON SensorsDelete     = "sensors:delete"
+  toJSON SensorsDataCreate = "sensors-data:create"
+  toJSON SensorsDataView   = "sensors-data:view" 
+
+instance FromJSON Scope
+
+readScope :: Text -> Maybe Scope
+readScope "sensors:create"      = Just SensorsCreate    
+readScope "sensors:update"      = Just SensorsUpdate    
+readScope "sensors:view"        = Just SensorsView      
+readScope "sensors:delete"      = Just SensorsDelete    
+readScope "sensors-data:create" = Just SensorsDataCreate
+readScope "sensors-data:view"   = Just SensorsDataView  
+readScope _                     = Nothing
+
+
 -- | One social network message
 data SocialMessage = SocialMessage
   { socialMessageUsername :: Text -- ^ User name in Keycloak
@@ -220,6 +255,16 @@ instance FromJSON User where
 instance ToJSON User where
   toJSON = genericToJSON (removeFieldLabelPrefix False "user")
 
+data HistoricalValue = HistoricalValue
+  { historicalValueId            :: Text -- ^ UUID of the sensor
+  , historicalValueAttribute'Underscoreid :: Text -- ^ UUID of the measurement
+  , historicalValueDatapoint :: MeasurementValue -- ^ 
+  } deriving (Show, Eq, Generic)
+
+instance FromJSON HistoricalValue where
+  parseJSON = genericParseJSON (removeFieldLabelPrefix True "historicalValue")
+instance ToJSON HistoricalValue where
+  toJSON = genericToJSON (removeFieldLabelPrefix False "historicalValue")
 -- Remove a field label prefix during JSON parsing.
 -- Also perform any replacements for special characters.
 removeFieldLabelPrefix :: Bool -> String -> Options

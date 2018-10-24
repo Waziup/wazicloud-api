@@ -1,73 +1,79 @@
-
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Keycloak.Client where
 
-import Network.Wreq
+import Network.Wreq as W
 import Control.Lens
 import Control.Monad
 import Data.Aeson as JSON
 import Data.Aeson.Lens
-import Data.Text hiding (head, tail)
+import Data.Aeson.Types
+import Data.Aeson.Casing
+import Data.Text hiding (head, tail, map)
 import GHC.Generics (Generic)
 import Data.Text.Encoding
 import Data.Maybe
 import Data.Foldable
+import Control.Monad.Reader as R
+import Keycloak.Types
+import Network.HTTP.Client (HttpException)
 
-newtype Scope = Scope Text deriving (Generic, Show)
+data KCError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
+             | ParseError String        -- ^ Failed when parsing the response
+             | EmptyError               -- ^ Empty error to serve as a zero element for Monoid.
 
-instance FromJSON Scope
+type Keycloak a = ReaderT KCConfig IO (Either KCError a)
 
-data Permission = Permission 
-  { rsname :: Text,
-    rsid   :: Text,
-    scopes :: [Scope]
-  } deriving (Generic, Show)
-
-instance FromJSON Permission where
-  parseJSON (Object v) = Permission <$>
-                            v .: "rsname" <*>
-                            v .: "rsid" <*>
-                            (fromMaybe [] <$> v .:? "scopes")
-  parseJSON _          = mzero
-
-
-getPermissions :: Text -> Text -> IO (Maybe [Permission])
-getPermissions username password = do
-  Just (token :: Text) <- getUserAuthToken username password
-  let opts = defaults &
-             header "Authorization" .~ [encodeUtf8 (append "Bearer " token)]
+getAllPermissions :: Text -> Text -> Keycloak [Permission]
+getAllPermissions username password = do
+  (KCConfig _ client _ _ _) <- ask 
+  Right (token :: Text) <- getUserAuthToken username password
+  let opts = W.defaults &
+             W.header "Authorization" .~ [encodeUtf8 (append "Bearer " token)]
   let dat = ["grant_type" := ("urn:ietf:params:oauth:grant-type:uma-ticket" :: Text),
-             "audience" := ("api-server" :: Text),
+             "audience" := client,
              "response_mode" := ("permissions" :: Text)]
-  res <- postWith opts "http://localhost:8080/auth/realms/waziup/protocol/openid-connect/token" dat
+  res <- liftIO $ W.postWith opts "http://localhost:8080/auth/realms/waziup/protocol/openid-connect/token" dat
   let res2 = fromJust $ res ^? responseBody
   case JSON.eitherDecode res2 of
-     Right a -> return $ Just a
+     Right a -> return $ Right a
      Left e -> do
-       putStrLn $ "Error while decoding JSON: " ++ e
-       return Nothing
+       liftIO $ putStrLn $ "Error while decoding JSON: " ++ e
+       return $ Left $ ParseError $ "Error while decoding JSON: " ++ e
 
-getUserAuthToken :: Text -> Text -> IO (Maybe Text)
+getUserAuthToken :: Text -> Text -> Keycloak Token
 getUserAuthToken username password = do
+  (KCConfig realm client secret login password) <- ask 
   let dat = 
-        ["client_id" := ("api-server" :: Text), 
-         "client_secret" := ("4e9dcb80-efcd-484c-b3d7-1e95a0096ac0" :: Text),
+        ["client_id" := client, 
+         "client_secret" := secret,
          "grant_type" := ("password" :: Text),
          "password" := password,
-         "username" := username]
-  perms <- post  "http://localhost:8080/auth/realms/waziup/protocol/openid-connect/token" dat 
-  return $ perms ^? responseBody . key "access_token" . _String
+         "username" := login]
+  perms <- liftIO $ W.post  "http://localhost:8080/auth/realms/waziup/protocol/openid-connect/token" dat 
+  return $ Right $ fromJust $ perms ^? responseBody . key "access_token" . _String
 
-getClientAuthToken :: IO (Maybe Text)
+getClientAuthToken :: Keycloak Token
 getClientAuthToken = do
+  (KCConfig realm client secret login password) <- ask
   let dat = 
-        ["client_id" := ("api-server" :: Text), 
-         "client_secret" := ("4e9dcb80-efcd-484c-b3d7-1e95a0096ac0" :: Text),
-         "grant_type" := ("password" :: Text),
-         "password" := ("password" :: Text),
-         "username" := ("cdupont" :: Text)] --(toString $ queryString d)
-  perms <- post  "http://localhost:8080/auth/realms/waziup/protocol/openid-connect/token" dat 
-  return $ perms ^? responseBody . key "access_token" . _String
+        ["client_id" := client, 
+         "client_secret" := secret,
+         "grant_type" := ("client_credentials" :: Text)]
+  liftIO $ putStrLn $ show dat
+  perms <- liftIO $ W.post ("http://localhost:8080/auth/realms/" ++ unpack realm ++ "/protocol/openid-connect/token") dat 
+  return $ Right $ fromJust $ perms ^? responseBody . key "access_token" . _String
+
+
+createResource :: Resource -> Keycloak ResourceId
+createResource r = do
+  Right token <- getClientAuthToken
+  let opts = W.defaults &
+             W.header "Authorization" .~ [encodeUtf8 (append "Bearer " token)]
+  liftIO $ putStrLn $ show opts
+  liftIO $ putStrLn $ show (encode r)
+  perms <- liftIO $ W.postWith opts "http://localhost:8080/auth/realms/waziup/authz/protection/resource_set" (toJSON r) 
+  return $ Right $ fromJust $ perms ^? responseBody . key "_id" . _String
+   

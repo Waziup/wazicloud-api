@@ -6,9 +6,10 @@
 module Orion.Client where
 
 import Network.Wreq
-import Control.Lens
+import Control.Lens hiding ((.=))
 import Data.Aeson as JSON
 import Data.Aeson.BetterErrors as AB
+import Data.Aeson.Casing
 import Data.Text hiding (head, tail, find, map, filter)
 import GHC.Generics (Generic)
 import Data.Maybe
@@ -24,60 +25,69 @@ import Data.Scientific
 
 
 data Entity = Entity {
-  entId :: Text,
-  entType :: Text,
+  entId         :: Text,
+  entType       :: Text,
   entAttributes :: [(Text, Attribute)]
   } deriving (Generic, Show)
 
-getEntity :: Parse e Entity
-getEntity = do
-    eId    <- AB.key "id" asText
+instance ToJSON Entity where
+   toJSON = genericToJSON $ aesonDrop 3 snakeCase
+
+parseEntity :: Parse e Entity
+parseEntity = do
+    eId   <- AB.key "id" asText
     eType <- AB.key "type" asText
-    attrs <- forEachInObject getAtt
-    return $ Entity eId eType (catMaybes attrs) where
-      getAtt "id" = return Nothing 
-      getAtt "type" = return Nothing 
-      getAtt k = do
-        a <- getAttribute
+    attrs <- catMaybes <$> forEachInObject parseAtt
+    return $ Entity eId eType attrs where
+      parseAtt "id" = return Nothing 
+      parseAtt "type" = return Nothing 
+      parseAtt k = do
+        a <- parseAttribute
         return $ Just (k, a)
 
 data Attribute = Attribute {
-  attType :: Text,
-  attValue :: Maybe Value,
+  attType     :: Text,
+  attValue    :: Maybe Value,
   attMetadata :: [(Text, Metadata)]
   } deriving (Generic, Show)
 
-getAttribute :: Parse e Attribute
-getAttribute = do
-    (ParseReader _ t) <- ask
-    aType  <- AB.key "type" asText
+instance ToJSON Attribute where
+   toJSON = genericToJSON $ aesonDrop 3 snakeCase
+
+parseAttribute :: Parse e Attribute
+parseAttribute = do
+    aType  <- AB.key    "type" asText
     aValue <- AB.keyMay "value" AB.asValue
-    mets   <- AB.keyMay "metadata" getMetadatas
+    mets   <- AB.keyMay "metadata" parseMetadatas
     return $ Attribute aType aValue (F.concat mets)
+
 
 data Metadata = Metadata {
   metType :: Maybe Text,
   metValue :: Maybe Value
   } deriving (Generic, Show)
 
-getMetadatas :: Parse e [(Text, Metadata)]
-getMetadatas = forEachInObject $ \a -> do
-  m <- getMetadata
+instance ToJSON Metadata where
+   toJSON = genericToJSON $ aesonDrop 3 snakeCase
+
+parseMetadatas :: Parse e [(Text, Metadata)]
+parseMetadatas = forEachInObject $ \a -> do
+  m <- parseMetadata
   return (a, m)
 
-getMetadata :: Parse e Metadata
-getMetadata = Metadata <$> AB.keyMay "type" asText
+parseMetadata :: Parse e Metadata
+parseMetadata = Metadata <$> AB.keyMay "type" asText
                        <*> AB.keyMay "value" AB.asValue
-opts = defaults &
+orionOpts = defaults &
        header "Fiware-Service" .~ ["waziup"] &
        param  "attrs"          .~ ["dateModified,dateCreated,*"] &
        param  "metadata"       .~ ["dateModified,dateCreated,*"] 
 
 getSensorsOrion :: IO [Sensor]
 getSensorsOrion = do
-  res <- getWith opts "http://localhost:1026/v2/entities"
+  res <- getWith orionOpts "http://localhost:1026/v2/entities"
   let res2 = fromJust $ res ^? responseBody
-  case AB.parse (eachInArray getEntity) res2 of
+  case AB.parse (eachInArray parseEntity) res2 of
      Right es -> do
        return $ mapMaybe getSensor es
      Left err -> do
@@ -87,9 +97,9 @@ getSensorsOrion = do
 
 getSensorOrion :: Text -> IO (Maybe Sensor)
 getSensorOrion id = do
-  res <- getWith opts $ "http://localhost:1026/v2/entities/" ++ unpack id
+  res <- getWith orionOpts ("http://localhost:1026/v2/entities/" ++ unpack id)
   let res2 = fromJust $ res ^? responseBody
-  case AB.parse getEntity res2 of
+  case AB.parse parseEntity res2 of
      Right es -> do
        return $ getSensor es
      Left err -> do
@@ -97,23 +107,36 @@ getSensorOrion id = do
        putStrLn $ "Error while decoding JSON: " ++ (show err)
        return Nothing
 
+
+postSensorOrion :: Sensor -> IO ()
+postSensorOrion s = do
+  putStrLn $ "Create sensor in Orion: " ++ (show $ encode s)
+  let entity = getEntity s
+  putStrLn $ "Entity: " ++ (show $ encode entity)
+  res <- postWith orionOpts "http://localhost:1026/v2/entities/" (toJSON entity)
+  putStrLn $ "Created"
+  return ()
+   
+
 getSensor :: Entity -> Maybe Sensor
 getSensor (Entity eId etype attrs) = if etype == "SensingDevice" then Just sensor  else Nothing where
-  sensor = Sensor { sensorId           = eId,
-                    sensorGatewayId    = getSimpleAttribute "gateway_id" attrs,
-                    sensorName         = getSimpleAttribute "name" attrs,
-                    sensorOwner        = getSimpleAttribute "owner" attrs,
-                    sensorLocation     = getLocation attrs,
-                    sensorDomain       = getSimpleAttribute "domain" attrs,
-                    sensorVisibility   = getSimpleAttribute "visibility" attrs >>= readVisibility,
-                    sensorDateCreated  = getSimpleAttribute "dateCreated" attrs >>= parseISO8601.unpack,
-                    sensorDateUpdated  = getSimpleAttribute "dateModified" attrs >>= parseISO8601.unpack,
-                    sensorMeasurements = getMeasurements attrs}
+  sensor = Sensor { senId           = eId,
+                    senGatewayId    = getSimpleAttribute "gateway_id" attrs,
+                    senName         = getSimpleAttribute "name" attrs,
+                    senOwner        = getSimpleAttribute "owner" attrs,
+                    senLocation     = getLocation attrs,
+                    senDomain       = getSimpleAttribute "domain" attrs,
+                    senVisibility   = getSimpleAttribute "visibility" attrs >>= readVisibility,
+                    senDateCreated  = getSimpleAttribute "dateCreated" attrs >>= parseISO8601.unpack,
+                    senDateUpdated  = getSimpleAttribute "dateModified" attrs >>= parseISO8601.unpack,
+                    senMeasurements = getMeasurements attrs,
+                    senKeycloakId   = getSimpleAttribute "keycloak_id" attrs}
                          
 getSimpleAttribute :: Text -> [(Text, Attribute)] -> Maybe Text
-getSimpleAttribute attName attrs = Just $ s where 
-   (Just (Just (String s))) = attValue <$> lookup attName attrs
-   _ = Nothing
+getSimpleAttribute attName attrs = do
+   (Attribute _ mval _) <- lookup attName attrs
+   val <- mval
+   getString val
 
 getMeasurements :: [(Text, Attribute)] -> [Measurement]
 getMeasurements attrs = mapMaybe getMeas attrs where 
@@ -152,3 +175,21 @@ getMeasLastValue mval mets = do
                              (getSimpleMetadata "timestamp" mets    >>= parseISO8601.unpack)
                              (getSimpleMetadata "dateModified" mets >>= parseISO8601.unpack)
 
+
+
+getEntity :: Sensor -> Entity
+getEntity (Sensor sid sgid sname sown meas sloc sdom _ _ svis _) = 
+  Entity sid "SensingDevice" $ catMaybes [getSimpleAttr "name" sname,
+                              getSimpleAttr "gateway_id" sgid,
+                              getSimpleAttr "owner" sown,
+                              getSimpleAttr "domain" sown,
+                              getSimpleAttr "visibility" ((pack.show) <$> svis),
+                              getLocationAttr sloc] 
+
+getSimpleAttr :: Text -> Maybe Text -> Maybe (Text, Attribute)
+getSimpleAttr name (Just val) = Just (name, Attribute "String" (Just $ toJSON val) [])
+getSimpleAttr _ Nothing = Nothing
+
+getLocationAttr :: Maybe Location -> Maybe (Text, Attribute)
+getLocationAttr (Just (Location lat lon)) = Just ("location", Attribute "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) [])
+getLocationAttr Nothing = Nothing

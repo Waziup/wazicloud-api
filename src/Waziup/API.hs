@@ -79,13 +79,13 @@ sensorsServer = getSensors
 
 getPerms :: Text -> Text -> ExceptT ServantErr IO [Perm]
 getPerms username password = do
-  mps <- liftIO $ runReaderT (getAllPermissions username password) defaultConfig
-  case mps of
-    Right ps -> do
-      let getP :: KC.Permission -> Perm
-          getP (Permission rsname _ scopes) = Perm rsname (mapMaybe (readScope.scpName) scopes) 
-      return $ map getP ps 
-    Left e -> return []
+  liftIO $ putStrLn "Get token"
+  tok <- runKeycloak $ getUserAuthToken username password
+  liftIO $ putStrLn "Get Permissions"
+  ps <- runKeycloak (getAllPermissions tok)
+  let getP :: KC.Permission -> Perm
+      getP (Permission rsname _ scopes) = Perm rsname (mapMaybe (readScope.scpName) scopes) 
+  return $ map getP ps 
 
 postAuth :: AuthBody -> ExceptT ServantErr IO Text
 postAuth (AuthBody username password) = do
@@ -126,8 +126,13 @@ postSensor s@(Sensor id _ _ _ _ _ _ _ _ vis _) = do
   liftIO $ putStrLn "Create resource"
   resId <- runKeycloak (createResource res tok)
   liftIO $ putStrLn "Create entity"
-  runOrion (O.postSensorOrion (s {senKeycloakId = Just resId}))
-  return NoContent
+  res <- try $ runOrion (O.postSensorOrion (s {senKeycloakId = Just resId}))
+  case res of
+    Right _ -> return NoContent
+    Left (err :: HttpException) -> do
+      liftIO $ putStrLn "Orion error"
+      return NoContent
+ 
 
 runOrion :: O.Orion a -> ExceptT ServantErr IO a
 runOrion orion = do

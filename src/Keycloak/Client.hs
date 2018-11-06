@@ -35,23 +35,6 @@ type Keycloak a = ReaderT KCConfig IO (Either KCError a)
 errorHandler :: HttpException -> Keycloak a 
 errorHandler e = return $ Left $ HTTPError e 
 
-getAllPermissions :: Text -> Text -> Keycloak [Permission]
-getAllPermissions username password = do
-  (KCConfig _ _ client _ _ _) <- ask 
-  Right (token :: Text) <- getUserAuthToken username password
-  let opts = W.defaults &
-             W.header "Authorization" .~ [encodeUtf8 (append "Bearer " token)]
-  let dat = ["grant_type" := ("urn:ietf:params:oauth:grant-type:uma-ticket" :: Text),
-             "audience" := client,
-             "response_mode" := ("permissions" :: Text)]
-  res <- liftIO $ W.postWith opts "http://localhost:8080/auth/realms/waziup/protocol/openid-connect/token" dat
-  let res2 = fromJust $ res ^? responseBody
-  case JSON.eitherDecode res2 of
-     Right a -> return $ Right a
-     Left e -> do
-       liftIO $ putStrLn $ "Error while decoding JSON: " ++ e
-       return $ Left $ ParseError $ pack $ "Error while decoding JSON: " ++ e
-
 type Path = Text
 
 keycloakPost :: Postable a => Path -> a -> Maybe Token -> Parse Text b -> Keycloak b
@@ -61,7 +44,6 @@ keycloakPost path dat mtok parser = do
              then W.defaults & W.header "Authorization" .~ [encodeUtf8 (append "Bearer " (fromJust mtok))]
              else W.defaults
   let url = (unpack $ baseUrl <> "/realms/" <> realm <> "/" <> path) 
-  
   liftIO $ putStrLn $ "Issuing KEYCLOAK post with:\n  " ++ (show url)
   postRes <- try $ liftIO $ W.postWith opts url dat
   return $ case postRes of 
@@ -72,6 +54,16 @@ keycloakPost path dat mtok parser = do
         Left err -> Left $ ParseError $ pack (show err)
     Left err -> Left $ HTTPError err
 
+
+getAllPermissions :: Token -> Keycloak [Permission]
+getAllPermissions tok = do
+  (KCConfig _ _ client _ _ _) <- ask 
+  let dat = ["grant_type" := ("urn:ietf:params:oauth:grant-type:uma-ticket" :: Text),
+             "audience" := client,
+             "response_mode" := ("permissions" :: Text)]
+  keycloakPost "protocol/openid-connect/token" dat (Just tok) (eachInArray parsePermission)
+
+  
 getUserAuthToken :: Text -> Text -> Keycloak Token
 getUserAuthToken username password = do 
   (KCConfig _ realm client secret login password) <- ask 

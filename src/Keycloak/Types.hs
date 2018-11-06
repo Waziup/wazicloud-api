@@ -10,6 +10,8 @@ import Data.Text hiding (head, tail, map)
 import GHC.Generics (Generic)
 import Data.Maybe
 import Control.Monad
+import Data.Foldable as F
+import Data.Aeson.BetterErrors as AB
 
 type ResourceId = Text
 type ResourceName = Text
@@ -22,6 +24,12 @@ data Scope = Scope {
   scpName :: ScopeName
   } deriving (Generic, Show)
 
+parseScope :: Parse e Scope
+parseScope = do
+    scpId   <- AB.keyMay "scpId" asText
+    scpName <- AB.key "scpName" asText
+    return $ Scope scpId scpName 
+
 instance FromJSON Scope where
   parseJSON = genericParseJSON $ aesonDrop 3 snakeCase 
 instance ToJSON Scope where
@@ -32,6 +40,13 @@ data Permission = Permission
     rsid   :: ResourceId,
     scopes :: [Scope]
   } deriving (Generic, Show)
+
+parsePermission :: Parse e Permission
+parsePermission = do
+    rsname  <- AB.key "rsname" asText
+    rsid    <- AB.key "rsid" asText
+    scopes  <- AB.key "scopes" (eachInArray parseScope) 
+    return $ Permission rsname rsid scopes
 
 instance FromJSON Permission where
   parseJSON (Object v) = do

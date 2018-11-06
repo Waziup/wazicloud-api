@@ -56,11 +56,14 @@ type Path = Text
 
 keycloakPost :: Postable a => Path -> a -> Maybe Token -> Parse Text b -> Keycloak b
 keycloakPost path dat mtok parser = do 
-  (KCConfig url realm _ _ _ _) <- ask
+  (KCConfig baseUrl realm _ _ _ _) <- ask
   let opts = if (isJust mtok) 
              then W.defaults & W.header "Authorization" .~ [encodeUtf8 (append "Bearer " (fromJust mtok))]
              else W.defaults
-  postRes <- try $ liftIO $ W.postWith opts (unpack $ url <> "/realms/" <> realm <> "/" <> path) dat
+  let url = (unpack $ baseUrl <> "/realms/" <> realm <> "/" <> path) 
+  
+  liftIO $ putStrLn $ "Issuing KEYCLOAK post with:\n  " ++ (show url)
+  postRes <- try $ liftIO $ W.postWith opts url dat
   return $ case postRes of 
     Right res -> do
       let body = fromJust $ res ^? responseBody
@@ -77,7 +80,7 @@ getUserAuthToken username password = do
              "grant_type" := ("password" :: Text),
              "password" := password,
              "username" := login]
-  keycloakPost "/protocol/openid-connect/token" dat Nothing (AB.key "access_token" asText) 
+  keycloakPost "protocol/openid-connect/token" dat Nothing (AB.key "access_token" asText) 
 
 getClientAuthToken :: Keycloak Token
 getClientAuthToken = do
@@ -85,9 +88,9 @@ getClientAuthToken = do
   let dat = ["client_id" := client, 
              "client_secret" := secret,
              "grant_type" := ("client_credentials" :: Text)]
-  keycloakPost "/protocol/openid-connect/token" dat Nothing (AB.key "access_token" asText) 
+  keycloakPost "protocol/openid-connect/token" dat Nothing (AB.key "access_token" asText) 
 
 createResource :: Resource -> Token -> Keycloak ResourceId
 createResource r tok = do
-  keycloakPost "http://localhost:8080/auth/realms/waziup/authz/protection/resource_set" (toJSON r) (Just tok) (AB.key "_id" asText) 
+  keycloakPost "authz/protection/resource_set" (toJSON r) (Just tok) (AB.key "_id" asText) 
    

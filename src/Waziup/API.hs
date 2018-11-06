@@ -32,6 +32,8 @@ import Data.Text.Encoding
 import GHC.Exts (IsString(..))
 import GHC.Generics (Generic)
 import Network.HTTP.Client (Manager, defaultManagerSettings, newManager)
+import Network.HTTP.Client as HC hiding (Proxy)
+import Network.HTTP.Types.Status as HTS
 import Network.HTTP.Types.Method (methodOptions)
 import qualified Network.Wai.Handler.Warp as Warp
 import Servant-- (ServantErr, serve)
@@ -43,7 +45,6 @@ import Web.HttpApiData
 import Keycloak as KC
 import qualified Orion.Client as O
 import Control.Exception.Lifted
-import Network.HTTP.Client hiding (Proxy)
 import Network.Wreq hiding (Proxy)
 import Control.Monad.Reader
 
@@ -120,9 +121,11 @@ postSensor s@(Sensor id _ _ _ _ _ _ _ _ vis _) = do
      resOwnerManagedAccess = True,
      resAttributes = if (isJust vis) then [Attribute "visibility" [pack $ show $ fromJust vis]] else []
      }
-  liftIO $ putStrLn "Creating Sensor"
+  liftIO $ putStrLn "Get token"
   tok <- runKeycloak getClientAuthToken
+  liftIO $ putStrLn "Create resource"
   resId <- runKeycloak (createResource res tok)
+  liftIO $ putStrLn "Create entity"
   runOrion (O.postSensorOrion (s {senKeycloakId = Just resId}))
   return NoContent
 
@@ -131,7 +134,7 @@ runOrion orion = do
   eRes <- liftIO $ runReaderT orion O.defaultOrionConfig
   case eRes of
     Right res -> return res 
-    Left (O.HTTPError e) -> throwError err500 {errBody = encode $ show e} 
+    Left (O.HTTPError (HttpExceptionRequest _ (StatusCodeException r _))) -> undefined 
     Left (O.ParseError s) -> throwError err500 {errBody = encode s} 
     Left O.EmptyError -> throwError err500 {errBody = "EmptyError"} 
 
@@ -140,7 +143,12 @@ runKeycloak kc = do
   eRes <- liftIO $ runReaderT kc defaultConfig
   case eRes of
     Right res -> return res 
-    Left (HTTPError e) -> throwError err500 {errBody = encode $ show e} 
+    Left (HTTPError (HttpExceptionRequest _ (StatusCodeException r _))) -> do
+      liftIO $ putStrLn (show r)
+      throwError $ ServantErr { errHTTPCode = HTS.statusCode $ HC.responseStatus r, 
+                                errReasonPhrase = show $ HTS.statusMessage $ HC.responseStatus r, 
+                                errBody = "",
+                                errHeaders = []}
     Left (ParseError s) -> throwError err500 {errBody = encode s} 
     Left EmptyError -> throwError err500 {errBody = "EmptyError"} 
 

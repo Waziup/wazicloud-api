@@ -34,22 +34,13 @@ data KCError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
 type Keycloak a = ReaderT KCConfig (ExceptT KCError IO) a
 type Path = Text
 
-keycloakPost :: Postable a => Path -> a -> Maybe Token -> Parse Text b -> Keycloak b
-keycloakPost path dat mtok parser = do 
-  (KCConfig baseUrl realm _ _ _ _) <- ask
-  let opts = if (isJust mtok) 
-             then W.defaults & W.header "Authorization" .~ [encodeUtf8 (append "Bearer " (fromJust mtok))]
-             else W.defaults
-  let url = (unpack $ baseUrl <> "/realms/" <> realm <> "/" <> path) 
-  liftIO $ putStrLn $ "Issuing KEYCLOAK post with:\n  " ++ (show url)
-  postRes <- try $ liftIO $ W.postWith opts url dat
-  case postRes of 
-    Right res -> do
-      let body = fromJust $ res ^? responseBody
-      case AB.parse parser body of
-        Right ret -> return ret
-        Left err -> throwError $ ParseError $ pack (show err)
-    Left err -> throwError $ HTTPError err
+getPermission :: Token -> Keycloak [Permission]
+getPermission tok = do
+  (KCConfig _ _ client _ _ _) <- ask 
+  let dat = ["grant_type" := ("urn:ietf:params:oauth:grant-type:uma-ticket" :: Text),
+             "audience" := client,
+             "response_mode" := ("permissions" :: Text)]
+  keycloakPost "protocol/openid-connect/token" dat (Just tok) (eachInArray parsePermission)
 
 getAllPermissions :: Token -> Keycloak [Permission]
 getAllPermissions tok = do
@@ -82,3 +73,19 @@ createResource :: Resource -> Token -> Keycloak ResourceId
 createResource r tok = do
   keycloakPost "authz/protection/resource_set" (toJSON r) (Just tok) (AB.key "_id" asText) 
    
+keycloakPost :: Postable a => Path -> a -> Maybe Token -> Parse Text b -> Keycloak b
+keycloakPost path dat mtok parser = do 
+  (KCConfig baseUrl realm _ _ _ _) <- ask
+  let opts = if (isJust mtok) 
+             then W.defaults & W.header "Authorization" .~ [encodeUtf8 (append "Bearer " (fromJust mtok))]
+             else W.defaults
+  let url = (unpack $ baseUrl <> "/realms/" <> realm <> "/" <> path) 
+  liftIO $ putStrLn $ "Issuing KEYCLOAK post with:\n  " ++ (show url)
+  postRes <- try $ liftIO $ W.postWith opts url dat
+  case postRes of 
+    Right res -> do
+      let body = fromJust $ res ^? responseBody
+      case AB.parse parser body of
+        Right ret -> return ret
+        Left err -> throwError $ ParseError $ pack (show err)
+    Left err -> throwError $ HTTPError err

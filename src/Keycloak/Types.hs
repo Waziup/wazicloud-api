@@ -19,21 +19,7 @@ type ScopeId = Text
 type ScopeName = Text
 type Token = Text
 
-data Scope = Scope {
-  scpId   :: Maybe ScopeId,
-  scpName :: ScopeName
-  } deriving (Generic, Show)
-
-parseScope :: Parse e Scope
-parseScope = do
-    scpId   <- AB.keyMay "scpId" asText
-    scpName <- AB.key "scpName" asText
-    return $ Scope scpId scpName 
-
-instance FromJSON Scope where
-  parseJSON = genericParseJSON $ aesonDrop 3 snakeCase 
-instance ToJSON Scope where
-  toJSON = genericToJSON $ aesonDrop 3 snakeCase
+type Scope = Text 
 
 data Permission = Permission 
   { rsname :: ResourceName,
@@ -45,16 +31,16 @@ parsePermission :: Parse e Permission
 parsePermission = do
     rsname  <- AB.key "rsname" asText
     rsid    <- AB.key "rsid" asText
-    scopes  <- AB.key "scopes" (eachInArray parseScope) 
-    return $ Permission rsname rsid scopes
+    scopes  <- AB.keyMay "scopes" (eachInArray asText) 
+    return $ Permission rsname rsid (if (isJust scopes) then (fromJust scopes) else [])
 
-instance FromJSON Permission where
-  parseJSON (Object v) = do
-    rsname <- v .: "rsname"
-    rsid <- v .: "rsid"
-    scopes <- fromMaybe [] <$> v .:? "scopes"
-    return $ Permission rsname rsid (map (\s -> Scope Nothing s) scopes)
-  parseJSON _          = mzero
+--instance FromJSON Permission where
+--  parseJSON (Object v) = do
+--    rsname <- v .: "rsname"
+--    rsid <- v .: "rsid"
+--    scopes <- fromMaybe [] <$> v .:? "scopes"
+--    return $ Permission rsname rsid (map (\s -> Scope Nothing s) scopes)
+--  parseJSON _          = mzero
 
 data Owner = Owner {
   ownId   :: Maybe Text,

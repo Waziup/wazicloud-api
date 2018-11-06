@@ -18,7 +18,7 @@ module Waziup.API
 
 import Waziup.Types
 
-import Control.Monad.Except (ExceptT, throwError)
+import Control.Monad.Except (ExceptT, throwError, withExceptT)
 import Control.Monad.IO.Class
 import Data.Maybe
 import Data.Aeson
@@ -60,7 +60,7 @@ type SensorsAPI = "sensors" :> Get '[JSON] [Sensor]
 
 -- | Server or client configuration, specifying the host and port to query or serve on.
 data ServerConfig = ServerConfig
-  { configHost :: String  -- ^ Hostname to serve on, e.g. "127.0.0.1"
+  { configHost :: String   -- ^ Hostname to serve on, e.g. "127.0.0.1"
   , configPort :: Int      -- ^ Port to serve on, e.g. 8080
   } deriving (Eq, Ord, Show, Read)
 
@@ -84,30 +84,17 @@ getPerms username password = do
   liftIO $ putStrLn "Get Permissions"
   ps <- runKeycloak (getAllPermissions tok)
   let getP :: KC.Permission -> Perm
-      getP (Permission rsname _ scopes) = Perm rsname (mapMaybe (readScope.scpName) scopes) 
+      getP (Permission rsname _ scopes) = Perm rsname (mapMaybe readScope scopes)
   return $ map getP ps 
 
 postAuth :: AuthBody -> ExceptT ServantErr IO Text
-postAuth (AuthBody username password) = do
-  res <- liftIO $ runReaderT (getUserAuthToken username password) defaultConfig
-  case res of 
-    Right token -> return token
-    Left err -> return undefined
+postAuth (AuthBody username password) = runKeycloak (getUserAuthToken username password)
 
 getSensors :: ExceptT ServantErr IO [Sensor]
-getSensors = do
-  res <- liftIO $ runReaderT O.getSensorsOrion O.defaultOrionConfig
-  case res of
-    Right s -> return s
-    Left err -> throwError err404 
-
+getSensors = runOrion O.getSensorsOrion
 
 getSensor :: Text -> ExceptT ServantErr IO Sensor
-getSensor sid = do 
-  res <- liftIO $ runReaderT (O.getSensorOrion sid) O.defaultOrionConfig
-  case res of
-    Right s -> return s
-    Left err -> throwError err404
+getSensor sid = runOrion (O.getSensorOrion sid)
 
 postSensor :: Sensor -> ExceptT ServantErr IO NoContent
 postSensor s@(Sensor id _ _ _ _ _ _ _ _ vis _) = do
@@ -135,27 +122,26 @@ postSensor s@(Sensor id _ _ _ _ _ _ _ _ vis _) = do
  
 
 runOrion :: O.Orion a -> ExceptT ServantErr IO a
-runOrion orion = do
-  eRes <- liftIO $ runReaderT orion O.defaultOrionConfig
-  case eRes of
-    Right res -> return res 
-    Left (O.HTTPError (HttpExceptionRequest _ (StatusCodeException r _))) -> undefined 
-    Left (O.ParseError s) -> throwError err500 {errBody = encode s} 
-    Left O.EmptyError -> throwError err500 {errBody = "EmptyError"} 
+runOrion orion = withExceptT fromOrionError (runReaderT orion O.defaultOrionConfig)
 
 runKeycloak :: Keycloak a -> ExceptT ServantErr IO a
-runKeycloak kc = do
-  eRes <- liftIO $ runReaderT kc defaultConfig
-  case eRes of
-    Right res -> return res 
-    Left (HTTPError (HttpExceptionRequest _ (StatusCodeException r _))) -> do
-      liftIO $ putStrLn (show r)
-      throwError $ ServantErr { errHTTPCode = HTS.statusCode $ HC.responseStatus r, 
-                                errReasonPhrase = show $ HTS.statusMessage $ HC.responseStatus r, 
-                                errBody = "",
-                                errHeaders = []}
-    Left (ParseError s) -> throwError err500 {errBody = encode s} 
-    Left EmptyError -> throwError err500 {errBody = "EmptyError"} 
+runKeycloak kc = withExceptT fromKCError (runReaderT kc defaultConfig)
+
+fromOrionError :: O.OrionError -> ServantErr
+fromOrionError (O.HTTPError (HttpExceptionRequest _ (StatusCodeException r _))) = ServantErr { errHTTPCode = HTS.statusCode $ HC.responseStatus r, 
+                                                                                           errReasonPhrase = show $ HTS.statusMessage $ HC.responseStatus r, 
+                                                                                           errBody = "",
+                                                                                           errHeaders = []}
+fromOrionError (O.ParseError s) = err500 {errBody = encode s} 
+fromOrionError O.EmptyError = err500 {errBody = "EmptyError"}
+
+fromKCError :: KCError -> ServantErr
+fromKCError (HTTPError (HttpExceptionRequest _ (StatusCodeException r _))) = ServantErr { errHTTPCode = HTS.statusCode $ HC.responseStatus r, 
+                                                                                           errReasonPhrase = show $ HTS.statusMessage $ HC.responseStatus r, 
+                                                                                           errBody = "",
+                                                                                           errHeaders = []}
+fromKCError (ParseError s) = err500 {errBody = encode s} 
+fromKCError EmptyError = err500 {errBody = "EmptyError"}
 
 waziupAPI :: Proxy WaziupAPI
 waziupAPI = Proxy

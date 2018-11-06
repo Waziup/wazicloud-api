@@ -19,7 +19,6 @@ import Data.Function ((&))
 import Data.Time
 import Control.Monad
 import Data.Time.ISO8601
-import qualified Keycloak.Types as KC
 
 type Username = Text
 type Password = Text
@@ -64,7 +63,7 @@ data Sensor = Sensor
   , senDateCreated  :: Maybe UTCTime    -- ^ creation date of the sensor node
   , senDateUpdated  :: Maybe UTCTime    -- ^ last update date of the sensor nodei
   , senVisibility   :: Maybe Visibility
-  , senKeycloakId   :: Maybe KC.ResourceId
+  , senKeycloakId   :: Maybe Text 
   } deriving (Show, Eq, Generic)
 
 instance ToJSON Sensor where

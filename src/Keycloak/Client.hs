@@ -24,17 +24,14 @@ import Network.HTTP.Client (HttpException)
 --import Control.Exception as E
 import Data.Monoid
 import Control.Monad.Catch
-
+import Control.Monad.Except (ExceptT, throwError, withExceptT)
 
 data KCError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
              | ParseError Text          -- ^ Failed when parsing the response
              | EmptyError               -- ^ Empty error to serve as a zero element for Monoid.
 
-type Keycloak a = ReaderT KCConfig IO (Either KCError a)
 
-errorHandler :: HttpException -> Keycloak a 
-errorHandler e = return $ Left $ HTTPError e 
-
+type Keycloak a = ReaderT KCConfig (ExceptT KCError IO) a
 type Path = Text
 
 keycloakPost :: Postable a => Path -> a -> Maybe Token -> Parse Text b -> Keycloak b
@@ -46,14 +43,13 @@ keycloakPost path dat mtok parser = do
   let url = (unpack $ baseUrl <> "/realms/" <> realm <> "/" <> path) 
   liftIO $ putStrLn $ "Issuing KEYCLOAK post with:\n  " ++ (show url)
   postRes <- try $ liftIO $ W.postWith opts url dat
-  return $ case postRes of 
+  case postRes of 
     Right res -> do
       let body = fromJust $ res ^? responseBody
       case AB.parse parser body of
-        Right ret -> Right ret
-        Left err -> Left $ ParseError $ pack (show err)
-    Left err -> Left $ HTTPError err
-
+        Right ret -> return ret
+        Left err -> throwError $ ParseError $ pack (show err)
+    Left err -> throwError $ HTTPError err
 
 getAllPermissions :: Token -> Keycloak [Permission]
 getAllPermissions tok = do

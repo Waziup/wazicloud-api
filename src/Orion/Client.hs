@@ -26,8 +26,9 @@ import Network.HTTP.Client (HttpException)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as L
 import Data.Monoid
+import Control.Monad.Except (ExceptT, throwError)
 
-type Orion a = ReaderT OrionConfig IO (Either OrionError a)
+type Orion a = ReaderT OrionConfig (ExceptT OrionError IO) a
 
 data OrionError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
                 | ParseError Text          -- ^ Failed when parsing the response
@@ -121,20 +122,20 @@ orionGet path parser = do
   res <- liftIO $ getWith (getOptions orionOpts) (unpack $ url <> path)
   let res2 = fromJust $ res ^? responseBody
   case AB.parse parser res2 of
-     Right es -> return $ Right es
+     Right es -> return es
      Left err -> do
        liftIO $ putStrLn $ "Error while decoding JSON: " ++ (show err)
-       return $ Left $ ParseError $ pack (show err)
+       throwError $ ParseError $ pack (show err)
 
 getSensorsOrion :: Orion [Sensor]
 getSensorsOrion = do
   ents <- orionGet "/v2/entities?type=SensingDevice" (eachInArray parseEntity)
-  return $ (map getSensor) <$> ents
+  return $ map getSensor ents
 
 getSensorOrion :: EntityId -> Orion Sensor
 getSensorOrion id = do
   ent <- orionGet ("/v2/entities/" <> id) parseEntity
-  return $ getSensor <$> ent
+  return $ getSensor ent
 
 postSensorOrion :: Sensor -> Orion ()
 postSensorOrion s = do
@@ -144,7 +145,7 @@ postSensorOrion s = do
   orionOpts@(OrionConfig url _ _ _) <- ask 
   res <- liftIO $ postWith (getOptions orionOpts) (unpack url ++ "/v2/entities/") (toJSON entity)
   liftIO $ putStrLn $ "Created"
-  return $ Right ()
+  return ()
    
 
 getSensor :: Entity -> Sensor

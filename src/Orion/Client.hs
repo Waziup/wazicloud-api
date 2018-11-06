@@ -1,16 +1,16 @@
-
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Orion.Client where
 
-import Network.Wreq
+import Network.Wreq as W
 import Control.Lens hiding ((.=))
 import Data.Aeson as JSON
 import Data.Aeson.BetterErrors as AB
 import Data.Aeson.Casing
 import Data.Text hiding (head, tail, find, map, filter)
+import Data.Text.Encoding
 import GHC.Generics (Generic)
 import Data.Maybe
 import Waziup.Types
@@ -22,12 +22,39 @@ import Data.Time.ISO8601
 import Data.Foldable as F
 import qualified Data.Vector as V
 import Data.Scientific
+import Network.HTTP.Client (HttpException)
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Lazy as L
 
+type Orion a = ReaderT OrionConfig IO (Either OrionError a)
+
+data OrionError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
+                | ParseError String        -- ^ Failed when parsing the response
+                | EmptyError               -- ^ Empty error to serve as a zero element for Monoid.
+
+data OrionConfig = OrionConfig {
+  orionUrl      :: Text,
+  fiwareService :: Text,
+  attrs         :: Text,
+  metadata      :: Text}
+
+defaultOptions = OrionConfig {
+  orionUrl      = "http://localhost:1026",
+  fiwareService = "waziup",
+  attrs         = "dateModified,dateCreated,*",
+  metadata      = "dateModified,dateCreated,*"}
+
+type EntityId = Text
+type EntityType = Text
+type AttributeId = Text
+type AttributeType = Text
+type MetadataId = Text
+type MetadataType = Text
 
 data Entity = Entity {
-  entId         :: Text,
-  entType       :: Text,
-  entAttributes :: [(Text, Attribute)]
+  entId         :: EntityId,
+  entType       :: EntityType,
+  entAttributes :: [(AttributeId, Attribute)]
   } deriving (Generic, Show)
 
 instance ToJSON Entity where
@@ -46,9 +73,9 @@ parseEntity = do
         return $ Just (k, a)
 
 data Attribute = Attribute {
-  attType     :: Text,
+  attType     :: AttributeType,
   attValue    :: Maybe Value,
-  attMetadata :: [(Text, Metadata)]
+  attMetadata :: [(MetadataId, Metadata)]
   } deriving (Generic, Show)
 
 instance ToJSON Attribute where
@@ -63,7 +90,7 @@ parseAttribute = do
 
 
 data Metadata = Metadata {
-  metType :: Maybe Text,
+  metType :: Maybe MetadataType,
   metValue :: Maybe Value
   } deriving (Generic, Show)
 
@@ -77,43 +104,50 @@ parseMetadatas = forEachInObject $ \a -> do
 
 parseMetadata :: Parse e Metadata
 parseMetadata = Metadata <$> AB.keyMay "type" asText
-                       <*> AB.keyMay "value" AB.asValue
-orionOpts = defaults &
-       header "Fiware-Service" .~ ["waziup"] &
-       param  "attrs"          .~ ["dateModified,dateCreated,*"] &
-       param  "metadata"       .~ ["dateModified,dateCreated,*"] 
+                         <*> AB.keyMay "value" AB.asValue
 
-getSensorsOrion :: IO [Sensor]
-getSensorsOrion = do
-  res <- getWith orionOpts "http://localhost:1026/v2/entities"
+getOptions :: OrionConfig -> W.Options 
+getOptions o = defaults &
+       header "Fiware-Service" .~ [encodeUtf8 $ fiwareService o] &
+       param  "attrs"          .~ [attrs o] &
+       param  "metadata"       .~ [metadata o] 
+
+orionGet :: Text -> Parse e a -> (a -> b) -> Orion b
+orionGet path parser converter = do
+  orionOpts@(OrionConfig url _ _ _) <- ask 
+  res <- liftIO $ getWith (getOptions orionOpts) (unpack url ++ unpack path)
   let res2 = fromJust $ res ^? responseBody
-  case AB.parse (eachInArray parseEntity) res2 of
+  case AB.parse parser res2 of
      Right es -> do
-       return $ mapMaybe getSensor es
+       return $ Right $ converter es
      Left err -> do
-       mapM_ (putStrLn.unpack) (displayError' err)
-       putStrLn $ "Error while decoding JSON: " ++ (show err)
-       return []
+       liftIO $ putStrLn $ "Error while decoding JSON: " ++ (show err)
+       return $ Left $ ParseError (show err) 
 
-getSensorOrion :: Text -> IO (Maybe Sensor)
+
+getSensorsOrion :: Orion [Sensor]
+getSensorsOrion = do
+  orionGet "/v2/entities?type=SensingDevice" (eachInArray parseEntity) (mapMaybe getSensor)
+
+getSensorOrion :: EntityId -> Orion Sensor
 getSensorOrion id = do
-  res <- getWith orionOpts ("http://localhost:1026/v2/entities/" ++ unpack id)
+  res <- orionGet ("/v2/entities/" ++ unpack id)
   let res2 = fromJust $ res ^? responseBody
   case AB.parse parseEntity res2 of
      Right es -> do
-       return $ getSensor es
+       return $ Right $ getSensor es
      Left err -> do
-       mapM_ (putStrLn.unpack) (displayError' err)
-       putStrLn $ "Error while decoding JSON: " ++ (show err)
-       return Nothing
+       liftIO $ mapM_ (putStrLn.unpack) (displayError' err)
+       liftIO $ putStrLn $ "Error while decoding JSON: " ++ (show err)
+       return $ Left $ ParseError (show err) 
 
-
-postSensorOrion :: Sensor -> IO ()
+postSensorOrion :: Sensor -> Orion ()
 postSensorOrion s = do
   putStrLn $ "Create sensor in Orion: " ++ (show $ encode s)
   let entity = getEntity s
   putStrLn $ "Entity: " ++ (show $ encode entity)
-  res <- postWith orionOpts "http://localhost:1026/v2/entities/" (toJSON entity)
+  orionOpts@(OrionConfig url _ _ _) <- ask 
+  res <- liftIO $ postWith (getOptions orionOpts) (unpack url ++ "/v2/entities/") (toJSON entity)
   putStrLn $ "Created"
   return ()
    

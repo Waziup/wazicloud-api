@@ -79,13 +79,15 @@ instance ToJSON Attribute where
 
 
 data KCConfig = KCConfig {
+  url :: Text,
   realm :: Text,
   clientId :: Text,
   clientSecret :: Text,
   adminLogin :: Text,
   adminPassword :: Text}
 
-defaultConfig = KCConfig { 
+defaultConfig = KCConfig {
+  url = "http://localhost:8080/auth",
   realm = "waziup",
   clientId = "api-server",
   clientSecret = "4e9dcb80-efcd-484c-b3d7-1e95a0096ac0",

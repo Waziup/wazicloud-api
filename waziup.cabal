@@ -48,4 +48,5 @@ Executable waziup-servant
                      , vector
                      , scientific
                      , lifted-base
+                     , exceptions
   default-language:    Haskell2010

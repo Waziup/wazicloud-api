@@ -18,7 +18,7 @@ module Waziup.API
 
 import Waziup.Types
 
-import Control.Monad.Except (ExceptT)
+import Control.Monad.Except (ExceptT, throwError)
 import Control.Monad.IO.Class
 import Data.Maybe
 import Data.Aeson
@@ -94,18 +94,19 @@ postAuth (AuthBody username password) = do
     Left err -> return undefined
 
 getSensors :: ExceptT ServantErr IO [Sensor]
-getSensors = liftIO $ O.getSensorsOrion
+getSensors = do
+  res <- liftIO $ runReaderT O.getSensorsOrion O.defaultOrionConfig
+  case res of
+    Right s -> return s
+    Left err -> throwError err404 
+
 
 getSensor :: Text -> ExceptT ServantErr IO Sensor
-getSensor sid = getS `catch` handler where
-  getS :: ExceptT ServantErr IO Sensor
-  getS = do
-    sensor <- (liftIO $ O.getSensorOrion sid)
-    case sensor of
-      Just s -> return s
-      Nothing -> throwError err404
-  handler :: HttpException -> ExceptT ServantErr IO Sensor
-  handler e = throwError err404
+getSensor sid = do 
+  res <- liftIO $ runReaderT (O.getSensorOrion sid) O.defaultOrionConfig
+  case res of
+    Right s -> return s
+    Left err -> throwError err404
 
 postSensor :: Sensor -> ExceptT ServantErr IO NoContent
 postSensor s@(Sensor id _ _ _ _ _ _ _ _ vis _) = do
@@ -120,10 +121,28 @@ postSensor s@(Sensor id _ _ _ _ _ _ _ _ vis _) = do
      resAttributes = if (isJust vis) then [Attribute "visibility" [pack $ show $ fromJust vis]] else []
      }
   liftIO $ putStrLn "Creating Sensor"
-  resId <- liftIO $ runReaderT (createResource res) defaultConfig
-  liftIO $ O.postSensorOrion(s {senKeycloakId = Just resId})
+  tok <- runKeycloak getClientAuthToken
+  resId <- runKeycloak (createResource res tok)
+  runOrion (O.postSensorOrion (s {senKeycloakId = Just resId}))
   return NoContent
 
+runOrion :: O.Orion a -> ExceptT ServantErr IO a
+runOrion orion = do
+  eRes <- liftIO $ runReaderT orion O.defaultOrionConfig
+  case eRes of
+    Right res -> return res 
+    Left (O.HTTPError e) -> throwError err500 {errBody = encode $ show e} 
+    Left (O.ParseError s) -> throwError err500 {errBody = encode s} 
+    Left O.EmptyError -> throwError err500 {errBody = "EmptyError"} 
+
+runKeycloak :: Keycloak a -> ExceptT ServantErr IO a
+runKeycloak kc = do
+  eRes <- liftIO $ runReaderT kc defaultConfig
+  case eRes of
+    Right res -> return res 
+    Left (HTTPError e) -> throwError err500 {errBody = encode $ show e} 
+    Left (ParseError s) -> throwError err500 {errBody = encode s} 
+    Left EmptyError -> throwError err500 {errBody = "EmptyError"} 
 
 waziupAPI :: Proxy WaziupAPI
 waziupAPI = Proxy

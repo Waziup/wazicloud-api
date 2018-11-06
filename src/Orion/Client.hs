@@ -25,11 +25,12 @@ import Data.Scientific
 import Network.HTTP.Client (HttpException)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as L
+import Data.Monoid
 
 type Orion a = ReaderT OrionConfig IO (Either OrionError a)
 
 data OrionError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
-                | ParseError String        -- ^ Failed when parsing the response
+                | ParseError Text          -- ^ Failed when parsing the response
                 | EmptyError               -- ^ Empty error to serve as a zero element for Monoid.
 
 data OrionConfig = OrionConfig {
@@ -38,7 +39,7 @@ data OrionConfig = OrionConfig {
   attrs         :: Text,
   metadata      :: Text}
 
-defaultOptions = OrionConfig {
+defaultOrionConfig = OrionConfig {
   orionUrl      = "http://localhost:1026",
   fiwareService = "waziup",
   attrs         = "dateModified,dateCreated,*",
@@ -112,59 +113,52 @@ getOptions o = defaults &
        param  "attrs"          .~ [attrs o] &
        param  "metadata"       .~ [metadata o] 
 
-orionGet :: Text -> Parse e a -> (a -> b) -> Orion b
-orionGet path parser converter = do
+type Path = Text
+
+orionGet :: Path -> Parse Text a -> Orion a 
+orionGet path parser = do
   orionOpts@(OrionConfig url _ _ _) <- ask 
-  res <- liftIO $ getWith (getOptions orionOpts) (unpack url ++ unpack path)
+  res <- liftIO $ getWith (getOptions orionOpts) (unpack $ url <> path)
   let res2 = fromJust $ res ^? responseBody
   case AB.parse parser res2 of
-     Right es -> do
-       return $ Right $ converter es
+     Right es -> return $ Right es
      Left err -> do
        liftIO $ putStrLn $ "Error while decoding JSON: " ++ (show err)
-       return $ Left $ ParseError (show err) 
-
+       return $ Left $ ParseError $ pack (show err)
 
 getSensorsOrion :: Orion [Sensor]
 getSensorsOrion = do
-  orionGet "/v2/entities?type=SensingDevice" (eachInArray parseEntity) (mapMaybe getSensor)
+  ents <- orionGet "/v2/entities?type=SensingDevice" (eachInArray parseEntity)
+  return $ (map getSensor) <$> ents
 
 getSensorOrion :: EntityId -> Orion Sensor
 getSensorOrion id = do
-  res <- orionGet ("/v2/entities/" ++ unpack id)
-  let res2 = fromJust $ res ^? responseBody
-  case AB.parse parseEntity res2 of
-     Right es -> do
-       return $ Right $ getSensor es
-     Left err -> do
-       liftIO $ mapM_ (putStrLn.unpack) (displayError' err)
-       liftIO $ putStrLn $ "Error while decoding JSON: " ++ (show err)
-       return $ Left $ ParseError (show err) 
+  ent <- orionGet ("/v2/entities/" <> id) parseEntity
+  return $ getSensor <$> ent
 
 postSensorOrion :: Sensor -> Orion ()
 postSensorOrion s = do
-  putStrLn $ "Create sensor in Orion: " ++ (show $ encode s)
+  liftIO $ putStrLn $ "Create sensor in Orion: " ++ (show $ encode s)
   let entity = getEntity s
-  putStrLn $ "Entity: " ++ (show $ encode entity)
+  liftIO $ putStrLn $ "Entity: " ++ (show $ encode entity)
   orionOpts@(OrionConfig url _ _ _) <- ask 
   res <- liftIO $ postWith (getOptions orionOpts) (unpack url ++ "/v2/entities/") (toJSON entity)
-  putStrLn $ "Created"
-  return ()
+  liftIO $ putStrLn $ "Created"
+  return $ Right ()
    
 
-getSensor :: Entity -> Maybe Sensor
-getSensor (Entity eId etype attrs) = if etype == "SensingDevice" then Just sensor  else Nothing where
-  sensor = Sensor { senId           = eId,
-                    senGatewayId    = getSimpleAttribute "gateway_id" attrs,
-                    senName         = getSimpleAttribute "name" attrs,
-                    senOwner        = getSimpleAttribute "owner" attrs,
-                    senLocation     = getLocation attrs,
-                    senDomain       = getSimpleAttribute "domain" attrs,
-                    senVisibility   = getSimpleAttribute "visibility" attrs >>= readVisibility,
-                    senDateCreated  = getSimpleAttribute "dateCreated" attrs >>= parseISO8601.unpack,
-                    senDateUpdated  = getSimpleAttribute "dateModified" attrs >>= parseISO8601.unpack,
-                    senMeasurements = getMeasurements attrs,
-                    senKeycloakId   = getSimpleAttribute "keycloak_id" attrs}
+getSensor :: Entity -> Sensor
+getSensor (Entity eId etype attrs) = Sensor { senId           = eId,
+                                              senGatewayId    = getSimpleAttribute "gateway_id" attrs,
+                                              senName         = getSimpleAttribute "name" attrs,
+                                              senOwner        = getSimpleAttribute "owner" attrs,
+                                              senLocation     = getLocation attrs,
+                                              senDomain       = getSimpleAttribute "domain" attrs,
+                                              senVisibility   = getSimpleAttribute "visibility" attrs >>= readVisibility,
+                                              senDateCreated  = getSimpleAttribute "dateCreated" attrs >>= parseISO8601.unpack,
+                                              senDateUpdated  = getSimpleAttribute "dateModified" attrs >>= parseISO8601.unpack,
+                                              senMeasurements = getMeasurements attrs,
+                                              senKeycloakId   = getSimpleAttribute "keycloak_id" attrs}
                          
 getSimpleAttribute :: Text -> [(Text, Attribute)] -> Maybe Text
 getSimpleAttribute attName attrs = do

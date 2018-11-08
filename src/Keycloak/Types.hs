@@ -17,9 +17,9 @@ type ResourceId = Text
 type ResourceName = Text
 type ScopeId = Text
 type ScopeName = Text
-type Token = Text
-
 type Scope = Text 
+
+data Token = Token Text deriving (Eq, Show)
 
 data Permission = Permission 
   { rsname :: ResourceName,

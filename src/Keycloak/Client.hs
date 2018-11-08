@@ -1,10 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Keycloak.Client where
 
-import Network.Wreq as W
+import Network.Wreq as W hiding (statusCode)
 import Network.Wreq.Types
 import Control.Lens
 import Control.Monad
@@ -20,12 +21,14 @@ import Data.Maybe
 import Data.Foldable
 import Control.Monad.Reader as R
 import Keycloak.Types
-import Network.HTTP.Client (HttpException)
+import Network.HTTP.Client as HC hiding (responseBody)
+import Network.HTTP.Types.Status
 --import Control.Exception as E
 import Data.Monoid
-import Control.Monad.Catch
-import Control.Monad.Except (ExceptT, throwError, withExceptT)
-
+import qualified Control.Monad.Catch as C
+import Control.Monad.Except (ExceptT, throwError, catchError, withExceptT, runExceptT, MonadError)
+import System.Log.Logger
+ 
 data KCError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
              | ParseError Text          -- ^ Failed when parsing the response
              | EmptyError               -- ^ Empty error to serve as a zero element for Monoid.
@@ -34,13 +37,25 @@ data KCError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
 type Keycloak a = ReaderT KCConfig (ExceptT KCError IO) a
 type Path = Text
 
-getPermission :: Token -> Keycloak [Permission]
-getPermission tok = do
+try :: MonadError a m => m b -> m (Either a b)
+try act = catchError (Right <$> act) (return . Left)
+
+isAuthorized :: ResourceId -> Scope -> Token -> Keycloak Bool
+isAuthorized res scope tok = do
   (KCConfig _ _ client _ _ _) <- ask 
   let dat = ["grant_type" := ("urn:ietf:params:oauth:grant-type:uma-ticket" :: Text),
              "audience" := client,
-             "response_mode" := ("permissions" :: Text)]
-  keycloakPost "protocol/openid-connect/token" dat (Just tok) (eachInArray parsePermission)
+             "permission"  := res <> "#" <> scope]
+  res <- try $ keycloakPost "protocol/openid-connect/token" dat (Just tok) AB.asValue
+  case res of
+    Right _ -> return True
+    Left err -> if (statusCode <$> getErrorStatus err) == Just 403
+                  then return False
+                  else throwError err --rethrow the error
+
+getErrorStatus :: KCError -> Maybe Status 
+getErrorStatus (HTTPError (HttpExceptionRequest _ (StatusCodeException r _))) = Just $ HC.responseStatus r
+getErrorStatus _ = Nothing
 
 getAllPermissions :: Token -> Keycloak [Permission]
 getAllPermissions tok = do
@@ -59,7 +74,7 @@ getUserAuthToken username password = do
              "grant_type" := ("password" :: Text),
              "password" := password,
              "username" := login]
-  keycloakPost "protocol/openid-connect/token" dat Nothing (AB.key "access_token" asText) 
+  keycloakPost "protocol/openid-connect/token" dat Nothing (Token <$> AB.key "access_token" asText) 
 
 getClientAuthToken :: Keycloak Token
 getClientAuthToken = do
@@ -67,21 +82,24 @@ getClientAuthToken = do
   let dat = ["client_id" := client, 
              "client_secret" := secret,
              "grant_type" := ("client_credentials" :: Text)]
-  keycloakPost "protocol/openid-connect/token" dat Nothing (AB.key "access_token" asText) 
+  keycloakPost "protocol/openid-connect/token" dat Nothing (Token <$> AB.key "access_token" asText) 
 
 createResource :: Resource -> Token -> Keycloak ResourceId
 createResource r tok = do
   keycloakPost "authz/protection/resource_set" (toJSON r) (Just tok) (AB.key "_id" asText) 
    
-keycloakPost :: Postable a => Path -> a -> Maybe Token -> Parse Text b -> Keycloak b
+keycloakPost :: (Postable a, Show a) => Path -> a -> Maybe Token -> Parse Text b -> Keycloak b
 keycloakPost path dat mtok parser = do 
   (KCConfig baseUrl realm _ _ _ _) <- ask
-  let opts = if (isJust mtok) 
-             then W.defaults & W.header "Authorization" .~ [encodeUtf8 (append "Bearer " (fromJust mtok))]
-             else W.defaults
+  let opts = case mtok of
+                   --Just (stripPrefix "Bearer " -> Just tok) -> W.defaults & W.header "Authorization" .~ [encodeUtf8 ("Bearer " <> tok)]
+                   (Just (Token tok)) -> W.defaults & W.header "Authorization" .~ [encodeUtf8 ("Bearer " <> tok)]
+                   Nothing -> W.defaults 
   let url = (unpack $ baseUrl <> "/realms/" <> realm <> "/" <> path) 
-  liftIO $ putStrLn $ "Issuing KEYCLOAK post with:\n  " ++ (show url)
-  postRes <- try $ liftIO $ W.postWith opts url dat
+  info $ "Issuing KEYCLOAK post with url: " ++ (show url) 
+  debug $ "  data: " ++ (show dat) 
+  debug $ "  headers: " ++ (show $ opts ^. W.headers) 
+  postRes <- C.try $ liftIO $ W.postWith opts url dat
   case postRes of 
     Right res -> do
       let body = fromJust $ res ^? responseBody
@@ -89,3 +107,10 @@ keycloakPost path dat mtok parser = do
         Right ret -> return ret
         Left err -> throwError $ ParseError $ pack (show err)
     Left err -> throwError $ HTTPError err
+
+
+warn, info :: (MonadIO m) => String -> m ()
+debug s = liftIO $ debugM "API" s
+info s = liftIO $ infoM "API" s
+warn s = liftIO $ warningM "API" s
+err s = liftIO $ errorM "API" s

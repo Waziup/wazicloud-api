@@ -10,6 +10,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# OPTIONS_GHC
 -fno-warn-unused-binds -fno-warn-unused-imports -fcontext-stack=328 #-}
 
@@ -42,21 +43,33 @@ import Servant.API.Verbs (StdMethod(..), Verb)
 import Servant.Client (Scheme(Http), ServantError, client)
 import Servant.Common.BaseUrl (BaseUrl(..))
 import Web.HttpApiData
-import Keycloak as KC
-import qualified Orion.Client as O
-import Control.Exception.Lifted
+import Keycloak as KC hiding (info, warn, debug, error) 
+import qualified Orion as O
 import Network.Wreq hiding (Proxy)
 import Control.Monad.Reader
+import Control.Monad.Catch as C
+import System.Log.Logger
+import Web.HttpApiData
+import qualified Data.ByteString.Lazy as BL 
 
 -- | Servant type-level API
-type WaziupAPI = AuthAPI :<|> SensorsAPI
+type WaziupAPI = "api" :> "v1" :> (AuthAPI :<|> SensorsAPI)
 
-type AuthAPI = "auth" :> "permissions" :> Get '[JSON] [Perm]
-          :<|> "auth" :> "token" :> ReqBody '[JSON] AuthBody :> Post '[JSON] Text
+type AuthAPI = 
+  "auth" :>  ("permissions" :> Get '[JSON] [Perm]
+         :<|> "token"       :> ReqBody '[JSON] AuthBody :> Post '[PlainText] KC.Token)
 
-type SensorsAPI = "sensors" :> Get '[JSON] [Sensor]
-              :<|>"sensors" :> Capture "id" Text :> Get '[JSON] Sensor
-              :<|>"sensors" :> ReqBody '[JSON] Sensor :> PostNoContent '[JSON] NoContent
+type SensorsAPI = 
+  "sensors" :>  (Get '[JSON] [Sensor]
+            :<|> ReqBody '[JSON] Sensor :> PostNoContent '[JSON] NoContent
+            :<|> Capture "id" Text :> Header "Authorization" KC.Token  :> Get '[JSON] Sensor)
+
+
+instance FromHttpApiData KC.Token where
+  parseHeader ((stripPrefix "Bearer ") . decodeUtf8 -> Just tok) = Right $ KC.Token tok
+
+instance MimeRender PlainText KC.Token where
+  mimeRender _ (KC.Token tok) = BL.fromStrict $ encodeUtf8 tok
 
 -- | Server or client configuration, specifying the host and port to query or serve on.
 data ServerConfig = ServerConfig
@@ -74,31 +87,41 @@ authServer = (getPerms "cdupont" "password")
 
 sensorsServer :: Server SensorsAPI
 sensorsServer = getSensors 
-           :<|> getSensor
            :<|> postSensor
+           :<|> getSensor
 
-getPerms :: Text -> Text -> ExceptT ServantErr IO [Perm]
+getPerms :: Username -> Password -> ExceptT ServantErr IO [Perm]
 getPerms username password = do
   liftIO $ putStrLn "Get token"
   tok <- runKeycloak $ getUserAuthToken username password
   liftIO $ putStrLn "Get Permissions"
   ps <- runKeycloak (getAllPermissions tok)
   let getP :: KC.Permission -> Perm
-      getP (Permission rsname _ scopes) = Perm rsname (mapMaybe readScope scopes)
+      getP (KC.Permission rsname _ scopes) = Perm rsname (mapMaybe readScope scopes)
   return $ map getP ps 
 
-postAuth :: AuthBody -> ExceptT ServantErr IO Text
-postAuth (AuthBody username password) = runKeycloak (getUserAuthToken username password)
+postAuth :: AuthBody -> ExceptT ServantErr IO KC.Token
+postAuth (AuthBody username password) = do
+  tok <- runKeycloak (getUserAuthToken username password)
+  liftIO $ putStrLn $ show tok
+  return tok
 
 getSensors :: ExceptT ServantErr IO [Sensor]
 getSensors = runOrion O.getSensorsOrion
 
-getSensor :: Text -> ExceptT ServantErr IO Sensor
-getSensor sid = runOrion (O.getSensorOrion sid)
+getSensor :: SensorId -> Maybe KC.Token -> ExceptT ServantErr IO Sensor
+getSensor sid (Just tok) = do
+--getSensor sid (Just (stripPrefix "Bearer " -> Just tok)) = do
+  isAuth <- runKeycloak (isAuthorized sid (pack $ show SensorsView) tok)
+  debug $ "is auth:" ++ (show isAuth)
+  if isAuth 
+    then runOrion (O.getSensorOrion sid)
+    else throwError err403 {errBody = "Sensor not authorized"}
+getSensor sid Nothing = runOrion (O.getSensorOrion sid)
 
 postSensor :: Sensor -> ExceptT ServantErr IO NoContent
 postSensor s@(Sensor id _ _ _ _ _ _ _ _ vis _) = do
-  let res = Resource {
+  let res = KC.Resource {
      resId      = Nothing,
      resName    = id,
      resType    = Nothing,
@@ -108,23 +131,23 @@ postSensor s@(Sensor id _ _ _ _ _ _ _ _ vis _) = do
      resOwnerManagedAccess = True,
      resAttributes = if (isJust vis) then [Attribute "visibility" [pack $ show $ fromJust vis]] else []
      }
-  liftIO $ putStrLn "Get token"
+  debug "Get token"
   tok <- runKeycloak getClientAuthToken
-  liftIO $ putStrLn "Create resource"
+  debug "Create resource"
   resId <- runKeycloak (createResource res tok)
-  liftIO $ putStrLn "Create entity"
-  res <- try $ runOrion (O.postSensorOrion (s {senKeycloakId = Just resId}))
+  debug "Create entity"
+  res <- C.try $ runOrion (O.postSensorOrion (s {senKeycloakId = Just resId}))
   case res of
     Right _ -> return NoContent
     Left (err :: HttpException) -> do
-      liftIO $ putStrLn "Orion error"
+      warn "Orion error"
       return NoContent
  
 
 runOrion :: O.Orion a -> ExceptT ServantErr IO a
 runOrion orion = withExceptT fromOrionError (runReaderT orion O.defaultOrionConfig)
 
-runKeycloak :: Keycloak a -> ExceptT ServantErr IO a
+runKeycloak :: KC.Keycloak a -> ExceptT ServantErr IO a
 runKeycloak kc = withExceptT fromKCError (runReaderT kc defaultConfig)
 
 fromOrionError :: O.OrionError -> ServantErr
@@ -132,19 +155,28 @@ fromOrionError (O.HTTPError (HttpExceptionRequest _ (StatusCodeException r _))) 
                                                                                            errReasonPhrase = show $ HTS.statusMessage $ HC.responseStatus r, 
                                                                                            errBody = "",
                                                                                            errHeaders = []}
+fromOrionError (O.HTTPError (HttpExceptionRequest _ (ConnectionFailure a))) = err500 {errBody = encode $ "Failed to connect to Orion: " ++ show a} 
+fromOrionError (O.HTTPError (HttpExceptionRequest _ s)) = err500 {errBody = encode $ show s} 
 fromOrionError (O.ParseError s) = err500 {errBody = encode s} 
 fromOrionError O.EmptyError = err500 {errBody = "EmptyError"}
 
-fromKCError :: KCError -> ServantErr
-fromKCError (HTTPError (HttpExceptionRequest _ (StatusCodeException r _))) = ServantErr { errHTTPCode = HTS.statusCode $ HC.responseStatus r, 
+fromKCError :: KC.KCError -> ServantErr
+fromKCError (KC.HTTPError (HttpExceptionRequest _ (StatusCodeException r _))) = ServantErr { errHTTPCode = HTS.statusCode $ HC.responseStatus r, 
                                                                                            errReasonPhrase = show $ HTS.statusMessage $ HC.responseStatus r, 
                                                                                            errBody = "",
                                                                                            errHeaders = []}
-fromKCError (ParseError s) = err500 {errBody = encode s} 
-fromKCError EmptyError = err500 {errBody = "EmptyError"}
+fromKCError (KC.HTTPError (HttpExceptionRequest _ (ConnectionFailure a))) = err500 {errBody = encode $ "Failed to connect to Keycloak: " ++ show a} 
+fromKCError (KC.ParseError s) = err500 {errBody = encode s} 
+fromKCError KC.EmptyError = err500 {errBody = "EmptyError"}
 
 waziupAPI :: Proxy WaziupAPI
 waziupAPI = Proxy
 
 waziupServer :: Application
 waziupServer = serve waziupAPI server
+
+warn, info :: (MonadIO m) => String -> m ()
+debug s = liftIO $ debugM "API" s
+info s = liftIO $ infoM "API" s
+warn s = liftIO $ warningM "API" s
+err s = liftIO $ errorM "API" s

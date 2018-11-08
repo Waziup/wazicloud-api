@@ -44,8 +44,6 @@ instance FromJSON Error where
 instance ToJSON Error where
   toJSON = genericToJSON (removeFieldLabelPrefix False "error")
 
-
-
 type SensorId   = Text
 type SensorName = Text
 type GatewayId  = Text
@@ -188,16 +186,9 @@ data Scope = SensorsCreate
            | SensorsDelete
            | SensorsDataCreate
            | SensorsDataView
-   deriving (Generic, Show, Eq)
+   deriving (Generic, Eq)
 
-instance ToJSON Scope where
-  toJSON SensorsCreate     = "sensors:create"
-  toJSON SensorsUpdate     = "sensors:update"
-  toJSON SensorsView       = "sensors:view"
-  toJSON SensorsDelete     = "sensors:delete"
-  toJSON SensorsDataCreate = "sensors-data:create"
-  toJSON SensorsDataView   = "sensors-data:view" 
-
+instance ToJSON Scope
 instance FromJSON Scope
 
 readScope :: Text -> Maybe Scope
@@ -209,6 +200,13 @@ readScope "sensors-data:create" = Just SensorsDataCreate
 readScope "sensors-data:view"   = Just SensorsDataView  
 readScope _                     = Nothing
 
+instance Show Scope where
+  show SensorsCreate     = "sensors:create"       
+  show SensorsUpdate     = "sensors:update"       
+  show SensorsView       = "sensors:view"         
+  show SensorsDelete     = "sensors:delete"       
+  show SensorsDataCreate = "sensors-data:create"  
+  show SensorsDataView   = "sensors-data:view"    
 
 -- | One social network message
 data SocialMessage = SocialMessage

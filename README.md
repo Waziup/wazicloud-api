@@ -14,4 +14,4 @@ Installation follows the standard approach to installing Stack-based projects.
 Develop
 =======
 
-curl http://localhost:8081/sensors | jq
+curl http://localhost:8081/api/v1/sensors | jq

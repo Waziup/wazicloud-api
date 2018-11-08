@@ -27,105 +27,9 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as L
 import Data.Monoid
 import Control.Monad.Except (ExceptT, throwError)
+import Orion.Types
+import Control.Exception
 
-type Orion a = ReaderT OrionConfig (ExceptT OrionError IO) a
-
-data OrionError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
-                | ParseError Text          -- ^ Failed when parsing the response
-                | EmptyError               -- ^ Empty error to serve as a zero element for Monoid.
-
-data OrionConfig = OrionConfig {
-  orionUrl      :: Text,
-  fiwareService :: Text,
-  attrs         :: Text,
-  metadata      :: Text}
-
-defaultOrionConfig = OrionConfig {
-  orionUrl      = "http://localhost:1026",
-  fiwareService = "waziup",
-  attrs         = "dateModified,dateCreated,*",
-  metadata      = "dateModified,dateCreated,*"}
-
-type EntityId = Text
-type EntityType = Text
-type AttributeId = Text
-type AttributeType = Text
-type MetadataId = Text
-type MetadataType = Text
-
-data Entity = Entity {
-  entId         :: EntityId,
-  entType       :: EntityType,
-  entAttributes :: [(AttributeId, Attribute)]
-  } deriving (Generic, Show)
-
-instance ToJSON Entity where
-   toJSON = genericToJSON $ aesonDrop 3 snakeCase
-
-parseEntity :: Parse e Entity
-parseEntity = do
-    eId   <- AB.key "id" asText
-    eType <- AB.key "type" asText
-    attrs <- catMaybes <$> forEachInObject parseAtt
-    return $ Entity eId eType attrs where
-      parseAtt "id" = return Nothing 
-      parseAtt "type" = return Nothing 
-      parseAtt k = do
-        a <- parseAttribute
-        return $ Just (k, a)
-
-data Attribute = Attribute {
-  attType     :: AttributeType,
-  attValue    :: Maybe Value,
-  attMetadata :: [(MetadataId, Metadata)]
-  } deriving (Generic, Show)
-
-instance ToJSON Attribute where
-   toJSON = genericToJSON $ aesonDrop 3 snakeCase
-
-parseAttribute :: Parse e Attribute
-parseAttribute = do
-    aType  <- AB.key    "type" asText
-    aValue <- AB.keyMay "value" AB.asValue
-    mets   <- AB.keyMay "metadata" parseMetadatas
-    return $ Attribute aType aValue (F.concat mets)
-
-
-data Metadata = Metadata {
-  metType :: Maybe MetadataType,
-  metValue :: Maybe Value
-  } deriving (Generic, Show)
-
-instance ToJSON Metadata where
-   toJSON = genericToJSON $ aesonDrop 3 snakeCase
-
-parseMetadatas :: Parse e [(Text, Metadata)]
-parseMetadatas = forEachInObject $ \a -> do
-  m <- parseMetadata
-  return (a, m)
-
-parseMetadata :: Parse e Metadata
-parseMetadata = Metadata <$> AB.keyMay "type" asText
-                         <*> AB.keyMay "value" AB.asValue
-
-getOptions :: OrionConfig -> W.Options 
-getOptions o = defaults &
-       header "Fiware-Service" .~ [encodeUtf8 $ fiwareService o] &
-       param  "attrs"          .~ [attrs o] &
-       param  "metadata"       .~ [metadata o] 
-
-type Path = Text
-
-orionGet :: Path -> Parse Text a -> Orion a 
-orionGet path parser = do
-  orionOpts@(OrionConfig url _ _ _) <- ask 
-  res <- liftIO $ getWith (getOptions orionOpts) (unpack $ url <> path)
-  let res2 = fromJust $ res ^? responseBody
-  case AB.parse parser res2 of
-     Right es -> return es
-     Left err -> do
-       liftIO $ putStrLn $ "Error while decoding JSON: " ++ (show err)
-       throwError $ ParseError $ pack (show err)
 
 getSensorsOrion :: Orion [Sensor]
 getSensorsOrion = do
@@ -146,7 +50,22 @@ postSensorOrion s = do
   res <- liftIO $ postWith (getOptions orionOpts) (unpack url ++ "/v2/entities/") (toJSON entity)
   liftIO $ putStrLn $ "Created"
   return ()
-   
+
+
+-- * Generic Orion getter
+orionGet :: Path -> Parse Text a -> Orion a 
+orionGet path parser = do
+  orionOpts@(OrionConfig url _ _ _) <- ask 
+  getRes <-  liftIO $ try $ getWith (getOptions orionOpts) (unpack $ url <> path)
+  case getRes of 
+    Right res -> do
+      let res2 = fromJust $ res ^? responseBody
+      case AB.parse parser res2 of
+         Right es -> return es
+         Left err -> throwError $ ParseError $ pack (show err)
+    Left err -> throwError $ HTTPError err
+
+-- * Helper functions
 
 getSensor :: Entity -> Sensor
 getSensor (Entity eId etype attrs) = Sensor { senId           = eId,

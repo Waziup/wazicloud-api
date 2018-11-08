@@ -10,23 +10,17 @@ import Network.Wreq.Types
 import Control.Lens
 import Control.Monad
 import Data.Aeson as JSON
---import Data.Aeson.Lens
-import Data.Aeson.Types
-import Data.Aeson.Casing
 import Data.Aeson.BetterErrors as AB
 import Data.Text hiding (head, tail, map)
-import GHC.Generics (Generic)
 import Data.Text.Encoding
 import Data.Maybe
-import Data.Foldable
 import Control.Monad.Reader as R
 import Keycloak.Types
 import Network.HTTP.Client as HC hiding (responseBody)
 import Network.HTTP.Types.Status
---import Control.Exception as E
 import Data.Monoid
 import qualified Control.Monad.Catch as C
-import Control.Monad.Except (ExceptT, throwError, catchError, withExceptT, runExceptT, MonadError)
+import Control.Monad.Except (ExceptT, throwError, catchError, MonadError)
 import System.Log.Logger
  
 data KCError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
@@ -40,18 +34,22 @@ type Path = Text
 try :: MonadError a m => m b -> m (Either a b)
 try act = catchError (Right <$> act) (return . Left)
 
-isAuthorized :: ResourceId -> Scope -> Token -> Keycloak Bool
-isAuthorized res scope tok = do
+checkPermission :: ResourceId -> Scope -> Token -> Keycloak ()
+checkPermission res scope tok = do 
   (KCConfig _ _ client _ _ _) <- ask 
   let dat = ["grant_type" := ("urn:ietf:params:oauth:grant-type:uma-ticket" :: Text),
              "audience" := client,
              "permission"  := res <> "#" <> scope]
-  res <- try $ keycloakPost "protocol/openid-connect/token" dat (Just tok) AB.asValue
+  keycloakPost "protocol/openid-connect/token" dat (Just tok) AB.asValue
+  return ()
+
+isAuthorized :: ResourceId -> Scope -> Token -> Keycloak Bool
+isAuthorized res scope tok = do
+  res <- try $ checkPermission res scope tok
   case res of
     Right _ -> return True
-    Left err -> if (statusCode <$> getErrorStatus err) == Just 403
-                  then return False
-                  else throwError err --rethrow the error
+    Left err | (statusCode <$> getErrorStatus err) == Just 403 -> return False
+    Left err -> throwError err --rethrow the error
 
 getErrorStatus :: KCError -> Maybe Status 
 getErrorStatus (HTTPError (HttpExceptionRequest _ (StatusCodeException r _))) = Just $ HC.responseStatus r

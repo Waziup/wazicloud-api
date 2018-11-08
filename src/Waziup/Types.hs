@@ -123,9 +123,9 @@ instance ToJSON Measurement where
 
 -- | 
 data MeasurementValue = MeasurementValue
-  { measValue        :: Value           -- ^ value of the measurement
-  , measTimestamp    :: Maybe UTCTime    -- ^ time of the measurement
-  , measDateReceived :: Maybe UTCTime -- ^ time at which the measurement has been received on the Cloud
+  { measValue        :: Value          -- ^ value of the measurement
+  , measTimestamp    :: Maybe UTCTime  -- ^ time of the measurement
+  , measDateReceived :: Maybe UTCTime  -- ^ time at which the measurement has been received on the Cloud
   } deriving (Show, Eq, Generic)
 
 instance FromJSON MeasurementValue where
@@ -133,10 +133,13 @@ instance FromJSON MeasurementValue where
 instance ToJSON MeasurementValue where
   toJSON = genericToJSON $ aesonDrop 4 snakeCase
 
+
+type NotifId        = Text
+
 -- | 
 data Notification = Notification
-  { notifId           :: Text -- ^ id of the notification (attributed by the server)
-  , notifDescription  :: Text -- ^ Description of the notification
+  { notifId           :: NotifId -- ^ id of the notification (attributed by the server)
+  , notifDescription  :: Text    -- ^ Description of the notification
   , notifSubject      :: NotificationSubject -- ^ 
   , notifNotification :: SocialMessageBatch -- ^ 
   , notifThrottling   :: Double -- ^ minimum interval between two messages in seconds
@@ -149,8 +152,8 @@ instance ToJSON Notification where
 
 -- | 
 data NotificationCondition = NotificationCondition
-  { notifCondAttrs      :: [Text] -- ^ 
-  , notifCondExpression :: Text -- ^ 
+  { notifCondAttrs      :: [MeasId] -- ^ Ids of the measurements to watch 
+  , notifCondExpression :: Text     -- ^ Expression for the condition, such as TC>40
   } deriving (Show, Eq, Generic)
 
 instance FromJSON NotificationCondition where
@@ -160,8 +163,8 @@ instance ToJSON NotificationCondition where
 
 -- | 
 data NotificationSubject = NotificationSubject
-  { notificationSubjectEntityNames :: [Text] -- ^ 
-  , notificationSubjectCondition :: NotificationCondition -- ^ 
+  { notificationSubjectEntityNames :: [SensorId]          -- ^ Ids of the sensors to watch
+  , notificationSubjectCondition :: NotificationCondition -- ^ Condition of the notification
   } deriving (Show, Eq, Generic)
 
 instance FromJSON NotificationSubject where
@@ -208,11 +211,17 @@ instance Show Scope where
   show SensorsDataCreate = "sensors-data:create"  
   show SensorsDataView   = "sensors-data:view"    
 
+data Channel = Twitter | SMS | Voice deriving (Show, Eq, Generic)
+type SocialMessageText = Text
+
+instance ToJSON Channel
+instance FromJSON Channel
+
 -- | One social network message
 data SocialMessage = SocialMessage
-  { socialMessageUsername :: Text -- ^ User name in Keycloak
-  , socialMessageChannel :: Text -- ^ 
-  , socialMessageMessage :: Text -- ^ 
+  { socialMessageUsername :: Username          -- ^ User name in Keycloak
+  , socialMessageChannel  :: Channel           -- ^ Channel for the notification 
+  , socialMessageText     :: SocialMessageText -- ^ Text of the message
   } deriving (Show, Eq, Generic)
 
 instance FromJSON SocialMessage where
@@ -222,9 +231,9 @@ instance ToJSON SocialMessage where
 
 -- | A message to be sent to several users and socials
 data SocialMessageBatch = SocialMessageBatch
-  { socialMessageBatchUsernames :: [Text] -- ^ names of the destination users
-  , socialMessageBatchChannels :: [Text] -- ^ channels where to send the messages
-  , socialMessageBatchMessage :: Text -- ^ 
+  { socialMessageBatchUsernames :: [Username]      -- ^ names of the destination users
+  , socialMessageBatchChannels :: [Channel]        -- ^ channels where to send the messages
+  , socialMessageBatchMessage :: SocialMessageText -- ^ Text of the message 
   } deriving (Show, Eq, Generic)
 
 instance FromJSON SocialMessageBatch where
@@ -235,7 +244,7 @@ instance ToJSON SocialMessageBatch where
 -- | 
 data User = User
   { userId :: Text -- ^ 
-  , userUsername :: Text -- ^ 
+  , userUsername :: Username -- ^ 
   , userFirstName :: Text -- ^ 
   , userLastName :: Text -- ^ 
   , userSubservice :: Text -- ^ 

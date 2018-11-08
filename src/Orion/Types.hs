@@ -13,20 +13,10 @@ import Data.Text hiding (head, tail, find, map, filter)
 import Data.Text.Encoding
 import GHC.Generics (Generic)
 import Data.Maybe
-import Waziup.Types
-import qualified Data.HashMap.Strict as H
-import Debug.Trace
 import Control.Monad.Reader
-import Data.Aeson.BetterErrors.Internal
-import Data.Time.ISO8601
 import Data.Foldable as F
-import qualified Data.Vector as V
-import Data.Scientific
 import Network.HTTP.Client (HttpException)
-import qualified Data.ByteString.Char8 as BS
-import qualified Data.ByteString.Lazy as L
-import Data.Monoid
-import Control.Monad.Except (ExceptT, throwError)
+import Control.Monad.Except (ExceptT)
 
 type Orion a = ReaderT OrionConfig (ExceptT OrionError IO) a
 

@@ -9,8 +9,6 @@ import Data.Aeson.Casing
 import Data.Text hiding (head, tail, map)
 import GHC.Generics (Generic)
 import Data.Maybe
-import Control.Monad
-import Data.Foldable as F
 import Data.Aeson.BetterErrors as AB
 
 type ResourceId = Text
@@ -87,6 +85,7 @@ data KCConfig = KCConfig {
   adminLogin :: Text,
   adminPassword :: Text}
 
+defaultConfig :: KCConfig
 defaultConfig = KCConfig {
   url = "http://localhost:8080/auth",
   realm = "waziup",

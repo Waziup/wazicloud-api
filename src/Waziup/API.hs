@@ -11,6 +11,7 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PartialTypeSignatures #-}
 {-# OPTIONS_GHC
 -fno-warn-unused-binds -fno-warn-unused-imports -fcontext-stack=328 #-}
 
@@ -28,7 +29,7 @@ import Data.Function ((&))
 import qualified Data.Map as Map
 import Data.Monoid ((<>))
 import Data.Proxy (Proxy(..))
-import Data.Text hiding (map)
+import Data.Text hiding (map, filter, foldl, any)
 import Data.Text.Encoding
 import GHC.Exts (IsString(..))
 import GHC.Generics (Generic)
@@ -43,27 +44,32 @@ import Servant.API.Verbs (StdMethod(..), Verb)
 import Servant.Client (Scheme(Http), ServantError, client)
 import Servant.Common.BaseUrl (BaseUrl(..))
 import Web.HttpApiData
-import Keycloak as KC hiding (info, warn, debug, error) 
+import Keycloak as KC hiding (info, warn, debug, error, Scope) 
 import qualified Orion as O
 import Network.Wreq hiding (Proxy)
 import Control.Monad.Reader
 import Control.Monad.Catch as C
 import System.Log.Logger
 import Web.HttpApiData
-import qualified Data.ByteString.Lazy as BL 
+import qualified Data.ByteString.Lazy as BL
+import Servant.API.Flatten
 
 -- | Servant type-level API
 type WaziupAPI = "api" :> "v1" :> (AuthAPI :<|> SensorsAPI)
 
 type AuthAPI = 
   "auth" :>  ("permissions" :> Get '[JSON] [Perm]
-         :<|> "token"       :> ReqBody '[JSON] AuthBody :> Post '[PlainText] KC.Token)
+         :<|> "token"       :> ReqBody '[JSON] AuthBody :> Post '[PlainText] Token)
 
-type SensorsAPI = 
-  "sensors" :>  (Get '[JSON] [Sensor]
-            :<|> ReqBody '[JSON] Sensor :> PostNoContent '[JSON] NoContent
-            :<|> Capture "id" Text :> Header "Authorization" KC.Token  :> Get '[JSON] Sensor)
+type SensorsAPI = Flat ( 
+  "sensors" :> Header "Authorization" Token :> 
+                (Get '[JSON] [Sensor] :<|>
+                 ReqBody '[JSON] Sensor :> PostNoContent '[JSON] NoContent :<|>
+                 SensorAPI))
 
+type SensorAPI = (
+  Capture "id" Text :> (Get '[JSON] Sensor :<|>
+                        DeleteNoContent '[JSON] NoContent))
 
 instance FromHttpApiData KC.Token where
   parseHeader ((stripPrefix "Bearer ") . decodeUtf8 -> Just tok) = Right $ KC.Token tok
@@ -77,18 +83,19 @@ data ServerConfig = ServerConfig
   , configPort :: Int      -- ^ Port to serve on, e.g. 8080
   } deriving (Eq, Ord, Show, Read)
 
-server :: Server WaziupAPI
+server :: Server (WaziupAPI)
 server = authServer 
     :<|> sensorsServer
 
-authServer :: Server AuthAPI
+authServer :: Server (AuthAPI)
 authServer = (getPerms "cdupont" "password") 
         :<|> postAuth
 
-sensorsServer :: Server SensorsAPI
-sensorsServer = getSensors 
+sensorsServer :: Server (SensorsAPI)
+sensorsServer =  (getSensors 
            :<|> postSensor
            :<|> getSensor
+           :<|> undefined)
 
 getPerms :: Username -> Password -> ExceptT ServantErr IO [Perm]
 getPerms username password = do
@@ -106,21 +113,25 @@ postAuth (AuthBody username password) = do
   liftIO $ putStrLn $ show tok
   return tok
 
-getSensors :: ExceptT ServantErr IO [Sensor]
-getSensors = runOrion O.getSensorsOrion
+getSensors :: Maybe Token -> ExceptT ServantErr IO [Sensor]
+getSensors (Just tok) = do
+  sensors <- runOrion O.getSensorsOrion
+  ps <- runKeycloak (getAllPermissions tok)
+  let sensors2 = filter (\s -> any (\p -> (rsname p) == (senId s)) ps) sensors
+  return sensors2
 
-getSensor :: SensorId -> Maybe KC.Token -> ExceptT ServantErr IO Sensor
-getSensor sid (Just tok) = do
---getSensor sid (Just (stripPrefix "Bearer " -> Just tok)) = do
-  isAuth <- runKeycloak (isAuthorized sid (pack $ show SensorsView) tok)
-  debug $ "is auth:" ++ (show isAuth)
+checkAuth :: SensorId -> Scope -> Maybe KC.Token -> ExceptT ServantErr IO a -> ExceptT ServantErr IO a
+checkAuth sid scope (Just tok) serve = do
+  isAuth <- runKeycloak (isAuthorized sid (pack $ show scope) tok)
   if isAuth 
-    then runOrion (O.getSensorOrion sid)
-    else throwError err403 {errBody = "Sensor not authorized"}
-getSensor sid Nothing = runOrion (O.getSensorOrion sid)
+    then serve
+    else throwError err403 {errBody = "Not authorized"}
+  
+getSensor :: Maybe Token -> SensorId -> ExceptT ServantErr IO Sensor
+getSensor tok sid = checkAuth sid SensorsView tok $ runOrion (O.getSensorOrion sid)
 
-postSensor :: Sensor -> ExceptT ServantErr IO NoContent
-postSensor s@(Sensor id _ _ _ _ _ _ _ _ vis _) = do
+postSensor :: Maybe Token -> Sensor -> ExceptT ServantErr IO NoContent
+postSensor (Just tok) s@(Sensor id _ _ _ _ _ _ _ _ vis _) = do
   let res = KC.Resource {
      resId      = Nothing,
      resName    = id,
@@ -131,8 +142,8 @@ postSensor s@(Sensor id _ _ _ _ _ _ _ _ vis _) = do
      resOwnerManagedAccess = True,
      resAttributes = if (isJust vis) then [Attribute "visibility" [pack $ show $ fromJust vis]] else []
      }
-  debug "Get token"
-  tok <- runKeycloak getClientAuthToken
+  debug "Check permissions"
+  runKeycloak $ checkPermission id (pack $ show SensorsCreate) tok
   debug "Create resource"
   resId <- runKeycloak (createResource res tok)
   debug "Create entity"
@@ -140,7 +151,7 @@ postSensor s@(Sensor id _ _ _ _ _ _ _ _ vis _) = do
   case res of
     Right _ -> return NoContent
     Left (err :: HttpException) -> do
-      warn "Orion error"
+      warn "Orion error" -- TODO: need to delete Keycloak resource
       return NoContent
  
 
@@ -173,7 +184,7 @@ waziupAPI :: Proxy WaziupAPI
 waziupAPI = Proxy
 
 waziupServer :: Application
-waziupServer = serve waziupAPI server
+waziupServer = serve (waziupAPI) server
 
 warn, info :: (MonadIO m) => String -> m ()
 debug s = liftIO $ debugM "API" s

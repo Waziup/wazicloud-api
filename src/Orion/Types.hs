@@ -98,11 +98,5 @@ parseMetadata :: Parse e Metadata
 parseMetadata = Metadata <$> AB.keyMay "type" asText
                          <*> AB.keyMay "value" AB.asValue
 
-getOptions :: OrionConfig -> W.Options 
-getOptions o = defaults &
-       header "Fiware-Service" .~ [encodeUtf8 $ fiwareService o] &
-       param  "attrs"          .~ [attrs o] &
-       param  "metadata"       .~ [metadata o] 
-
 type Path = Text
 

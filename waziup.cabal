@@ -15,6 +15,7 @@ Executable waziup-servant
   Main-Is:             Main.hs
   other-modules:       Waziup.API
                      , Waziup.Types
+                     , Waziup.Utils
                      , Keycloak
                      , Keycloak.Client
                      , Keycloak.Types

@@ -9,6 +9,7 @@ import Waziup.Types
 import Waziup.Utils
 import Control.Monad.Except (ExceptT, throwError)
 import Control.Monad.IO.Class
+import Control.Monad
 import Data.Maybe
 import Data.Proxy (Proxy(..))
 import Data.Text hiding (map, filter, foldl, any)
@@ -100,17 +101,27 @@ postSensor tok s@(Sensor sid _ _ _ _ _ _ _ _ vis _) = do
      resAttributes = if (isJust vis) then [Attribute "visibility" [pack $ show $ fromJust vis]] else []
      }
   debug "Check permissions"
-  runKeycloak $ checkPermission sid (pack $ show SensorsCreate) tok
+  runKeycloak $ checkPermission "Sensors" (pack $ show SensorsCreate) tok
   debug "Create resource"
-  resId <- runKeycloak (createResource res tok)
+  resId <- runKeycloak $ createResource res tok
   debug "Create entity"
-  res2 <- C.try $ runOrion (O.postSensorOrion (s {senKeycloakId = Just resId}))
+  res2 <- C.try $ runOrion $ O.postSensorOrion (s {senKeycloakId = Just resId})
   case res2 of
     Right _ -> return NoContent
     Left (e :: HttpException) -> do
       warn "Orion error" -- TODO: need to delete Keycloak resource
       return NoContent
  
+deleteSensor :: Maybe Token -> SensorId -> ExceptT ServantErr IO NoContent
+deleteSensor tok sid = do
+  debug "Check permissions"
+  runKeycloak $ checkPermission sid (pack $ show SensorsDelete) tok
+  debug "Delete Keycloak resource"
+  sensor <- runOrion (O.getSensorOrion sid)
+  KC.try $ when (isJust $ senKeycloakId sensor) $ runKeycloak $ deleteResource (fromJust $ senKeycloakId sensor) tok
+  debug "Delete Orion entity"
+  KC.try $ runOrion $ O.deleteSensorOrion sid
+  return NoContent
 
 waziupAPI :: Proxy WaziupAPI
 waziupAPI = Proxy

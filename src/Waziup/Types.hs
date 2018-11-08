@@ -17,6 +17,8 @@ import qualified Data.Map as Map
 import GHC.Generics (Generic)
 import Data.Function ((&))
 import Data.Time
+import Data.Maybe
+import Data.Char
 import Control.Monad
 import Data.Time.ISO8601
 
@@ -74,9 +76,10 @@ data Visibility = Public | Private
   deriving (Eq, Generic)
 
 instance ToJSON Visibility where
-   toJSON Public  = "public" 
-   toJSON Private = "private" 
+  toJSON Public  = "public" 
+  toJSON Private = "private" 
 instance FromJSON Visibility where
+  parseJSON = withText "String" (\x -> return $ fromJust $ readVisibility x)
 
 instance Show Visibility where
   show Public = "public"
@@ -191,7 +194,8 @@ data Scope = SensorsCreate
            | SensorsDataView
    deriving (Generic, Eq)
 
-instance ToJSON Scope
+instance ToJSON Scope where
+  toJSON = toJSON . show
 instance FromJSON Scope
 
 readScope :: Text -> Maybe Scope
@@ -271,12 +275,18 @@ instance FromJSON HistoricalValue where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "historicalValue")
 instance ToJSON HistoricalValue where
   toJSON = genericToJSON (removeFieldLabelPrefix False "historicalValue")
+
+unCapitalize :: String -> String
+unCapitalize (c:cs) = toLower c : cs
+unCapitalize [] = []
+
+
 -- Remove a field label prefix during JSON parsing.
 -- Also perform any replacements for special characters.
 removeFieldLabelPrefix :: Bool -> String -> Options
 removeFieldLabelPrefix forParsing prefix =
   defaultOptions
-  {fieldLabelModifier = fromMaybe (error ("did not find prefix " ++ prefix)) . stripPrefix prefix . replaceSpecialChars}
+  {fieldLabelModifier = fromMaybe (error ("did not find prefix " ++ prefix)) . fmap unCapitalize . stripPrefix prefix . replaceSpecialChars}
   where
     replaceSpecialChars field = foldl (&) field (map mkCharReplacement specialChars)
     specialChars =

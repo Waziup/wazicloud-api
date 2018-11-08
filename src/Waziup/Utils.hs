@@ -15,6 +15,7 @@ import Control.Monad.Reader
 import System.Log.Logger
 import qualified Data.ByteString.Lazy as BL
 import Network.HTTP.Client as HC
+import Data.Monoid
 
 -- * Lifting
 runOrion :: O.Orion a -> ExceptT ServantErr IO a
@@ -23,12 +24,12 @@ runOrion orion = withExceptT fromOrionError (runReaderT orion O.defaultOrionConf
 runKeycloak :: KC.Keycloak a -> ExceptT ServantErr IO a
 runKeycloak kc = withExceptT fromKCError (runReaderT kc defaultConfig)
 
--- * error convertion
+-- * error convertions
 fromOrionError :: O.OrionError -> ServantErr
-fromOrionError (O.HTTPError (HttpExceptionRequest _ (StatusCodeException r _))) 
+fromOrionError (O.HTTPError (HttpExceptionRequest _ (StatusCodeException r m))) 
   = ServantErr { errHTTPCode     = HTS.statusCode $ HC.responseStatus r, 
                  errReasonPhrase = show $ HTS.statusMessage $ HC.responseStatus r, 
-                 errBody         = "",
+                 errBody         = BL.fromStrict ("Error from Orion: " <> m),
                  errHeaders      = []}
 fromOrionError (O.HTTPError (HttpExceptionRequest _ (ConnectionFailure a))) = err500 {errBody = encode $ "Failed to connect to Orion: " ++ show a} 
 fromOrionError (O.HTTPError s) = err500 {errBody = encode $ show s} 
@@ -36,10 +37,10 @@ fromOrionError (O.ParseError s) = err500 {errBody = encode s}
 fromOrionError O.EmptyError = err500 {errBody = "EmptyError"}
 
 fromKCError :: KC.KCError -> ServantErr
-fromKCError (KC.HTTPError (HttpExceptionRequest _ (StatusCodeException r _)))
+fromKCError (KC.HTTPError (HttpExceptionRequest _ (StatusCodeException r m)))
   = ServantErr { errHTTPCode     = HTS.statusCode $ HC.responseStatus r, 
                  errReasonPhrase = show $ HTS.statusMessage $ HC.responseStatus r, 
-                 errBody         = "",
+                 errBody         = BL.fromStrict ("Error from Keycloak: " <> m),
                  errHeaders      = []}
 fromKCError (KC.HTTPError (HttpExceptionRequest _ (ConnectionFailure a))) = err500 {errBody = encode $ "Failed to connect to Keycloak: " ++ show a} 
 fromKCError (KC.HTTPError s) = err500 {errBody = encode $ show s} 

@@ -15,6 +15,12 @@ Executable waziup-servant
   Main-Is:             Main.hs
   other-modules:       Waziup.API
                      , Waziup.Types
+                     , Keycloak
+                     , Keycloak.Client
+                     , Keycloak.Types
+                     , Orion
+                     , Orion.Client
+                     , Orion.Types
   ghc-options:         -Wall
   build-depends:       base
                      , aeson
@@ -28,7 +34,7 @@ Executable waziup-servant
                      , servant-server
                      , servant
                      , warp
-                     , transformers
+--                     , transformers
                      , mtl
                      , http-client
                      , http-types
@@ -49,4 +55,6 @@ Executable waziup-servant
                      , scientific
                      , lifted-base
                      , exceptions
+                     , hslogger
+                     , filepath
   default-language:    Haskell2010

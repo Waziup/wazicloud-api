@@ -32,6 +32,7 @@ Executable waziup-servant
                      , http-api-data
                      , servant-client
                      , servant-server
+                     , servant-flatten
                      , servant
                      , warp
 --                     , transformers

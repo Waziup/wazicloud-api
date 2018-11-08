@@ -10,7 +10,6 @@ import System.Log.Handler hiding (setLevel)
 import System.Log.Handler.Simple
 import System.Log.Handler.Log4jXML
 import System.IO
-import System.FilePath  
 
 main :: IO ()
 main = do

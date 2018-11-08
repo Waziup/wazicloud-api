@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Keycloak.Types where
 
@@ -10,6 +11,12 @@ import Data.Text hiding (head, tail, map)
 import GHC.Generics (Generic)
 import Data.Maybe
 import Data.Aeson.BetterErrors as AB
+import Web.HttpApiData (FromHttpApiData(..), ToHttpApiData(..))
+import Data.Text.Encoding
+import Network.HTTP.Client as HC hiding (responseBody)
+import Data.Monoid
+import Control.Monad.Except (ExceptT)
+import Control.Monad.Reader as R
 
 type ResourceId = Text
 type ResourceName = Text
@@ -17,7 +24,43 @@ type ScopeId = Text
 type ScopeName = Text
 type Scope = Text 
 
-data Token = Token Text deriving (Eq, Show)
+type Keycloak a = ReaderT KCConfig (ExceptT KCError IO) a
+
+data KCError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
+             | ParseError Text          -- ^ Failed when parsing the response
+             | EmptyError               -- ^ Empty error to serve as a zero element for Monoid.
+
+data KCConfig = KCConfig {
+  baseUrl :: Text,
+  realm :: Text,
+  clientId :: Text,
+  clientSecret :: Text,
+  adminLogin :: Text,
+  adminPassword :: Text,
+  guestLogin :: Text,
+  guestPassword :: Text}
+
+defaultConfig :: KCConfig
+defaultConfig = KCConfig {
+  baseUrl = "http://localhost:8080/auth",
+  realm = "waziup",
+  clientId = "api-server",
+  clientSecret = "4e9dcb80-efcd-484c-b3d7-1e95a0096ac0",
+  adminLogin = "cdupont",
+  adminPassword = "password",
+  guestLogin = "guest",
+  guestPassword = "guest"}
+
+type Path = Text
+data Token = Token {unToken :: Text} deriving (Eq, Show)
+
+instance FromHttpApiData Token where
+  parseQueryParam = parseHeader . encodeUtf8
+  parseHeader ((stripPrefix "Bearer ") . decodeUtf8 -> Just tok) = Right $ Token tok
+  parseHeader _ = Left "cannot extract auth Bearer"
+
+instance ToHttpApiData Token where
+  toQueryParam (Token token) = "Bearer " <> token
 
 data Permission = Permission 
   { rsname :: ResourceName,
@@ -76,21 +119,4 @@ instance FromJSON Attribute where
 instance ToJSON Attribute where
   toJSON = genericToJSON $ (aesonDrop 3 camelCase) {omitNothingFields = True}
 
-
-data KCConfig = KCConfig {
-  url :: Text,
-  realm :: Text,
-  clientId :: Text,
-  clientSecret :: Text,
-  adminLogin :: Text,
-  adminPassword :: Text}
-
-defaultConfig :: KCConfig
-defaultConfig = KCConfig {
-  url = "http://localhost:8080/auth",
-  realm = "waziup",
-  clientId = "api-server",
-  clientSecret = "4e9dcb80-efcd-484c-b3d7-1e95a0096ac0",
-  adminLogin = "cdupont",
-  adminPassword = "password"}
 

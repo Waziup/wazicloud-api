@@ -33,47 +33,40 @@ import Control.Exception hiding (try)
 import System.Log.Logger
 import Network.HTTP.Types.Method 
 import qualified Control.Monad.Catch as C
+import qualified Data.ByteString.Lazy.Char8 as C8
 
 getSensorsOrion :: Orion [Sensor]
 getSensorsOrion = do
-  ents <- orionReq GET "?type=SensingDevice" (Nothing :: Maybe BS.ByteString) (eachInArray parseEntity)
+  ents <- orionGet "/v2/entities?type=SensingDevice" (eachInArray parseEntity)
   return $ map getSensor ents
 
 getSensorOrion :: EntityId -> Orion Sensor
-getSensorOrion id = do
-  ent <- orionReq GET id (Nothing :: Maybe BS.ByteString) parseEntity
+getSensorOrion eid = do
+  ent <- orionGet ("/v2/entities/" <> eid) parseEntity
   return $ getSensor ent
 
 postSensorOrion :: Sensor -> Orion ()
 postSensorOrion s = do
-  liftIO $ putStrLn $ "Create sensor in Orion: " ++ (show $ encode s)
+  debug $ C8.unpack $ "Create sensor in Orion: " <> (encode s)
   let entity = getEntity s
-  liftIO $ putStrLn $ "Entity: " ++ (show $ encode entity)
-  orionReq POST "" (Just (toJSON entity)) asText
-  info $ "Sensor created"
-  return ()
+  debug $ C8.unpack $ "Entity: " <> (encode entity)
+  orionPost "/v2/entities" (toJSON entity)
 
 deleteSensorOrion :: EntityId -> Orion ()
-deleteSensorOrion eid = do
-  orionOpts@(OrionConfig url _ _ _) <- ask 
-  orionReq DELETE eid (Nothing :: Maybe BS.ByteString) asText 
-  return ()
+deleteSensorOrion eid = orionDelete ("/v2/entities/" <> eid)
 
--- Perform post to Keycloak.
-orionReq :: (Postable dat, Show dat, Show b) => StdMethod -> Path -> Maybe dat -> Parse Text b -> Orion b
-orionReq method path mdat parser = do 
+-- Perform request to Orion.
+orionGet :: (Show b) => Path -> Parse Text b -> Orion b
+orionGet path parser = do 
   orionOpts@(OrionConfig baseUrl _ _ _) <- ask 
   let opts = defaults &
        header "Fiware-Service" .~ [encodeUtf8 $ fiwareService orionOpts] &
        param  "attrs"          .~ [attrs orionOpts] &
        param  "metadata"       .~ [metadata orionOpts] 
-  let url = (unpack $ baseUrl <> "/v2/entities/" <> path) 
-  info $ "Issuing ORION " ++ (show method) ++ " with url: " ++ (show url) 
-  debug $ "  data: " ++ (show mdat) 
+  let url = (unpack $ baseUrl <> path) 
+  info $ "Issuing ORION GET with url: " ++ (show url) 
   debug $ "  headers: " ++ (show $ opts ^. W.headers) 
-  eRes <- C.try $ liftIO $ case mdat of
-     Just dat -> W.customPayloadMethodWith (show method) opts url dat
-     Nothing -> W.customMethodWith (show method) opts url
+  eRes <- C.try $ liftIO $ W.getWith opts url
   case eRes of 
     Right res -> do
       let body = fromJust $ res ^? responseBody
@@ -81,10 +74,48 @@ orionReq method path mdat parser = do
         Right ret -> do
           debug $ "Orion result: " ++ (show ret)
           return ret
-        Left err2 -> throwError $ ParseError $ pack (show err2)
+        Left err2 -> do
+          err $ "Orion Parse error: " ++ (show err2)
+          throwError $ ParseError $ pack (show err2)
     Left err -> do
-      warn $ "Error: " ++ (show err)
+      warn $ "Orion HTTP Error: " ++ (show err)
       throwError $ HTTPError err
+
+orionPost :: (Postable dat, Show dat) => Path -> dat -> Orion ()
+orionPost path dat = do 
+  orionOpts@(OrionConfig baseUrl _ _ _) <- ask 
+  let opts = defaults &
+       header "Fiware-Service" .~ [encodeUtf8 $ fiwareService orionOpts] &
+       param  "attrs"          .~ [attrs orionOpts] &
+       param  "metadata"       .~ [metadata orionOpts] 
+  let url = (unpack $ baseUrl <> path) 
+  info $ "Issuing ORION POST with url: " ++ (show url) 
+  debug $ "  data: " ++ (show dat) 
+  debug $ "  headers: " ++ (show $ opts ^. W.headers) 
+  eRes <- C.try $ liftIO $ W.postWith opts url dat
+  case eRes of 
+    Right res -> return ()
+    Left err -> do
+      warn $ "Orion HTTP Error: " ++ (show err)
+      throwError $ HTTPError err
+
+orionDelete :: Path -> Orion ()
+orionDelete path = do 
+  orionOpts@(OrionConfig baseUrl _ _ _) <- ask 
+  let opts = defaults &
+       header "Fiware-Service" .~ [encodeUtf8 $ fiwareService orionOpts] &
+       param  "attrs"          .~ [attrs orionOpts] &
+       param  "metadata"       .~ [metadata orionOpts] 
+  let url = (unpack $ baseUrl <> path) 
+  info $ "Issuing ORION DELETE with url: " ++ (show url) 
+  debug $ "  headers: " ++ (show $ opts ^. W.headers) 
+  eRes <- C.try $ liftIO $ W.deleteWith opts url
+  case eRes of 
+    Right res -> return ()
+    Left err -> do
+      warn $ "Orion HTTP Error: " ++ (show err)
+      throwError $ HTTPError err
+
 
 -- * Helper functions
 
@@ -151,7 +182,8 @@ getEntity (Sensor sid sgid sname sown meas sloc sdom _ _ svis _) =
                               getSimpleAttr "owner" sown,
                               getSimpleAttr "domain" sown,
                               getSimpleAttr "visibility" ((pack.show) <$> svis),
-                              getLocationAttr sloc] 
+                              getLocationAttr sloc] <>
+                              map getMeasurementAttr meas
 
 getSimpleAttr :: Text -> Maybe Text -> Maybe (Text, Attribute)
 getSimpleAttr name (Just val) = Just (name, Attribute "String" (Just $ toJSON val) [])
@@ -160,6 +192,15 @@ getSimpleAttr _ Nothing = Nothing
 getLocationAttr :: Maybe Location -> Maybe (Text, Attribute)
 getLocationAttr (Just (Location lat lon)) = Just ("location", Attribute "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) [])
 getLocationAttr Nothing = Nothing
+
+getMeasurementAttr :: Measurement -> (Text, Attribute)
+getMeasurementAttr (Measurement measId name sd qk u lv) = 
+  (measId, Attribute "Measurement"
+                     (measValue <$> lv)
+                     [("name", Metadata (Just "String") (Just $ toJSON name)),
+                      ("quantity_kind", Metadata (Just "String") (Just $ toJSON qk)),
+                      ("sensing_device", Metadata (Just "String") (Just $ toJSON sd)),
+                      ("unit", Metadata (Just "String") (Just $ toJSON u))])
 
 debug, warn, info, err :: (MonadIO m) => String -> m ()
 debug s = liftIO $ debugM "Orion" s

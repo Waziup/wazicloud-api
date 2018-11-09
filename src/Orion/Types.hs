@@ -9,10 +9,12 @@ import Control.Lens hiding ((.=))
 import Data.Aeson as JSON
 import Data.Aeson.BetterErrors as AB
 import Data.Aeson.Casing
+import Data.Aeson.Types
 import Data.Text hiding (head, tail, find, map, filter)
 import Data.Text.Encoding
 import GHC.Generics (Generic)
 import Data.Maybe
+import Data.Monoid
 import Control.Monad.Reader
 import Data.Foldable as F
 import Network.HTTP.Client (HttpException)
@@ -50,7 +52,10 @@ data Entity = Entity {
   } deriving (Generic, Show)
 
 instance ToJSON Entity where
-   toJSON = genericToJSON $ aesonDrop 3 snakeCase
+   toJSON (Entity entId entType attrs) = 
+     object $ ["id" .= entId, 
+               "type" .= entType] 
+              <> map (\(attId, att) -> attId .= toJSON att) attrs
 
 parseEntity :: Parse e Entity
 parseEntity = do
@@ -71,7 +76,10 @@ data Attribute = Attribute {
   } deriving (Generic, Show)
 
 instance ToJSON Attribute where
-   toJSON = genericToJSON $ aesonDrop 3 snakeCase
+   toJSON (Attribute attType attVal mets) = 
+     object $ ["type" .= attType, 
+               "value" .= attVal,
+               "metadata" .= object (map (\(metId, met) -> metId .= toJSON met) mets)]
 
 parseAttribute :: Parse e Attribute
 parseAttribute = do

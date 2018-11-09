@@ -111,10 +111,14 @@ keycloakReq method path mdat mtok parser = do
     Right res -> do
       let body = fromJust $ res ^? responseBody
       case AB.parse parser body of
-        Right ret -> return ret
-        Left err2 -> throwError $ ParseError $ pack (show err2)
+        Right ret -> do
+          debug $ "Keycloak success: " ++ (show ret) 
+          return ret
+        Left err2 -> do
+          debug $ "Keycloak parse error: " ++ (show err2) 
+          throwError $ ParseError $ pack (show err2)
     Left err -> do
-      warn $ "Error: " ++ (show err)
+      warn $ "Keycloak HTTP error: " ++ (show err)
       throwError $ HTTPError err
 
 debug, warn, info, err :: (MonadIO m) => String -> m ()

@@ -75,7 +75,7 @@ orionGet path parser = do
           debug $ "Orion result: " ++ (show ret)
           return ret
         Left err2 -> do
-          err $ "Orion Parse error: " ++ (show err2)
+          err $ "Orion parse error: " ++ (show err2)
           throwError $ ParseError $ pack (show err2)
     Left err -> do
       warn $ "Orion HTTP Error: " ++ (show err)
@@ -176,11 +176,12 @@ getMeasLastValue mval mets = do
                              (getSimpleMetadata "dateModified" mets >>= parseISO8601.unpack)
 
 getEntity :: Sensor -> Entity
-getEntity (Sensor sid sgid sname sown meas sloc sdom _ _ svis _) = 
+getEntity (Sensor sid sgid sname sown meas sloc sdom _ _ svis skey) = 
   Entity sid "SensingDevice" $ catMaybes [getSimpleAttr "name" sname,
                               getSimpleAttr "gateway_id" sgid,
                               getSimpleAttr "owner" sown,
                               getSimpleAttr "domain" sown,
+                              getSimpleAttr "keycloak_id" skey,
                               getSimpleAttr "visibility" ((pack.show) <$> svis),
                               getLocationAttr sloc] <>
                               map getMeasurementAttr meas

@@ -55,7 +55,7 @@ sensorsServer :: Server (SensorsAPI)
 sensorsServer =  (getSensors 
            :<|> postSensor
            :<|> getSensor
-           :<|> undefined)
+           :<|> deleteSensor)
 
 getPerms :: Maybe Token -> ExceptT ServantErr IO [Perm]
 getPerms tok = do

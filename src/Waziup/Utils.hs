@@ -30,7 +30,7 @@ fromOrionError (O.HTTPError (HttpExceptionRequest _ (StatusCodeException r m)))
   = ServantErr { errHTTPCode     = HTS.statusCode $ HC.responseStatus r, 
                  errReasonPhrase = show $ HTS.statusMessage $ HC.responseStatus r, 
                  errBody         = BL.fromStrict ("Error from Orion: " <> m),
-                 errHeaders      = []}
+                 errHeaders      = HC.responseHeaders r}
 fromOrionError (O.HTTPError (HttpExceptionRequest _ (ConnectionFailure a))) = err500 {errBody = encode $ "Failed to connect to Orion: " ++ show a} 
 fromOrionError (O.HTTPError s) = err500 {errBody = encode $ show s} 
 fromOrionError (O.ParseError s) = err500 {errBody = encode s} 
@@ -41,7 +41,7 @@ fromKCError (KC.HTTPError (HttpExceptionRequest _ (StatusCodeException r m)))
   = ServantErr { errHTTPCode     = HTS.statusCode $ HC.responseStatus r, 
                  errReasonPhrase = show $ HTS.statusMessage $ HC.responseStatus r, 
                  errBody         = BL.fromStrict ("Error from Keycloak: " <> m),
-                 errHeaders      = []}
+                 errHeaders      = HC.responseHeaders r}
 fromKCError (KC.HTTPError (HttpExceptionRequest _ (ConnectionFailure a))) = err500 {errBody = encode $ "Failed to connect to Keycloak: " ++ show a} 
 fromKCError (KC.HTTPError s) = err500 {errBody = encode $ show s} 
 fromKCError (KC.ParseError s) = err500 {errBody = encode s} 

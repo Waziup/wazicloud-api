@@ -7,16 +7,18 @@ module Keycloak.Types where
 import Data.Aeson as JSON
 import Data.Aeson.Types
 import Data.Aeson.Casing
-import Data.Text hiding (head, tail, map)
+import Data.Text hiding (head, tail, map, toLower)
+import Data.Text.Encoding
 import GHC.Generics (Generic)
 import Data.Maybe
 import Data.Aeson.BetterErrors as AB
 import Web.HttpApiData (FromHttpApiData(..), ToHttpApiData(..))
-import Data.Text.Encoding
 import Network.HTTP.Client as HC hiding (responseBody)
 import Data.Monoid
 import Control.Monad.Except (ExceptT)
 import Control.Monad.Reader as R
+import qualified Data.ByteString as S
+import Data.Word8 (isSpace, _colon, toLower)
 
 type ResourceId = Text
 type ResourceName = Text
@@ -56,8 +58,15 @@ data Token = Token {unToken :: Text} deriving (Eq, Show)
 
 instance FromHttpApiData Token where
   parseQueryParam = parseHeader . encodeUtf8
-  parseHeader ((stripPrefix "Bearer ") . decodeUtf8 -> Just tok) = Right $ Token tok
+  parseHeader (extractBearerAuth -> Just tok) = Right $ Token $ decodeUtf8 tok
   parseHeader _ = Left "cannot extract auth Bearer"
+
+extractBearerAuth :: S.ByteString -> Maybe S.ByteString
+extractBearerAuth bs =
+    let (x, y) = S.break isSpace bs
+    in if S.map toLower x == "bearer"
+        then Just $ S.dropWhile isSpace y
+        else Nothing
 
 instance ToHttpApiData Token where
   toQueryParam (Token token) = "Bearer " <> token

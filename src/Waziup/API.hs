@@ -59,7 +59,7 @@ sensorsServer =  (getSensors
 
 getPerms :: Maybe Token -> ExceptT ServantErr IO [Perm]
 getPerms tok = do
-  liftIO $ putStrLn "Get Permissions"
+  info "Get Permissions"
   ps <- runKeycloak (getAllPermissions tok)
   let getP :: KC.Permission -> Perm
       getP (KC.Permission rsname _ scopes) = Perm rsname (mapMaybe readScope scopes)
@@ -67,12 +67,13 @@ getPerms tok = do
 
 postAuth :: AuthBody -> ExceptT ServantErr IO Token
 postAuth (AuthBody username password) = do
+  info "Post authentication"
   tok <- runKeycloak (getUserAuthToken username password)
-  liftIO $ putStrLn $ show tok
   return tok
 
 getSensors :: Maybe Token -> ExceptT ServantErr IO [Sensor]
 getSensors tok = do
+  info "Get sensors"
   sensors <- runOrion O.getSensorsOrion
   ps <- runKeycloak (getAllPermissions tok)
   let sensors2 = filter (\s -> any (\p -> (rsname p) == (senId s)) ps) sensors
@@ -86,10 +87,13 @@ checkAuth sid scope tok act = do
     else throwError err403 {errBody = "Not authorized"}
   
 getSensor :: Maybe Token -> SensorId -> ExceptT ServantErr IO Sensor
-getSensor tok sid = checkAuth sid SensorsView tok $ runOrion (O.getSensorOrion sid)
+getSensor tok sid = do
+  info "Get sensor"
+  checkAuth sid SensorsView tok $ runOrion (O.getSensorOrion sid)
 
 postSensor :: Maybe Token -> Sensor -> ExceptT ServantErr IO NoContent
 postSensor tok s@(Sensor sid _ _ _ _ _ _ _ _ vis _) = do
+  info $ "Post sensor" ++ (show tok)
   let res = KC.Resource {
      resId      = Nothing,
      resName    = sid,
@@ -98,8 +102,7 @@ postSensor tok s@(Sensor sid _ _ _ _ _ _ _ _ vis _) = do
      resScopes  = map (pack.show) [SensorsView, SensorsUpdate, SensorsDelete, SensorsDataCreate, SensorsDataView],
      resOwner   = Owner Nothing "cdupont",
      resOwnerManagedAccess = True,
-     resAttributes = if (isJust vis) then [Attribute "visibility" [pack $ show $ fromJust vis]] else []
-     }
+     resAttributes = if (isJust vis) then [Attribute "visibility" [pack $ show $ fromJust vis]] else []}
   debug "Check permissions"
   runKeycloak $ checkPermission "Sensors" (pack $ show SensorsCreate) tok
   debug "Create resource"
@@ -114,13 +117,18 @@ postSensor tok s@(Sensor sid _ _ _ _ _ _ _ _ vis _) = do
  
 deleteSensor :: Maybe Token -> SensorId -> ExceptT ServantErr IO NoContent
 deleteSensor tok sid = do
+  info "Delete sensor"
   debug "Check permissions"
   runKeycloak $ checkPermission sid (pack $ show SensorsDelete) tok
   debug "Delete Keycloak resource"
   sensor <- runOrion (O.getSensorOrion sid)
-  KC.try $ when (isJust $ senKeycloakId sensor) $ runKeycloak $ deleteResource (fromJust $ senKeycloakId sensor) tok
-  debug "Delete Orion entity"
-  KC.try $ runOrion $ O.deleteSensorOrion sid
+  case (senKeycloakId sensor) of
+    Just keyId -> do
+      runKeycloak $ deleteResource (keyId) tok
+      runOrion $ O.deleteSensorOrion sid
+    Nothing -> do
+      error "Cannot delete sensor: KC Id not present"
+      throwError err500 {errBody = "Cannot delete sensor: KC Id not present"}
   return NoContent
 
 waziupAPI :: Proxy WaziupAPI

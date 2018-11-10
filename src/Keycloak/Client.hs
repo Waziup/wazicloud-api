@@ -28,7 +28,8 @@ default (Text)
 
 
 checkPermission :: ResourceId -> Scope -> Maybe Token -> Keycloak ()
-checkPermission res scope tok = do 
+checkPermission res scope tok = do
+  debug $ "Checking permissions: " ++ (show res) ++ " " ++ (show scope)
   client <- asks clientId
   let dat = ["grant_type" := ("urn:ietf:params:oauth:grant-type:uma-ticket" :: Text),
              "audience" := client,
@@ -46,6 +47,7 @@ isAuthorized res scope tok = do
 
 getAllPermissions :: Maybe Token -> Keycloak [Permission]
 getAllPermissions tok = do
+  debug "Get all permissions"
   client <- asks clientId
   let dat = ["grant_type" := ("urn:ietf:params:oauth:grant-type:uma-ticket" :: Text),
              "audience" := client,
@@ -55,6 +57,7 @@ getAllPermissions tok = do
   
 getUserAuthToken :: Text -> Text -> Keycloak Token
 getUserAuthToken username password = do 
+  debug "Get user token"
   client <- asks clientId
   secret <- asks clientSecret
   let dat = ["client_id" := client, 
@@ -66,6 +69,7 @@ getUserAuthToken username password = do
 
 getClientAuthToken :: Keycloak Token
 getClientAuthToken = do
+  debug "Get client token"
   client <- asks clientId
   secret <- asks clientSecret
   let dat = ["client_id" := client, 
@@ -74,9 +78,9 @@ getClientAuthToken = do
   keycloakReqDef POST "protocol/openid-connect/token" (Just dat) Nothing (Token <$> AB.key "access_token" asText) 
 
 createResource :: Resource -> Maybe Token -> Keycloak ResourceId
-createResource r tok = do
+createResource r mtok = do
   debug $ BS.unpack $ BL.toStrict $ "Creating resource: " <> (encode r)
-  keycloakReqDef POST "authz/protection/resource_set" (Just $ toJSON r) tok (AB.key "_id" asText) 
+  keycloakReqDef POST "authz/protection/resource_set" (Just $ toJSON r) mtok (AB.key "_id" asText) 
 
 deleteResource :: ResourceId -> Maybe Token -> Keycloak ()
 deleteResource rid tok = do
@@ -85,8 +89,8 @@ deleteResource rid tok = do
 
 -- Perform post to Keycloak with token.
 -- If there is no token, retrieve a guest token
-keycloakReqDef :: (Postable dat, Show dat) => StdMethod -> Path -> Maybe dat -> Maybe Token -> Parse Text b -> Keycloak b
-keycloakReqDef met path dat mtok parser = do 
+keycloakReqDef :: (Postable dat, Show dat, Show b) => StdMethod -> Path -> Maybe dat -> Maybe Token -> Parse Text b -> Keycloak b
+keycloakReqDef met path dat mtok parser = do
   (KCConfig baseUrl realm _ _ _ _ guestId guestPass) <- ask
   tok <- case mtok of
        Just tok -> return tok
@@ -94,7 +98,7 @@ keycloakReqDef met path dat mtok parser = do
   keycloakReq met path dat (Just tok) parser 
 
 -- Perform post to Keycloak.
-keycloakReq :: (Postable dat, Show dat) => StdMethod -> Path -> Maybe dat -> Maybe Token -> Parse Text b -> Keycloak b
+keycloakReq :: (Postable dat, Show dat, Show b) => StdMethod -> Path -> Maybe dat -> Maybe Token -> Parse Text b -> Keycloak b
 keycloakReq method path mdat mtok parser = do 
   (KCConfig baseUrl realm _ _ _ _ _ _) <- ask
   let opts = case mtok of

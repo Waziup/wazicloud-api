@@ -59,4 +59,5 @@ Executable waziup-servant
                      , exceptions
                      , hslogger
                      , filepath
+                     , word8
   default-language:    Haskell2010

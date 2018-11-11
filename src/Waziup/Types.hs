@@ -1,8 +1,9 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# OPTIONS_GHC -fno-warn-unused-binds -fno-warn-unused-imports #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Waziup.Types where
 
@@ -19,11 +20,42 @@ import Data.Function ((&))
 import Data.Time
 import Data.Maybe
 import Data.Char
-import Control.Monad
 import Data.Time.ISO8601
+import Control.Monad
+import Control.Monad.Except (ExceptT, throwError)
+import Control.Monad.Catch as C
+import Servant
+import Servant.API.Flatten
+import Keycloak as KC hiding (info, warn, debug, Scope, Username) 
 
 type Username = Text
 type Password = Text
+
+type Waziup a = ExceptT ServantErr IO a
+
+-- | Servant type-level API
+type WaziupAPI = "api" :> "v1" :> (AuthAPI :<|> SensorsAPI)
+
+type AuthAPI = 
+  "auth" :>  ("permissions" :> Header "Authorization" Token :> Get '[JSON] [Perm]
+         :<|> "token"       :> ReqBody '[JSON] AuthBody :> Post '[PlainText] Token)
+
+type SensorsAPI = Flat ( 
+  "sensors" :> Header "Authorization" Token :> 
+                (Get '[JSON] [Sensor] :<|>
+                 ReqBody '[JSON] Sensor :> PostNoContent '[JSON] NoContent :<|>
+                 SensorAPI))
+
+type SensorAPI = (
+  Capture "id" Text :> (Get '[JSON] Sensor :<|>
+                        DeleteNoContent '[JSON] NoContent))
+
+-- | Server or client configuration, specifying the host and port to query or serve on.
+data ServerConfig = ServerConfig
+  { configHost :: String   -- ^ Hostname to serve on, e.g. "127.0.0.1"
+  , configPort :: Int      -- ^ Port to serve on, e.g. 8080
+  } deriving (Eq, Ord, Show, Read)
+
 
 -- | 
 data AuthBody = AuthBody

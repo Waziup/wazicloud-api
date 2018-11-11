@@ -20,28 +20,6 @@ import Control.Monad.Catch as C
 import Servant.API.Flatten
 import Network.HTTP.Client (HttpException)
 
--- | Servant type-level API
-type WaziupAPI = "api" :> "v1" :> (AuthAPI :<|> SensorsAPI)
-
-type AuthAPI = 
-  "auth" :>  ("permissions" :> Header "Authorization" Token :> Get '[JSON] [Perm]
-         :<|> "token"       :> ReqBody '[JSON] AuthBody :> Post '[PlainText] Token)
-
-type SensorsAPI = Flat ( 
-  "sensors" :> Header "Authorization" Token :> 
-                (Get '[JSON] [Sensor] :<|>
-                 ReqBody '[JSON] Sensor :> PostNoContent '[JSON] NoContent :<|>
-                 SensorAPI))
-
-type SensorAPI = (
-  Capture "id" Text :> (Get '[JSON] Sensor :<|>
-                        DeleteNoContent '[JSON] NoContent))
-
--- | Server or client configuration, specifying the host and port to query or serve on.
-data ServerConfig = ServerConfig
-  { configHost :: String   -- ^ Hostname to serve on, e.g. "127.0.0.1"
-  , configPort :: Int      -- ^ Port to serve on, e.g. 8080
-  } deriving (Eq, Ord, Show, Read)
 
 server :: Server (WaziupAPI)
 server = authServer 
@@ -57,7 +35,7 @@ sensorsServer =  (getSensors
            :<|> getSensor
            :<|> deleteSensor)
 
-getPerms :: Maybe Token -> ExceptT ServantErr IO [Perm]
+getPerms :: Maybe Token -> Waziup [Perm]
 getPerms tok = do
   info "Get Permissions"
   ps <- runKeycloak (getAllPermissions tok)
@@ -65,13 +43,13 @@ getPerms tok = do
       getP (KC.Permission rsname _ scopes) = Perm rsname (mapMaybe readScope scopes)
   return $ map getP ps 
 
-postAuth :: AuthBody -> ExceptT ServantErr IO Token
+postAuth :: AuthBody -> Waziup Token
 postAuth (AuthBody username password) = do
   info "Post authentication"
   tok <- runKeycloak (getUserAuthToken username password)
   return tok
 
-getSensors :: Maybe Token -> ExceptT ServantErr IO [Sensor]
+getSensors :: Maybe Token -> Waziup [Sensor]
 getSensors tok = do
   info "Get sensors"
   sensors <- runOrion O.getSensorsOrion
@@ -79,19 +57,19 @@ getSensors tok = do
   let sensors2 = filter (\s -> any (\p -> (rsname p) == (senId s)) ps) sensors
   return sensors2
 
-checkAuth :: SensorId -> Scope -> Maybe Token -> ExceptT ServantErr IO a -> ExceptT ServantErr IO a
+checkAuth :: SensorId -> Scope -> Maybe Token -> Waziup a -> Waziup a
 checkAuth sid scope tok act = do
   isAuth <- runKeycloak (isAuthorized sid (pack $ show scope) tok)
   if isAuth 
     then act
     else throwError err403 {errBody = "Not authorized"}
   
-getSensor :: Maybe Token -> SensorId -> ExceptT ServantErr IO Sensor
+getSensor :: Maybe Token -> SensorId -> Waziup Sensor
 getSensor tok sid = do
   info "Get sensor"
   checkAuth sid SensorsView tok $ runOrion (O.getSensorOrion sid)
 
-postSensor :: Maybe Token -> Sensor -> ExceptT ServantErr IO NoContent
+postSensor :: Maybe Token -> Sensor -> Waziup NoContent
 postSensor tok s@(Sensor sid _ _ _ _ _ _ _ _ vis _) = do
   info $ "Post sensor" ++ (show tok)
   let res = KC.Resource {
@@ -116,7 +94,7 @@ postSensor tok s@(Sensor sid _ _ _ _ _ _ _ _ vis _) = do
       runKeycloak $ deleteResource resId tok
       return NoContent
  
-deleteSensor :: Maybe Token -> SensorId -> ExceptT ServantErr IO NoContent
+deleteSensor :: Maybe Token -> SensorId -> Waziup NoContent
 deleteSensor tok sid = do
   info "Delete sensor"
   debug "Check permissions"

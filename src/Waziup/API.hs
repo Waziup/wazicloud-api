@@ -112,7 +112,8 @@ postSensor tok s@(Sensor sid _ _ _ _ _ _ _ _ vis _) = do
   case res2 of
     Right _ -> return NoContent
     Left (e :: HttpException) -> do
-      warn "Orion error" -- TODO: need to delete Keycloak resource
+      warn "Orion error, deleting Keycloak resource"
+      runKeycloak $ deleteResource resId tok
       return NoContent
  
 deleteSensor :: Maybe Token -> SensorId -> ExceptT ServantErr IO NoContent
@@ -124,7 +125,7 @@ deleteSensor tok sid = do
   sensor <- runOrion (O.getSensorOrion sid)
   case (senKeycloakId sensor) of
     Just keyId -> do
-      runKeycloak $ deleteResource (keyId) tok
+      runKeycloak $ deleteResource keyId tok
       runOrion $ O.deleteSensorOrion sid
     Nothing -> do
       error "Cannot delete sensor: KC Id not present"

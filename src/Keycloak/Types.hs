@@ -25,6 +25,7 @@ type ResourceName = Text
 type ScopeId = Text
 type ScopeName = Text
 type Scope = Text 
+type Username = Text
 
 type Keycloak a = ReaderT KCConfig (ExceptT KCError IO) a
 
@@ -54,11 +55,11 @@ defaultConfig = KCConfig {
   guestPassword = "guest"}
 
 type Path = Text
-data Token = Token {unToken :: Text} deriving (Eq, Show)
+data Token = Token {unToken :: S.ByteString} deriving (Eq, Show)
 
 instance FromHttpApiData Token where
   parseQueryParam = parseHeader . encodeUtf8
-  parseHeader (extractBearerAuth -> Just tok) = Right $ Token $ decodeUtf8 tok
+  parseHeader (extractBearerAuth -> Just tok) = Right $ Token tok
   parseHeader _ = Left "cannot extract auth Bearer"
 
 extractBearerAuth :: S.ByteString -> Maybe S.ByteString
@@ -69,7 +70,7 @@ extractBearerAuth bs =
         else Nothing
 
 instance ToHttpApiData Token where
-  toQueryParam (Token token) = "Bearer " <> token
+  toQueryParam (Token token) = "Bearer " <> (decodeUtf8 token)
 
 data Permission = Permission 
   { rsname :: ResourceName,

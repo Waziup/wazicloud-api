@@ -47,7 +47,6 @@ fromKCError (KC.HTTPError s) = err500 {errBody = encode $ show s}
 fromKCError (KC.ParseError s) = err500 {errBody = encode s} 
 fromKCError KC.EmptyError = err500 {errBody = "EmptyError"}
 
-
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()
 debug s = liftIO $ debugM "API" s
@@ -56,5 +55,5 @@ warn s = liftIO $ warningM "API" s
 err s = liftIO $ errorM "API" s
 
 instance MimeRender PlainText Token where
-  mimeRender _ (Token tok) = BL.fromStrict $ encodeUtf8 tok
+  mimeRender _ (Token tok) = BL.fromStrict tok
 

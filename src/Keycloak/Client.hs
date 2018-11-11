@@ -24,8 +24,7 @@ import System.Log.Logger
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL
 import Network.HTTP.Types.Method 
-default (Text)
-
+import Data.ByteString.Base64 as B64
 
 checkPermission :: ResourceId -> Scope -> Maybe Token -> Keycloak ()
 checkPermission res scope tok = do
@@ -65,7 +64,7 @@ getUserAuthToken username password = do
              "grant_type" := ("password" :: Text),
              "password" := password,
              "username" := username]
-  keycloakReq POST "protocol/openid-connect/token" (Just dat) Nothing (Token <$> AB.key "access_token" asText) 
+  keycloakReq POST "protocol/openid-connect/token" (Just dat) Nothing (Token . encodeUtf8 <$> AB.key "access_token" asText) 
 
 getClientAuthToken :: Keycloak Token
 getClientAuthToken = do
@@ -75,11 +74,11 @@ getClientAuthToken = do
   let dat = ["client_id" := client, 
              "client_secret" := secret,
              "grant_type" := ("client_credentials" :: Text)]
-  keycloakReqDef POST "protocol/openid-connect/token" (Just dat) Nothing (Token <$> AB.key "access_token" asText) 
+  keycloakReqDef POST "protocol/openid-connect/token" (Just dat) Nothing (Token . encodeUtf8 <$> AB.key "access_token" asText) 
 
 createResource :: Resource -> Maybe Token -> Keycloak ResourceId
 createResource r mtok = do
-  debug $ BS.unpack $ BL.toStrict $ "Creating resource: " <> (encode r)
+  debug $ BS.unpack $ BL.toStrict $ "Creating resource: " <> (JSON.encode r)
   keycloakReqDef POST "authz/protection/resource_set" (Just $ toJSON r) mtok (AB.key "_id" asText) 
 
 deleteResource :: ResourceId -> Maybe Token -> Keycloak ()
@@ -102,7 +101,7 @@ keycloakReq :: (Postable dat, Show dat, Show b) => StdMethod -> Path -> Maybe da
 keycloakReq method path mdat mtok parser = do 
   (KCConfig baseUrl realm _ _ _ _ _ _) <- ask
   let opts = case mtok of
-       Just tok -> W.defaults & W.header "Authorization" .~ [encodeUtf8 ("Bearer " <> (unToken tok))]
+       Just tok -> W.defaults & W.header "Authorization" .~ ["Bearer " <> (unToken tok)]
        Nothing -> W.defaults
   let url = (unpack $ baseUrl <> "/realms/" <> realm <> "/" <> path) 
   info $ "Issuing KEYCLOAK " ++ (show method) ++ " with url: " ++ (show url) 
@@ -127,9 +126,9 @@ keycloakReq method path mdat mtok parser = do
 
 debug, warn, info, err :: (MonadIO m) => String -> m ()
 debug s = liftIO $ debugM "API" s
-info s = liftIO $ infoM "API" s
-warn s = liftIO $ warningM "API" s
-err s = liftIO $ errorM "API" s
+info s  = liftIO $ infoM "API" s
+warn s  = liftIO $ warningM "API" s
+err s   = liftIO $ errorM "API" s
 
 getErrorStatus :: KCError -> Maybe Status 
 getErrorStatus (HTTPError (HttpExceptionRequest _ (StatusCodeException r _))) = Just $ HC.responseStatus r
@@ -138,3 +137,5 @@ getErrorStatus _ = Nothing
 try :: MonadError a m => m b -> m (Either a b)
 try act = catchError (Right <$> act) (return . Left)
 
+getUsername :: Token -> Username
+getUsername (Token tok) = undefined $ B64.decodeLenient tok 

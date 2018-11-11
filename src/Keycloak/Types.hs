@@ -17,7 +17,7 @@ import Network.HTTP.Client as HC hiding (responseBody)
 import Data.Monoid
 import Control.Monad.Except (ExceptT)
 import Control.Monad.Reader as R
-import qualified Data.ByteString as S
+import qualified Data.ByteString as BS
 import Data.Word8 (isSpace, _colon, toLower)
 
 type ResourceId = Text
@@ -55,18 +55,18 @@ defaultConfig = KCConfig {
   guestPassword = "guest"}
 
 type Path = Text
-data Token = Token {unToken :: S.ByteString} deriving (Eq, Show)
+data Token = Token {unToken :: BS.ByteString} deriving (Eq, Show)
 
 instance FromHttpApiData Token where
   parseQueryParam = parseHeader . encodeUtf8
   parseHeader (extractBearerAuth -> Just tok) = Right $ Token tok
   parseHeader _ = Left "cannot extract auth Bearer"
 
-extractBearerAuth :: S.ByteString -> Maybe S.ByteString
+extractBearerAuth :: BS.ByteString -> Maybe BS.ByteString
 extractBearerAuth bs =
-    let (x, y) = S.break isSpace bs
-    in if S.map toLower x == "bearer"
-        then Just $ S.dropWhile isSpace y
+    let (x, y) = BS.break isSpace bs
+    in if BS.map toLower x == "bearer"
+        then Just $ BS.dropWhile isSpace y
         else Nothing
 
 instance ToHttpApiData Token where

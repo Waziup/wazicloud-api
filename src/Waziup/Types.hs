@@ -30,6 +30,9 @@ import Keycloak as KC hiding (info, warn, debug, Scope, Username)
 
 type Username = Text
 type Password = Text
+type SensorsQuery = Text
+type SensorsLimit = Int
+type SensorsOffset = Int
 
 type Waziup a = ExceptT ServantErr IO a
 
@@ -42,7 +45,7 @@ type AuthAPI =
 
 type SensorsAPI = Flat ( 
   "sensors" :> Header "Authorization" Token :> 
-                (Get '[JSON] [Sensor] :<|>
+                (QueryParam "q" SensorsQuery :> QueryParam "limit" SensorsLimit :> QueryParam "offset" SensorsOffset :> Get '[JSON] [Sensor] :<|>
                  ReqBody '[JSON] Sensor :> PostNoContent '[JSON] NoContent :<|>
                  SensorAPI))
 

@@ -122,6 +122,7 @@ keycloakPost path dat mtok parser = do
       warn $ "Keycloak HTTP error: " ++ (show err)
       throwError $ HTTPError err
 
+-- Perform delete to Keycloak with default user.
 keycloakDeleteDef :: Path -> Maybe Token -> Keycloak ()
 keycloakDeleteDef path mtok = do
   (KCConfig baseUrl realm _ _ _ _ guestId guestPass) <- ask
@@ -130,7 +131,7 @@ keycloakDeleteDef path mtok = do
        Nothing -> getUserAuthToken guestId guestPass
   keycloakDelete path tok
 
--- Perform post to Keycloak.
+-- Perform delete to Keycloak.
 keycloakDelete :: Path -> Token -> Keycloak ()
 keycloakDelete path tok = do 
   (KCConfig baseUrl realm _ _ _ _ _ _) <- ask

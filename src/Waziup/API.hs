@@ -49,10 +49,10 @@ postAuth (AuthBody username password) = do
   tok <- runKeycloak (getUserAuthToken username password)
   return tok
 
-getSensors :: Maybe Token -> Waziup [Sensor]
-getSensors tok = do
+getSensors :: Maybe Token -> Maybe SensorsQuery -> Maybe SensorsLimit -> Maybe SensorsOffset -> Waziup [Sensor]
+getSensors tok mq mlimit moffset = do
   info "Get sensors"
-  sensors <- runOrion O.getSensorsOrion
+  sensors <- runOrion $ O.getSensorsOrion mq mlimit moffset
   ps <- runKeycloak (getAllPermissions tok)
   let sensors2 = filter (\s -> any (\p -> (rsname p) == (senId s)) ps) sensors
   return sensors2

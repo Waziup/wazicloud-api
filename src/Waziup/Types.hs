@@ -68,7 +68,7 @@ type SensorAPI = (
 type ProjectsAPI = Flat ( 
   "projects" :> Header "Authorization" Token :> 
                 (Get '[JSON] [Project] :<|>
-                 ReqBody '[JSON] Project :> Post '[JSON] ProjectId :<|>
+                 ReqBody '[JSON] Project :> Post '[PlainText] ProjectId :<|>
                  ProjectAPI))
 
 type ProjectAPI = (

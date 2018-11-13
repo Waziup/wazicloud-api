@@ -64,4 +64,5 @@ Executable waziup-servant
                      , mongoDB
                      , AesonBson
                      , bson
+                     , string-conversions
   default-language:    Haskell2010

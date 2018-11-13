@@ -21,12 +21,13 @@ import Servant
 import Servant.Server
 import Keycloak as KC hiding (info, warn, debug, Scope) 
 import qualified Orion as O
-import Mongo as M
+import Mongo as M hiding (info, warn, debug, Scope) 
 import Database.MongoDB as DB
 import Control.Monad.Catch as C
 import Servant.API.Flatten
 import Network.HTTP.Client (HttpException)
 import GHC.Generics (Generic)
+import System.Log.Logger
 
 
 server :: ServerT WaziupAPI Waziup
@@ -172,4 +173,11 @@ runMongo :: Action IO a -> Waziup a
 runMongo dbAction = do
   (WaziupConfig (MongoContext pipe mode db) _ _) <- ask
   liftIO $ access pipe mode db dbAction
+
+-- Logging
+warn, info, debug, err :: (MonadIO m) => String -> m ()
+debug s = liftIO $ debugM "API" s
+info s = liftIO $ infoM "API" s
+warn s = liftIO $ warningM "API" s
+err s = liftIO $ errorM "API" s
 

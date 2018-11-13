@@ -44,7 +44,6 @@ Executable waziup-servant
                      , wreq
                      , lens
                      , lens-aeson
-                     , http-querystring
                      , base64-bytestring
                      , split
                      , bytestring
@@ -61,4 +60,8 @@ Executable waziup-servant
                      , filepath
                      , word8
                      , base64-bytestring
+                     , unordered-containers
+                     , mongoDB
+                     , AesonBson
+                     , bson
   default-language:    Haskell2010

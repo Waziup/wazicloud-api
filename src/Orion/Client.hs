@@ -7,8 +7,8 @@ module Orion.Client where
 import           Network.Wreq as W
 import           Network.Wreq.Types
 import           Network.HTTP.Client (HttpException)
-import           Network.HTTP.Types.Method 
-import           Network.HTTP.QueryString
+import           Network.HTTP.Types.Method
+import           Network.HTTP.Types
 import           Data.Aeson as JSON
 import           Data.Aeson.BetterErrors as AB
 import           Data.Aeson.Casing
@@ -37,11 +37,11 @@ import           Debug.Trace
 
 getSensorsOrion :: Maybe Text -> Maybe Int -> Maybe Int -> Orion [Sensor]
 getSensorsOrion mq mlimit moffset = do
-  let query = catMaybes [Just ("type", "SensingDevice"),
-                         ((\a -> ("q", TE.encodeUtf8 a)) <$> mq),
-                         ((\a -> ("limit", C8.pack $ show a)) <$> mlimit),
-                         ((\a -> ("offset", C8.pack $ show a)) <$> moffset)]
-  ents <- orionGet (decodeUtf8 $ "/v2/entities&" <> (toString $ queryString query) )  (eachInArray parseEntity)
+  let (query :: Query) = [("type", Just ("SensingDevice" :: C8.ByteString)),
+               ("q", encodeUtf8 <$> mq),
+               ("limit", C8.pack . show <$> mlimit),
+               ("offset", C8.pack . show <$> moffset)]
+  ents <- orionGet (decodeUtf8 $ "v2/entities" <> (renderQuery True query))  (eachInArray parseEntity)
   return $ map getSensor ents
 
 getSensorOrion :: EntityId -> Orion Sensor

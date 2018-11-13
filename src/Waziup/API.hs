@@ -2,38 +2,44 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Waziup.API where
 
 import Waziup.Types
 import Waziup.Utils
-import Control.Monad.Except (ExceptT, throwError)
+import Control.Monad.Except (ExceptT, throwError, withExceptT, runExceptT)
 import Control.Monad.IO.Class
 import Control.Monad
+import Control.Monad.Reader
+import Control.Monad.Error.Class (MonadError)
 import Data.Maybe
 import Data.Proxy (Proxy(..))
 import Data.Text hiding (map, filter, foldl, any)
 import Servant
+import Servant.Server
 import Keycloak as KC hiding (info, warn, debug, Scope) 
 import qualified Orion as O
+import Mongo as M
+import Database.MongoDB as DB
 import Control.Monad.Catch as C
 import Servant.API.Flatten
 import Network.HTTP.Client (HttpException)
+import GHC.Generics (Generic)
 
 
-server :: Server (WaziupAPI)
-server = authServer 
-    :<|> sensorsServer
+server :: ServerT WaziupAPI Waziup
+server = authServer :<|> sensorsServer :<|> projectsServer
 
-authServer :: Server (AuthAPI)
-authServer = getPerms 
-        :<|> postAuth
+authServer :: ServerT AuthAPI Waziup
+authServer = getPerms :<|> postAuth
 
-sensorsServer :: Server (SensorsAPI)
-sensorsServer =  (getSensors 
-           :<|> postSensor
-           :<|> getSensor
-           :<|> deleteSensor)
+sensorsServer :: ServerT SensorsAPI Waziup
+sensorsServer = getSensors :<|> postSensor :<|> getSensor :<|> deleteSensor
+
+projectsServer :: ServerT ProjectsAPI Waziup
+projectsServer = getProjects :<|> postProject :<|> getProject :<|> deleteProject 
 
 getPerms :: Maybe Token -> Waziup [Perm]
 getPerms tok = do
@@ -110,9 +116,60 @@ deleteSensor tok sid = do
       throwError err500 {errBody = "Cannot delete sensor: KC Id not present"}
   return NoContent
 
+-- * Projects
+
+getProjects :: Maybe Token -> Waziup [Project]
+getProjects tok = do
+  info "Get projects"
+  projects <- runMongo $ M.getProjectsMongo
+  return projects -- TODO filter
+
+postProject :: Maybe Token -> Project -> Waziup ProjectId
+postProject tok p = do
+  info "Post project"
+  pid <- runMongo $ M.postProjectMongo p
+  return pid
+
+getProject :: Maybe Token -> ProjectId -> Waziup (Maybe Project)
+getProject tok pid = do
+  info "Get project"
+  project <- runMongo $ M.getProjectMongo pid
+  return project
+
+deleteProject :: Maybe Token -> ProjectId -> Waziup NoContent
+deleteProject tok pid = do
+  info "Delete project"
+  runMongo $ M.deleteProjectMongo pid
+  return NoContent
+
 waziupAPI :: Proxy WaziupAPI
 waziupAPI = Proxy
 
-waziupServer :: Application
-waziupServer = serve waziupAPI server
+nt :: WaziupConfig -> Waziup a -> Servant.Handler a
+nt s x = runReaderT x s
+
+waziupServer :: WaziupConfig -> Application
+waziupServer c = serve waziupAPI $ Servant.Server.hoistServer waziupAPI (nt c) server
+
+-- * Lifting
+runOrion :: O.Orion a -> Waziup a
+runOrion orion = do
+ WaziupConfig _ _ conf <- ask
+ e <- liftIO $ runExceptT $ runReaderT orion conf
+ case e of
+   Right res -> return res
+   Left err -> throwError $ fromOrionError err
+
+runKeycloak :: KC.Keycloak a -> Waziup a
+runKeycloak kc = do
+ (WaziupConfig _ conf _) <- ask
+ e <- liftIO $ runExceptT $ runReaderT kc conf
+ case e of
+   Right res -> return res
+   Left err -> throwError $ fromKCError err
+
+runMongo :: Action IO a -> Waziup a
+runMongo dbAction = do
+  (WaziupConfig (MongoContext pipe mode db) _ _) <- ask
+  liftIO $ access pipe mode db dbAction
 

@@ -4,18 +4,26 @@ module Main where
 
 import Network.Wai.Handler.Warp
 import Waziup.API
+import Waziup.Types 
 import System.Log.Logger
 import System.Log.Formatter
 import System.Log.Handler hiding (setLevel)
 import System.Log.Handler.Simple
 import System.Log.Handler.Log4jXML
 import System.IO
+import Mongo
+import Keycloak
+import Orion
+import Database.MongoDB as DB
 
 main :: IO ()
 main = do
   startLog "Waziup-log.xml"
   infoM "Main" "Running on http://localhost:8081"
-  run 8081 waziupServer
+  pipe <- DB.connect (host "127.0.0.1")
+  let mongoContext = MongoContext pipe DB.master "projects"
+  let conf = WaziupConfig mongoContext defaultKCConfig defaultOrionConfig 
+  run 8081 $ waziupServer conf
 
 startLog :: FilePath -> IO ()
 startLog fp = do

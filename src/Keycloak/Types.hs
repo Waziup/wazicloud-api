@@ -41,10 +41,10 @@ data KCConfig = KCConfig {
   adminLogin :: Text,
   adminPassword :: Text,
   guestLogin :: Text,
-  guestPassword :: Text}
+  guestPassword :: Text} deriving (Eq, Show)
 
-defaultConfig :: KCConfig
-defaultConfig = KCConfig {
+defaultKCConfig :: KCConfig
+defaultKCConfig = KCConfig {
   baseUrl = "http://localhost:8080/auth",
   realm = "waziup",
   clientId = "api-server",
@@ -84,14 +84,6 @@ parsePermission = do
     rsid    <- AB.key "rsid" asText
     scopes  <- AB.keyMay "scopes" (eachInArray asText) 
     return $ Permission rsname rsid (if (isJust scopes) then (fromJust scopes) else [])
-
---instance FromJSON Permission where
---  parseJSON (Object v) = do
---    rsname <- v .: "rsname"
---    rsid <- v .: "rsid"
---    scopes <- fromMaybe [] <$> v .:? "scopes"
---    return $ Permission rsname rsid (map (\s -> Scope Nothing s) scopes)
---  parseJSON _          = mzero
 
 data Owner = Owner {
   ownId   :: Maybe Text,

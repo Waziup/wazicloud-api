@@ -17,13 +17,6 @@ import qualified Data.ByteString.Lazy as BL
 import Network.HTTP.Client as HC
 import Data.Monoid
 
--- * Lifting
-runOrion :: O.Orion a -> ExceptT ServantErr IO a
-runOrion orion = withExceptT fromOrionError (runReaderT orion O.defaultOrionConfig)
-
-runKeycloak :: KC.Keycloak a -> ExceptT ServantErr IO a
-runKeycloak kc = withExceptT fromKCError (runReaderT kc defaultConfig)
-
 -- * error convertions
 fromOrionError :: O.OrionError -> ServantErr
 fromOrionError (O.HTTPError (HttpExceptionRequest _ (StatusCodeException r m))) 

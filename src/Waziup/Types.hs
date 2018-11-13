@@ -7,26 +7,31 @@
 
 module Waziup.Types where
 
-import Data.List (stripPrefix)
-import Data.Maybe (fromMaybe)
-import Data.Aeson
-import Data.Aeson.Types (Options(..), defaultOptions)
-import Data.Aeson.Casing
-import Data.Text (Text)
+import           Data.List (stripPrefix)
+import           Data.Maybe (fromMaybe)
+import           Data.Aeson
+import           Data.Aeson.Types (Options(..), defaultOptions, Pair)
+import           Data.Aeson.Casing
+import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Map as Map
-import GHC.Generics (Generic)
-import Data.Function ((&))
-import Data.Time
-import Data.Maybe
-import Data.Char
-import Data.Time.ISO8601
-import Control.Monad
-import Control.Monad.Except (ExceptT, throwError)
-import Control.Monad.Catch as C
-import Servant
-import Servant.API.Flatten
-import Keycloak as KC hiding (info, warn, debug, Scope, Username) 
+import qualified Data.HashMap.Strict as HM
+import           Data.Function ((&))
+import           Data.Time
+import           Data.Maybe
+import           Data.Char
+import           Data.Monoid
+import           Data.Time.ISO8601
+import           Control.Monad
+import           Control.Monad.Except (ExceptT, throwError)
+import           Control.Monad.Catch as C
+import           Control.Monad.Reader
+import           Servant
+import           Servant.API.Flatten
+import           Keycloak as KC hiding (info, warn, debug, Scope, Username) 
+import           GHC.Generics (Generic)
+import qualified Database.MongoDB as DB
+import qualified Orion.Types as O
 
 type Username = Text
 type Password = Text
@@ -34,10 +39,17 @@ type SensorsQuery = Text
 type SensorsLimit = Int
 type SensorsOffset = Int
 
-type Waziup a = ExceptT ServantErr IO a
+type Waziup = ReaderT WaziupConfig Servant.Handler
 
--- | Servant type-level API
-type WaziupAPI = "api" :> "v1" :> (AuthAPI :<|> SensorsAPI)
+data WaziupConfig = WaziupConfig {
+  mongoConf    :: DB.MongoContext,
+  keycloakConf :: KCConfig,
+  orionConf    :: O.OrionConfig
+  }
+
+-- | Waziup type-level API
+
+type WaziupAPI = "api" :> "v1" :> (AuthAPI :<|> SensorsAPI :<|> ProjectsAPI)
 
 type AuthAPI = 
   "auth" :>  ("permissions" :> Header "Authorization" Token :> Get '[JSON] [Perm]
@@ -53,6 +65,19 @@ type SensorAPI = (
   Capture "id" Text :> (Get '[JSON] Sensor :<|>
                         DeleteNoContent '[JSON] NoContent))
 
+type ProjectsAPI = Flat ( 
+  "projects" :> Header "Authorization" Token :> 
+                (Get '[JSON] [Project] :<|>
+                 ReqBody '[JSON] Project :> Post '[JSON] ProjectId :<|>
+                 ProjectAPI))
+
+type ProjectAPI = (
+  Capture "id" Text :> (Get '[JSON] (Maybe Project) :<|>
+                        DeleteNoContent '[JSON] NoContent))
+
+
+-- * Config
+
 -- | Server or client configuration, specifying the host and port to query or serve on.
 data ServerConfig = ServerConfig
   { configHost :: String   -- ^ Hostname to serve on, e.g. "127.0.0.1"
@@ -60,7 +85,9 @@ data ServerConfig = ServerConfig
   } deriving (Eq, Ord, Show, Read)
 
 
--- | 
+-- * Authentication & authorization
+
+-- | Auth details 
 data AuthBody = AuthBody
   { authBodyUsername :: Username
   , authBodyPassword :: Password
@@ -69,24 +96,55 @@ data AuthBody = AuthBody
 instance FromJSON AuthBody where
   parseJSON (Object v) = AuthBody <$> v .: "username" <*> v .: "password"
   parseJSON _          = mzero 
-  
--- | 
-data Error = Error
-  { errorError :: Text -- ^ 
-  , errorDescription :: Text -- ^ 
+
+-- | Permission
+data Perm = Perm
+  { permResource :: Text -- ^ 
+  , permScopes :: [Scope] -- ^ 
   } deriving (Show, Eq, Generic)
 
-instance FromJSON Error where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "error")
-instance ToJSON Error where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "error")
+instance FromJSON Perm where
+  parseJSON = genericParseJSON (removeFieldLabelPrefix True "perm")
+instance ToJSON Perm where
+  toJSON = genericToJSON (removeFieldLabelPrefix False "perm")
+
+data Scope = SensorsCreate
+           | SensorsUpdate
+           | SensorsView
+           | SensorsDelete
+           | SensorsDataCreate
+           | SensorsDataView
+   deriving (Generic, Eq)
+
+instance ToJSON Scope where
+  toJSON = toJSON . show
+instance FromJSON Scope
+
+readScope :: Text -> Maybe Scope
+readScope "sensors:create"      = Just SensorsCreate    
+readScope "sensors:update"      = Just SensorsUpdate    
+readScope "sensors:view"        = Just SensorsView      
+readScope "sensors:delete"      = Just SensorsDelete    
+readScope "sensors-data:create" = Just SensorsDataCreate
+readScope "sensors-data:view"   = Just SensorsDataView  
+readScope _                     = Nothing
+
+instance Show Scope where
+  show SensorsCreate     = "sensors:create"       
+  show SensorsUpdate     = "sensors:update"       
+  show SensorsView       = "sensors:view"         
+  show SensorsDelete     = "sensors:delete"       
+  show SensorsDataCreate = "sensors-data:create"  
+  show SensorsDataView   = "sensors-data:view"    
+
+-- * Sensors
 
 type SensorId   = Text
 type SensorName = Text
 type GatewayId  = Text
 type Domain     = Text
 
--- | 
+-- | one sensor 
 data Sensor = Sensor
   { senId           :: SensorId         -- ^ Unique ID of the sensor node
   , senGatewayId    :: Maybe GatewayId  -- ^ Unique ID of the gateway
@@ -137,13 +195,16 @@ instance FromJSON Location where
 instance ToJSON Location where
   toJSON = genericToJSON defaultOptions
 
+
+-- * Measurements
+
 type MeasId        = Text
 type MeasName      = Text
 type SensingDevice = Text
 type QuantityKind  = Text
 type Unit          = Text
 
--- | 
+-- | one measurement 
 data Measurement = Measurement
   { measId            :: MeasId                 -- ^ ID of the measurement
   , measName          :: Maybe MeasName         -- ^ name of the measurement
@@ -159,7 +220,7 @@ instance ToJSON Measurement where
   toJSON = genericToJSON $ aesonDrop 4 snakeCase
 
 
--- | 
+-- | measurement value 
 data MeasurementValue = MeasurementValue
   { measValue        :: Value          -- ^ value of the measurement
   , measTimestamp    :: Maybe UTCTime  -- ^ time of the measurement
@@ -172,9 +233,11 @@ instance ToJSON MeasurementValue where
   toJSON = genericToJSON $ aesonDrop 4 snakeCase
 
 
-type NotifId        = Text
+-- * Notifications
 
--- | 
+type NotifId  = Text
+
+-- | one notification
 data Notification = Notification
   { notifId           :: NotifId -- ^ id of the notification (attributed by the server)
   , notifDescription  :: Text    -- ^ Description of the notification
@@ -188,7 +251,7 @@ instance FromJSON Notification where
 instance ToJSON Notification where
   toJSON = genericToJSON $ aesonDrop 5 snakeCase
 
--- | 
+-- | notification condition
 data NotificationCondition = NotificationCondition
   { notifCondAttrs      :: [MeasId] -- ^ Ids of the measurements to watch 
   , notifCondExpression :: Text     -- ^ Expression for the condition, such as TC>40
@@ -199,7 +262,7 @@ instance FromJSON NotificationCondition where
 instance ToJSON NotificationCondition where
   toJSON = genericToJSON (removeFieldLabelPrefix False "notificationCondition")
 
--- | 
+-- | notification subject
 data NotificationSubject = NotificationSubject
   { notificationSubjectEntityNames :: [SensorId]          -- ^ Ids of the sensors to watch
   , notificationSubjectCondition :: NotificationCondition -- ^ Condition of the notification
@@ -210,45 +273,8 @@ instance FromJSON NotificationSubject where
 instance ToJSON NotificationSubject where
   toJSON = genericToJSON (removeFieldLabelPrefix False "notificationSubject")
 
--- | 
-data Perm = Perm
-  { permResource :: Text -- ^ 
-  , permScopes :: [Scope] -- ^ 
-  } deriving (Show, Eq, Generic)
 
-instance FromJSON Perm where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "perm")
-instance ToJSON Perm where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "perm")
-
-data Scope = SensorsCreate
-           | SensorsUpdate
-           | SensorsView
-           | SensorsDelete
-           | SensorsDataCreate
-           | SensorsDataView
-   deriving (Generic, Eq)
-
-instance ToJSON Scope where
-  toJSON = toJSON . show
-instance FromJSON Scope
-
-readScope :: Text -> Maybe Scope
-readScope "sensors:create"      = Just SensorsCreate    
-readScope "sensors:update"      = Just SensorsUpdate    
-readScope "sensors:view"        = Just SensorsView      
-readScope "sensors:delete"      = Just SensorsDelete    
-readScope "sensors-data:create" = Just SensorsDataCreate
-readScope "sensors-data:view"   = Just SensorsDataView  
-readScope _                     = Nothing
-
-instance Show Scope where
-  show SensorsCreate     = "sensors:create"       
-  show SensorsUpdate     = "sensors:update"       
-  show SensorsView       = "sensors:view"         
-  show SensorsDelete     = "sensors:delete"       
-  show SensorsDataCreate = "sensors-data:create"  
-  show SensorsDataView   = "sensors-data:view"    
+-- * Socials
 
 data Channel = Twitter | SMS | Voice deriving (Show, Eq, Generic)
 type SocialMessageText = Text
@@ -280,7 +306,7 @@ instance FromJSON SocialMessageBatch where
 instance ToJSON SocialMessageBatch where
   toJSON = genericToJSON (removeFieldLabelPrefix False "socialMessageBatch")
 
--- | 
+-- | User 
 data User = User
   { userId :: Text -- ^ 
   , userUsername :: Username -- ^ 
@@ -310,6 +336,48 @@ instance FromJSON HistoricalValue where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "historicalValue")
 instance ToJSON HistoricalValue where
   toJSON = genericToJSON (removeFieldLabelPrefix False "historicalValue")
+
+-- * Projects
+type DeviceId = Text
+type ProjectId = Text
+
+data Project = Project
+  { pName :: Text,
+    pDevices :: [DeviceId],
+    pGateways :: [GatewayId] 
+  } deriving (Show, Eq, Generic)
+
+instance ToJSON Project where
+   toJSON = genericToJSON $ aesonDrop 1 snakeCase
+instance FromJSON Project where
+   parseJSON = genericParseJSON $ aesonDrop 1 snakeCase
+
+data ProjectRead = ProjectRead {
+  pId :: ProjectId,
+  pProject :: Project} deriving (Show, Eq, Generic)
+  
+instance ToJSON ProjectRead where
+   toJSON (ProjectRead pId pProject) = 
+     object $ ["_id" .= pId] <> (fromObject $ toJSON pProject)
+instance FromJSON ProjectRead where
+   parseJSON = genericParseJSON $ aesonDrop 1 snakeCase
+
+fromObject :: Value -> [Pair]
+fromObject (Object ps) = HM.toList ps
+
+-- | Error message 
+data Error = Error
+  { errorError :: Text -- ^ 
+  , errorDescription :: Text -- ^ 
+  } deriving (Show, Eq, Generic)
+
+instance FromJSON Error where
+  parseJSON = genericParseJSON (removeFieldLabelPrefix True "error")
+instance ToJSON Error where
+  toJSON = genericToJSON (removeFieldLabelPrefix False "error")
+
+
+-- * Helpers
 
 unCapitalize :: String -> String
 unCapitalize (c:cs) = toLower c : cs

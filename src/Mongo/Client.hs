@@ -31,10 +31,6 @@ postProjectMongo p = do
        _ -> error "Wrong object format"
   res <- insert "projects" (bsonify ob)
   return $ convertString $ show res
-  --debug $ show res
-  --case res of
-  --  BSON.String s -> return s
-  --  _ -> error "Wrong id format"
 
 getProjectMongo :: ProjectId -> Action IO (Maybe Project)
 getProjectMongo pid = do

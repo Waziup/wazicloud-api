@@ -3,7 +3,7 @@
 module Main where
 
 import Network.Wai.Handler.Warp
-import Waziup.API
+import Waziup.Server
 import Waziup.Types 
 import System.Log.Logger
 import System.Log.Formatter

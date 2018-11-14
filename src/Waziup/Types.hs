@@ -33,50 +33,16 @@ import           GHC.Generics (Generic)
 import qualified Database.MongoDB as DB
 import qualified Orion.Types as O
 
-type Username = Text
-type Password = Text
-type SensorsQuery = Text
-type SensorsLimit = Int
-type SensorsOffset = Int
 
+-- Waziup Monad
 type Waziup = ReaderT WaziupConfig Servant.Handler
 
+-- * Config
 data WaziupConfig = WaziupConfig {
   mongoConf    :: DB.MongoContext,
   keycloakConf :: KCConfig,
   orionConf    :: O.OrionConfig
   }
-
--- | Waziup type-level API
-
-type WaziupAPI = "api" :> "v1" :> (AuthAPI :<|> SensorsAPI :<|> ProjectsAPI)
-
-type AuthAPI = 
-  "auth" :>  ("permissions" :> Header "Authorization" Token :> Get '[JSON] [Perm]
-         :<|> "token"       :> ReqBody '[JSON] AuthBody :> Post '[PlainText] Token)
-
-type SensorsAPI = Flat ( 
-  "sensors" :> Header "Authorization" Token :> 
-                (QueryParam "q" SensorsQuery :> QueryParam "limit" SensorsLimit :> QueryParam "offset" SensorsOffset :> Get '[JSON] [Sensor] :<|>
-                 ReqBody '[JSON] Sensor :> PostNoContent '[JSON] NoContent :<|>
-                 SensorAPI))
-
-type SensorAPI = (
-  Capture "id" Text :> (Get '[JSON] Sensor :<|>
-                        DeleteNoContent '[JSON] NoContent))
-
-type ProjectsAPI = Flat ( 
-  "projects" :> Header "Authorization" Token :> 
-                (Get '[JSON] [Project] :<|>
-                 ReqBody '[JSON] Project :> Post '[PlainText] ProjectId :<|>
-                 ProjectAPI))
-
-type ProjectAPI = (
-  Capture "id" Text :> (Get '[JSON] (Maybe Project) :<|>
-                        DeleteNoContent '[JSON] NoContent))
-
-
--- * Config
 
 -- | Server or client configuration, specifying the host and port to query or serve on.
 data ServerConfig = ServerConfig
@@ -86,6 +52,9 @@ data ServerConfig = ServerConfig
 
 
 -- * Authentication & authorization
+
+type Username = Text
+type Password = Text
 
 -- | Auth details 
 data AuthBody = AuthBody
@@ -139,10 +108,13 @@ instance Show Scope where
 
 -- * Sensors
 
-type SensorId   = Text
-type SensorName = Text
-type GatewayId  = Text
-type Domain     = Text
+type SensorId      = Text
+type SensorName    = Text
+type GatewayId     = Text
+type Domain        = Text
+type SensorsQuery  = Text
+type SensorsLimit  = Int
+type SensorsOffset = Int
 
 -- | one sensor 
 data Sensor = Sensor
@@ -341,29 +313,29 @@ instance ToJSON HistoricalValue where
 type DeviceId = Text
 type ProjectId = Text
 
+-- * A project
 data Project = Project
-  { pName :: Text,
-    pDevices :: [DeviceId],
+  { pId       :: Maybe ProjectId,
+    pName     :: Text,
+    pDevices  :: [DeviceId],
     pGateways :: [GatewayId] 
   } deriving (Show, Eq, Generic)
 
 instance ToJSON Project where
-   toJSON = genericToJSON $ aesonDrop 1 snakeCase
+   toJSON (Project pId pName pDev pGate) = 
+     object $ ["id"       .= pId,
+               "name"     .= pName,
+               "devices"  .= pDev,
+               "gateways" .= pGate]
 instance FromJSON Project where
-   parseJSON = genericParseJSON $ aesonDrop 1 snakeCase
+  parseJSON (Object v) = Project <$> v .:? "_id" 
+                                 <*> v .:  "name"
+                                 <*> v .:  "devices"
+                                 <*> v .:  "gateways"
+  parseJSON _          = mzero 
 
-data ProjectRead = ProjectRead {
-  pId :: ProjectId,
-  pProject :: Project} deriving (Show, Eq, Generic)
-  
-instance ToJSON ProjectRead where
-   toJSON (ProjectRead pId pProject) = 
-     object $ ["_id" .= pId] <> (fromObject $ toJSON pProject)
-instance FromJSON ProjectRead where
-   parseJSON = genericParseJSON $ aesonDrop 1 snakeCase
-
-fromObject :: Value -> [Pair]
-fromObject (Object ps) = HM.toList ps
+--fromObject :: Value -> [Pair]
+--fromObject (Object ps) = HM.toList ps
 
 -- | Error message 
 data Error = Error

@@ -140,8 +140,12 @@ getProject tok pid = do
 deleteProject :: Maybe Token -> ProjectId -> Waziup NoContent
 deleteProject tok pid = do
   info "Delete project"
-  runMongo $ M.deleteProjectMongo pid
-  return NoContent
+  res <- runMongo $ M.deleteProjectMongo pid
+  if res
+    then return NoContent
+    else throwError err404 {errBody = "Cannot delete project: id not found"}
+
+-- * Server
 
 waziupAPI :: Proxy WaziupAPI
 waziupAPI = Proxy

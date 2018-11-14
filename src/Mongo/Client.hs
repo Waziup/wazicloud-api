@@ -45,11 +45,11 @@ getProjectMongo pid = do
 
 deleteProjectMongo :: ProjectId -> Action IO Bool 
 deleteProjectMongo pid = do
-  let sel = select ["_id" =: (ObjId $ read $ convertString pid)] "projects"
-  mdoc <- findOne sel 
+  let sel = ["_id" =: (ObjId $ read $ convertString pid)]
+  mdoc <- findOne (select sel "projects")
   case mdoc of
      Just _ -> do
-       delete sel  
+       delete (select sel "projects")
        return True
      _ -> return False 
 

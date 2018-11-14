@@ -41,7 +41,7 @@ sensorsServer :: ServerT SensorsAPI Waziup
 sensorsServer = getSensors :<|> postSensor :<|> getSensor :<|> deleteSensor
 
 projectsServer :: ServerT ProjectsAPI Waziup
-projectsServer = getProjects :<|> postProject :<|> getProject :<|> deleteProject 
+projectsServer = getProjects :<|> postProject :<|> getProject :<|> deleteProject :<|> putProjectDevices :<|> putProjectGateways
 
 getPerms :: Maybe Token -> Waziup [Perm]
 getPerms tok = do
@@ -132,11 +132,13 @@ postProject tok p = do
   pid <- runMongo $ M.postProjectMongo p
   return pid
 
-getProject :: Maybe Token -> ProjectId -> Waziup (Maybe Project)
+getProject :: Maybe Token -> ProjectId -> Waziup Project
 getProject tok pid = do
   info "Get project"
-  project <- runMongo $ M.getProjectMongo pid
-  return project
+  mp <- runMongo $ M.getProjectMongo pid
+  case mp of
+    Just p -> return p
+    Nothing -> throwError err404 {errBody = "Cannot get project: id not found"}
 
 deleteProject :: Maybe Token -> ProjectId -> Waziup NoContent
 deleteProject tok pid = do
@@ -145,6 +147,23 @@ deleteProject tok pid = do
   if res
     then return NoContent
     else throwError err404 {errBody = "Cannot delete project: id not found"}
+
+putProjectDevices :: Maybe Token -> ProjectId -> [DeviceId] -> Waziup NoContent
+putProjectDevices tok pid ids = do
+  info "Put project devices"
+  res <- runMongo $ M.putProjectDevicesMongo pid ids
+  if res
+    then return NoContent
+    else throwError err404 {errBody = "Cannot update project: id not found"}
+
+putProjectGateways :: Maybe Token -> ProjectId -> [GatewayId] -> Waziup NoContent
+putProjectGateways tok pid ids = do
+  info "Put project gateways"
+  res <- runMongo $ M.putProjectGatewaysMongo pid ids
+  if res
+    then return NoContent
+    else throwError err404 {errBody = "Cannot update project: id not found"}
+
 
 -- * Server
 

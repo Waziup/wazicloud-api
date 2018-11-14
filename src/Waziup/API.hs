@@ -39,6 +39,8 @@ type ProjectsAPI = Flat (
                  ProjectAPI))
 
 type ProjectAPI = (
-  Capture "id" Text :> (Get '[JSON] (Maybe Project) :<|>
-                        DeleteNoContent '[JSON] NoContent))
+  Capture "id" Text :> (Get '[JSON] Project :<|>
+                        DeleteNoContent '[JSON] NoContent :<|>
+                        "devices" :> ReqBody '[JSON] [DeviceId] :> PutNoContent '[JSON] NoContent :<|>
+                        "gateways" :> ReqBody '[JSON] [GatewayId] :> PutNoContent '[JSON] NoContent))
 

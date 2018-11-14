@@ -49,6 +49,26 @@ deleteProjectMongo pid = do
        return True
      _ -> return False 
 
+putProjectGatewaysMongo :: ProjectId -> [GatewayId] -> Action IO Bool
+putProjectGatewaysMongo pid ids = do
+  let sel = ["_id" =: (ObjId $ read $ convertString pid)]
+  mdoc <- findOne (select sel "projects")
+  case mdoc of
+     Just _ -> do
+       modify (select sel "projects") [ "$set" := Doc ["gateways" := val ids]]
+       return True
+     _ -> return False 
+
+putProjectDevicesMongo :: ProjectId -> [DeviceId] -> Action IO Bool
+putProjectDevicesMongo pid ids = do
+  let sel = ["_id" =: (ObjId $ read $ convertString pid)]
+  mdoc <- findOne (select sel "projects")
+  case mdoc of
+     Just _ -> do
+       modify (select sel "projects") ["devices" := (val ids)]
+       return True
+     _ -> return False 
+
 debug, warn, info, err :: (MonadIO m) => String -> m ()
 debug s = liftIO $ debugM "Mongo" s
 info s  = liftIO $ infoM "Mongo" s

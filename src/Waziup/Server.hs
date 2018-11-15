@@ -170,16 +170,16 @@ putProjectGateways tok pid ids = do
 waziupAPI :: Proxy WaziupAPI
 waziupAPI = Proxy
 
-nt :: WaziupConfig -> Waziup a -> Servant.Handler a
+nt :: WaziupInfo -> Waziup a -> Servant.Handler a
 nt s x = runReaderT x s
 
-waziupServer :: WaziupConfig -> Application
+waziupServer :: WaziupInfo -> Application
 waziupServer c = serve waziupAPI $ Servant.Server.hoistServer waziupAPI (nt c) server
 
 -- * Lifting
 runOrion :: O.Orion a -> Waziup a
 runOrion orion = do
- WaziupConfig _ _ conf <- ask
+ (WaziupInfo _ (WaziupConfig _ _ _ conf)) <- ask
  e <- liftIO $ runExceptT $ runReaderT orion conf
  case e of
    Right res -> return res
@@ -187,7 +187,7 @@ runOrion orion = do
 
 runKeycloak :: KC.Keycloak a -> Waziup a
 runKeycloak kc = do
- (WaziupConfig _ conf _) <- ask
+ (WaziupInfo _ (WaziupConfig _ _ conf _)) <- ask
  e <- liftIO $ runExceptT $ runReaderT kc conf
  case e of
    Right res -> return res
@@ -195,13 +195,13 @@ runKeycloak kc = do
 
 runMongo :: Action IO a -> Waziup a
 runMongo dbAction = do
-  (WaziupConfig (MongoContext pipe mode db) _ _) <- ask
-  liftIO $ access pipe mode db dbAction
+  (WaziupInfo pipe _) <- ask
+  liftIO $ access pipe DB.master "projects" dbAction
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()
 debug s = liftIO $ debugM "API" s
-info s = liftIO $ infoM "API" s
-warn s = liftIO $ warningM "API" s
-err s = liftIO $ errorM "API" s
+info  s = liftIO $ infoM "API" s
+warn  s = liftIO $ warningM "API" s
+err   s = liftIO $ errorM "API" s
 

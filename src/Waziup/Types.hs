@@ -32,24 +32,36 @@ import           Keycloak as KC hiding (info, warn, debug, Scope, Username)
 import           GHC.Generics (Generic)
 import qualified Database.MongoDB as DB
 import qualified Orion.Types as O
+import qualified Mongo.Types as M
 
 
 -- Waziup Monad
-type Waziup = ReaderT WaziupConfig Servant.Handler
+type Waziup = ReaderT WaziupInfo Servant.Handler
+
+data WaziupInfo = WaziupInfo {
+  dbPipe :: DB.Pipe,
+  waziupConfig :: WaziupConfig
+  }
 
 -- * Config
 data WaziupConfig = WaziupConfig {
-  mongoConf    :: DB.MongoContext,
+  serverConf   :: ServerConfig,
+  mongoConf    :: M.MongoConfig,
   keycloakConf :: KCConfig,
   orionConf    :: O.OrionConfig
-  }
+  } deriving (Eq, Show)
 
 -- | Server or client configuration, specifying the host and port to query or serve on.
 data ServerConfig = ServerConfig
   { configHost :: String   -- ^ Hostname to serve on, e.g. "127.0.0.1"
   , configPort :: Int      -- ^ Port to serve on, e.g. 8080
-  } deriving (Eq, Ord, Show, Read)
+  } deriving (Eq, Show, Read)
 
+defaultServerConfig :: ServerConfig
+defaultServerConfig = ServerConfig {
+  configHost = "http://localhost:3000",
+  configPort = 3000
+  }
 
 -- * Authentication & authorization
 

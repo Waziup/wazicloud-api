@@ -28,15 +28,11 @@ data OrionError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
 
 data OrionConfig = OrionConfig {
   orionUrl      :: Text,
-  fiwareService :: Text,
-  attrs         :: Text,
-  metadata      :: Text}
+  fiwareService :: Text} deriving (Show, Eq)
 
 defaultOrionConfig = OrionConfig {
   orionUrl      = "http://localhost:1026",
-  fiwareService = "waziup",
-  attrs         = "dateModified,dateCreated,*",
-  metadata      = "dateModified,dateCreated,*"}
+  fiwareService = "waziup"}
 
 type EntityId = Text
 type EntityType = Text

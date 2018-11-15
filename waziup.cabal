@@ -65,4 +65,5 @@ Executable waziup-servant
                      , AesonBson
                      , bson
                      , string-conversions
+                     , optparse-applicative
   default-language:    Haskell2010

@@ -24,6 +24,7 @@ import qualified Data.HashMap.Strict as H
 import qualified Data.Vector as V
 import qualified Data.ByteString.Char8 as C8
 import qualified Data.ByteString.Lazy as BSL
+import           Data.String.Conversions
 import           Control.Lens hiding ((.=))
 import           Control.Monad.Reader
 import           Control.Monad.Except (ExceptT, throwError, MonadError, catchError)
@@ -62,11 +63,11 @@ deleteSensorOrion eid = orionDelete ("/v2/entities/" <> eid)
 -- Perform request to Orion.
 orionGet :: (Show b) => Path -> Parse Text b -> Orion b
 orionGet path parser = do 
-  orionOpts@(OrionConfig baseUrl _ _ _) <- ask 
+  orionOpts@(OrionConfig baseUrl service) <- ask 
   let opts = defaults &
-       header "Fiware-Service" .~ [encodeUtf8 $ fiwareService orionOpts] &
-       param  "attrs"          .~ [attrs orionOpts] &
-       param  "metadata"       .~ [metadata orionOpts] 
+       header "Fiware-Service" .~ [convertString service] &
+       param  "attrs"          .~ ["dateModified,dateCreated,*"] &
+       param  "metadata"       .~ ["dateModified,dateCreated,*"] 
   let url = (unpack $ baseUrl <> path) 
   info $ "Issuing ORION GET with url: " ++ (show url) 
   debug $ "  headers: " ++ (show $ opts ^. W.headers) 
@@ -87,11 +88,11 @@ orionGet path parser = do
 
 orionPost :: (Postable dat, Show dat) => Path -> dat -> Orion ()
 orionPost path dat = do 
-  orionOpts@(OrionConfig baseUrl _ _ _) <- ask 
+  orionOpts@(OrionConfig baseUrl service) <- ask 
   let opts = defaults &
-       header "Fiware-Service" .~ [encodeUtf8 $ fiwareService orionOpts] &
-       param  "attrs"          .~ [attrs orionOpts] &
-       param  "metadata"       .~ [metadata orionOpts] 
+       header "Fiware-Service" .~ [convertString service] &
+       param  "attrs"          .~ ["dateModified,dateCreated,*"] &
+       param  "metadata"       .~ ["dateModified,dateCreated,*"] 
   let url = (unpack $ baseUrl <> path) 
   info $ "Issuing ORION POST with url: " ++ (show url) 
   debug $ "  data: " ++ (show dat) 
@@ -105,11 +106,11 @@ orionPost path dat = do
 
 orionDelete :: Path -> Orion ()
 orionDelete path = do 
-  orionOpts@(OrionConfig baseUrl _ _ _) <- ask 
+  orionOpts@(OrionConfig baseUrl service) <- ask 
   let opts = defaults &
-       header "Fiware-Service" .~ [encodeUtf8 $ fiwareService orionOpts] &
-       param  "attrs"          .~ [attrs orionOpts] &
-       param  "metadata"       .~ [metadata orionOpts] 
+       header "Fiware-Service" .~ [convertString service] &
+       param  "attrs"          .~ ["dateModified,dateCreated,*"] &
+       param  "metadata"       .~ ["dateModified,dateCreated,*"] 
   let url = (unpack $ baseUrl <> path) 
   info $ "Issuing ORION DELETE with url: " ++ (show url) 
   debug $ "  headers: " ++ (show $ opts ^. W.headers) 

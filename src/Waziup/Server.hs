@@ -18,6 +18,9 @@ import Control.Monad.Error.Class (MonadError)
 import Data.Maybe
 import Data.Proxy (Proxy(..))
 import Data.Text hiding (map, filter, foldl, any)
+import Data.String.Conversions
+import Data.Aeson.BetterErrors as AB
+import qualified Data.ByteString as BS
 import Servant
 import Servant.Server
 import Keycloak as KC hiding (info, warn, debug, Scope) 
@@ -29,10 +32,12 @@ import Servant.API.Flatten
 import Network.HTTP.Client (HttpException)
 import GHC.Generics (Generic)
 import System.Log.Logger
-
+import Paths_Waziup_Servant
+import System.FilePath ((</>))
+import           Data.Aeson
 
 server :: ServerT WaziupAPI Waziup
-server = authServer :<|> sensorsServer :<|> projectsServer
+server = authServer :<|> sensorsServer :<|> projectsServer :<|> ontologiesServer
 
 authServer :: ServerT AuthAPI Waziup
 authServer = getPerms :<|> postAuth
@@ -42,6 +47,9 @@ sensorsServer = getSensors :<|> postSensor :<|> getSensor :<|> deleteSensor
 
 projectsServer :: ServerT ProjectsAPI Waziup
 projectsServer = getProjects :<|> postProject :<|> getProject :<|> deleteProject :<|> putProjectDevices :<|> putProjectGateways
+
+ontologiesServer :: ServerT OntologiesAPI Waziup
+ontologiesServer = getSensingDevices :<|> getQuantityKinds :<|> getUnits
 
 getPerms :: Maybe Token -> Waziup [Perm]
 getPerms tok = do
@@ -164,6 +172,37 @@ putProjectGateways tok pid ids = do
     then return NoContent
     else throwError err404 {errBody = "Cannot update project: id not found"}
 
+-- * Ontologies
+
+getSensingDevices :: Waziup [SensingDeviceInfo]
+getSensingDevices = do
+  dir <- liftIO $ getDataDir
+  msd <- liftIO $ BS.readFile $ dir </> "ontologies" </> "sensing_devices.json"
+  case AB.parse (eachInArray parseSDI) (convertString msd) of
+    Right sd -> return sd
+    Left (e :: ParseError String) -> do
+      error $ "Cannot decode data file: " ++ (show e)
+      throwError err500 {errBody = "Cannot decode data file"}
+
+getQuantityKinds :: Waziup [QuantityKindInfo]
+getQuantityKinds = do
+  dir <- liftIO getDataDir
+  mqk <- liftIO $ BS.readFile $ dir </> "ontologies" </> "quantity_kinds.json"
+  case AB.parse (eachInArray parseQKI) (convertString mqk) of
+    Right qk -> return qk
+    Left (e :: ParseError String) -> do
+      error $ "Cannot decode data file: " ++ (show e)
+      throwError err500 {errBody = "Cannot decode data file"}
+
+getUnits :: Waziup [UnitInfo]
+getUnits = do
+  dir <- liftIO getDataDir
+  mus <- liftIO $ BS.readFile $ dir </> "ontologies" </> "units.json"
+  case AB.parse (eachInArray parseUnit) (convertString mus) of
+    Right us -> return us
+    Left (e :: ParseError String) -> do
+      error $ "Cannot decode data file: " ++ (show e)
+      throwError err500 {errBody = "Cannot decode data file"}
 
 -- * Server
 
@@ -179,7 +218,7 @@ waziupServer c = serve waziupAPI $ Servant.Server.hoistServer waziupAPI (nt c) s
 -- * Lifting
 runOrion :: O.Orion a -> Waziup a
 runOrion orion = do
- (WaziupInfo _ (WaziupConfig _ _ _ conf)) <- ask
+ (WaziupInfo _ (WaziupConfig _ _ _ conf) _) <- ask
  e <- liftIO $ runExceptT $ runReaderT orion conf
  case e of
    Right res -> return res
@@ -187,7 +226,7 @@ runOrion orion = do
 
 runKeycloak :: KC.Keycloak a -> Waziup a
 runKeycloak kc = do
- (WaziupInfo _ (WaziupConfig _ _ conf _)) <- ask
+ (WaziupInfo _ (WaziupConfig _ _ conf _) _) <- ask
  e <- liftIO $ runExceptT $ runReaderT kc conf
  case e of
    Right res -> return res
@@ -195,7 +234,7 @@ runKeycloak kc = do
 
 runMongo :: Action IO a -> Waziup a
 runMongo dbAction = do
-  (WaziupInfo pipe _) <- ask
+  (WaziupInfo pipe _ _) <- ask
   liftIO $ access pipe DB.master "projects" dbAction
 
 -- Logging

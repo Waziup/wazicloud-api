@@ -8,8 +8,12 @@ import Network.Wai.Handler.Warp
 import Waziup.Server
 import Waziup.Types 
 import Data.Maybe
-import Data.Text
+import Data.Text hiding (map, any)
 import Data.String.Conversions
+import Data.Aeson.BetterErrors as AB
+import qualified Data.ByteString as BS
+import Data.Validation
+import Data.Foldable
 import System.Log.Logger
 import System.Log.Formatter
 import System.Log.Handler hiding (setLevel)
@@ -21,9 +25,12 @@ import Mongo
 import Keycloak hiding (try)
 import Orion hiding (try)
 import Database.MongoDB as DB hiding (value)
-import Options.Applicative as Opts
+import Options.Applicative as Opts hiding (Success, Failure)
 import Control.Exception
 import Control.Monad.IO.Class
+import Control.Applicative.Lift
+import System.FilePath ((</>))
+import Paths_Waziup_Servant
 
 main :: IO ()
 main = do
@@ -37,9 +44,9 @@ main = do
   let pipe = case epipe of
        Right pipe -> pipe
        Left e -> error "Cannot connect to MongoDB"
-  --let mongoContext = MongoContext pipe DB.master "projects"
-  infoM "Main" "Running on http://localhost:8081"
-  run 8081 $ waziupServer $ WaziupInfo pipe conf
+  ontologies <- loadOntologies
+  Main.info "Running on http://localhost:8081"
+  run 8081 $ waziupServer $ WaziupInfo pipe conf ontologies
 
 opts :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> ParserInfo WaziupConfig
 opts serv m kc o = Opts.info ((waziupConfigParser serv m kc o) <**> helper) parserInfo
@@ -97,9 +104,74 @@ startLog fp = do
    updateGlobalLogger rootLoggerName (addHandler log4jHandler)
    updateGlobalLogger rootLoggerName (setLevel DEBUG)
 
+loadOntologies :: IO Ontologies
+loadOntologies = do
+  sds <- loadSensingDevices
+  qks <- loadQuantityKinds
+  us <- loadUnits
+  sdOK <- case checkSensingDevices sds qks of
+       Success _ -> do
+         Main.debug "Sensing devices ontology is correct"
+         return True
+       Failure errs -> do
+         mapM_ Main.err errs
+         return False
+  qkOK <- case checkQuantityKinds qks us of
+       Success _ -> do
+          Main.debug "Quantity kinds ontology is correct"
+          return True
+       Failure errs -> do
+         mapM_ Main.err errs
+         return False
+  if sdOK && qkOK 
+    then return $ Ontologies sds qks us
+    else error "Sensing devices ontology is not correct"
+ 
+loadSensingDevices :: IO [SensingDeviceInfo]
+loadSensingDevices = do
+  dir <- liftIO $ getDataDir
+  msd <- liftIO $ BS.readFile $ dir </> "ontologies" </> "sensing_devices.json"
+  case AB.parse (eachInArray parseSDI) (convertString msd) of
+    Right sd -> return sd
+    Left (e :: AB.ParseError String) -> error $ "Cannot decode data file: " ++ (show e)
+
+loadQuantityKinds :: IO [QuantityKindInfo]
+loadQuantityKinds = do
+  dir <- liftIO getDataDir
+  mqk <- liftIO $ BS.readFile $ dir </> "ontologies" </> "quantity_kinds.json"
+  case AB.parse (eachInArray parseQKI) (convertString mqk) of
+    Right qk -> return qk
+    Left (e :: AB.ParseError String) -> error $ "Cannot decode data file: " ++ (show e)
+
+loadUnits :: IO [UnitInfo]
+loadUnits = do
+  dir <- liftIO getDataDir
+  mus <- liftIO $ BS.readFile $ dir </> "ontologies" </> "units.json"
+  case AB.parse (eachInArray parseUnit) (convertString mus) of
+    Right us -> return us
+    Left (e :: AB.ParseError String) -> error $ "Cannot decode data file: " ++ (show e)
+
+checkSensingDevices :: [SensingDeviceInfo] -> [QuantityKindInfo] -> Validation [String] ()
+checkSensingDevices sds qks = sequenceA_ $ map (isSDValid qks) sds
+
+isSDValid :: [QuantityKindInfo] -> SensingDeviceInfo -> Validation [String] ()
+isSDValid qks (SensingDeviceInfo id _ qks') = sequenceA_ $ map (\qk -> if isQKValid qks qk then Success () else Failure [("quantity kind " ++ (show $ qk) ++ " referenced by sensing device " ++ (show id) ++ " is not defined")]) qks' 
+
+isQKValid :: [QuantityKindInfo] -> QuantityKind -> Bool
+isQKValid qks id = any (\(QuantityKindInfo id' _ _) -> id == id') qks
+
+checkQuantityKinds :: [QuantityKindInfo] -> [UnitInfo] -> Validation [String] ()
+checkQuantityKinds qks us = sequenceA_ $ map (isQKInfoValid us) qks
+
+isQKInfoValid :: [UnitInfo] -> QuantityKindInfo -> Validation [String] ()
+isQKInfoValid us (QuantityKindInfo id _ us') = sequenceA_ $ map (\u -> if isUnitValid us u then Success () else Failure [("unit " ++ (show $ u) ++ " referenced by quantity kind " ++ (show id) ++ " is not defined")]) us' 
+
+isUnitValid :: [UnitInfo] -> Unit -> Bool
+isUnitValid us id = any (\(UnitInfo id' _) -> id == id') us
+
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()
-debug s = liftIO $ debugM "API" s
-info s = liftIO $ infoM "API" s
-warn s = liftIO $ warningM "API" s
-err s = liftIO $ errorM "API" s
+debug s = liftIO $ debugM "Main" s
+info s  = liftIO $ infoM "Main" s
+warn s  = liftIO $ warningM "Main" s
+err s   = liftIO $ errorM "Main" s

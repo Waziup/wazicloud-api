@@ -9,7 +9,7 @@ module Waziup.Types where
 
 import           Data.List (stripPrefix)
 import           Data.Maybe (fromMaybe)
-import           Data.Aeson
+import           Data.Aeson as Aeson
 import           Data.Aeson.Types (Options(..), defaultOptions, Pair)
 import           Data.Aeson.Casing
 import           Data.Text (Text)
@@ -22,6 +22,7 @@ import           Data.Maybe
 import           Data.Char
 import           Data.Monoid
 import           Data.Time.ISO8601
+import           Data.Aeson.BetterErrors as AB
 import           Control.Monad
 import           Control.Monad.Except (ExceptT, throwError)
 import           Control.Monad.Catch as C
@@ -40,7 +41,8 @@ type Waziup = ReaderT WaziupInfo Servant.Handler
 
 data WaziupInfo = WaziupInfo {
   dbPipe :: DB.Pipe,
-  waziupConfig :: WaziupConfig
+  waziupConfig :: WaziupConfig,
+  ontologies   :: Ontologies
   }
 
 -- * Config
@@ -55,13 +57,19 @@ data WaziupConfig = WaziupConfig {
 data ServerConfig = ServerConfig
   { configHost :: String   -- ^ Hostname to serve on, e.g. "127.0.0.1"
   , configPort :: Int      -- ^ Port to serve on, e.g. 8080
-  } deriving (Eq, Show, Read)
+  } deriving (Eq, Show)
 
 defaultServerConfig :: ServerConfig
 defaultServerConfig = ServerConfig {
   configHost = "http://localhost:3000",
   configPort = 3000
   }
+
+data Ontologies = Ontologies {
+  sensingDevices :: [SensingDeviceInfo],
+  quantityKinds  :: [QuantityKindInfo],
+  units          :: [UnitInfo]
+  } deriving (Eq, Show)
 
 -- * Authentication & authorization
 
@@ -156,7 +164,7 @@ instance ToJSON Visibility where
   toJSON Public  = "public" 
   toJSON Private = "private" 
 instance FromJSON Visibility where
-  parseJSON = withText "String" (\x -> return $ fromJust $ readVisibility x)
+  parseJSON = Aeson.withText "String" (\x -> return $ fromJust $ readVisibility x)
 
 instance Show Visibility where
   show Public = "public"
@@ -346,8 +354,54 @@ instance FromJSON Project where
                                  <*> v .:  "gateways"
   parseJSON _          = mzero 
 
---fromObject :: Value -> [Pair]
---fromObject (Object ps) = HM.toList ps
+
+-- * Ontologies
+
+data SensingDeviceInfo = SensingDeviceInfo {
+  sdId :: SensingDevice,
+  sdLabel :: Text,
+  sdQK :: [QuantityKind]
+  } deriving (Show, Eq, Generic)
+
+parseSDI :: Parse e SensingDeviceInfo
+parseSDI = do
+    id   <- AB.key "id" asText
+    label <- AB.key "label" asText
+    qks   <- AB.key "QK" (eachInArray asText) 
+    return $ SensingDeviceInfo id label qks
+
+instance ToJSON SensingDeviceInfo where
+  toJSON = genericToJSON (removeFieldLabelPrefix False "sd")
+
+data QuantityKindInfo = QuantityKindInfo {
+  qkId :: QuantityKind,
+  qkLabel :: Text,
+  qkUnits :: [Unit]
+  } deriving (Show, Eq, Generic)
+
+parseQKI :: Parse e QuantityKindInfo
+parseQKI = do
+    id   <- AB.key "id" asText
+    label <- AB.key "label" asText
+    us   <- AB.key "units" (eachInArray asText) 
+    return $ QuantityKindInfo id label us
+
+instance ToJSON QuantityKindInfo where
+  toJSON = genericToJSON (removeFieldLabelPrefix False "qk")
+
+data UnitInfo = UnitInfo {
+  uId :: Unit,
+  uLabel :: Text
+  } deriving (Show, Eq, Generic)
+
+parseUnit :: Parse e UnitInfo
+parseUnit = do
+    id   <- AB.key "id" asText
+    label <- AB.key "label" asText
+    return $ UnitInfo id label
+
+instance ToJSON UnitInfo where
+  toJSON = genericToJSON (removeFieldLabelPrefix False "u")
 
 -- | Error message 
 data Error = Error

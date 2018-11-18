@@ -16,11 +16,16 @@ import Keycloak
 
 -- | Waziup type-level API
 
-type WaziupAPI = "api" :> "v1" :> (AuthAPI :<|> SensorsAPI :<|> ProjectsAPI)
+type WaziupAPI = "api" :> "v1" :> (AuthAPI :<|> SensorsAPI :<|> ProjectsAPI :<|> OntologiesAPI)
+
+
+-- * Authentication
 
 type AuthAPI = 
   "auth" :>  ("permissions" :> Header "Authorization" Token :> Get '[JSON] [Perm]
          :<|> "token"       :> ReqBody '[JSON] AuthBody :> Post '[PlainText] Token)
+
+-- * Sensors
 
 type SensorsAPI = Flat ( 
   "sensors" :> Header "Authorization" Token :> 
@@ -31,6 +36,8 @@ type SensorsAPI = Flat (
 type SensorAPI = (
   Capture "id" Text :> (Get '[JSON] Sensor :<|>
                         DeleteNoContent '[JSON] NoContent))
+
+-- * Projects
 
 type ProjectsAPI = Flat ( 
   "projects" :> Header "Authorization" Token :> 
@@ -43,4 +50,10 @@ type ProjectAPI = (
                         DeleteNoContent '[JSON] NoContent :<|>
                         "devices" :> ReqBody '[JSON] [DeviceId] :> PutNoContent '[JSON] NoContent :<|>
                         "gateways" :> ReqBody '[JSON] [GatewayId] :> PutNoContent '[JSON] NoContent))
+
+-- * Ontologies
+
+type OntologiesAPI = "ontologies" :> ( "sensing_devices" :> Get '[JSON] [SensingDeviceInfo] :<|>
+                                       "quantity_kinds"  :> Get '[JSON] [QuantityKindInfo] :<|>
+                                       "units"           :> Get '[JSON] [UnitInfo])
 

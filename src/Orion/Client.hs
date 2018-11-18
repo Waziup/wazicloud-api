@@ -9,7 +9,7 @@ import           Network.Wreq.Types
 import           Network.HTTP.Client (HttpException)
 import           Network.HTTP.Types.Method
 import           Network.HTTP.Types
-import           Data.Aeson as JSON
+import           Data.Aeson as JSON hiding (Options)
 import           Data.Aeson.BetterErrors as AB
 import           Data.Aeson.Casing
 import           Data.Text hiding (head, tail, find, map, filter)
@@ -42,7 +42,7 @@ getSensorsOrion mq mlimit moffset = do
                ("q", encodeUtf8 <$> mq),
                ("limit", C8.pack . show <$> mlimit),
                ("offset", C8.pack . show <$> moffset)]
-  ents <- orionGet (decodeUtf8 $ "v2/entities" <> (renderQuery True query))  (eachInArray parseEntity)
+  ents <- orionGet (decodeUtf8 $ "/v2/entities" <> (renderQuery True query))  (eachInArray parseEntity)
   return $ map getSensor ents
 
 getSensorOrion :: EntityId -> Orion Sensor
@@ -60,15 +60,21 @@ postSensorOrion s = do
 deleteSensorOrion :: EntityId -> Orion ()
 deleteSensorOrion eid = orionDelete ("/v2/entities/" <> eid)
 
--- Perform request to Orion.
-orionGet :: (Show b) => Path -> Parse Text b -> Orion b
-orionGet path parser = do 
+-- Get Orion URI and options
+getOrionDetails :: Path -> Orion (String, Options)
+getOrionDetails path = do
   orionOpts@(OrionConfig baseUrl service) <- ask 
   let opts = defaults &
        header "Fiware-Service" .~ [convertString service] &
        param  "attrs"          .~ ["dateModified,dateCreated,*"] &
        param  "metadata"       .~ ["dateModified,dateCreated,*"] 
   let url = (unpack $ baseUrl <> path) 
+  return (url, opts)
+
+-- Perform request to Orion.
+orionGet :: (Show b) => Path -> Parse Text b -> Orion b
+orionGet path parser = do 
+  (url, opts) <- getOrionDetails path 
   info $ "Issuing ORION GET with url: " ++ (show url) 
   debug $ "  headers: " ++ (show $ opts ^. W.headers) 
   eRes <- C.try $ liftIO $ W.getWith opts url
@@ -88,12 +94,7 @@ orionGet path parser = do
 
 orionPost :: (Postable dat, Show dat) => Path -> dat -> Orion ()
 orionPost path dat = do 
-  orionOpts@(OrionConfig baseUrl service) <- ask 
-  let opts = defaults &
-       header "Fiware-Service" .~ [convertString service] &
-       param  "attrs"          .~ ["dateModified,dateCreated,*"] &
-       param  "metadata"       .~ ["dateModified,dateCreated,*"] 
-  let url = (unpack $ baseUrl <> path) 
+  (url, opts) <- getOrionDetails path 
   info $ "Issuing ORION POST with url: " ++ (show url) 
   debug $ "  data: " ++ (show dat) 
   debug $ "  headers: " ++ (show $ opts ^. W.headers) 
@@ -106,12 +107,7 @@ orionPost path dat = do
 
 orionDelete :: Path -> Orion ()
 orionDelete path = do 
-  orionOpts@(OrionConfig baseUrl service) <- ask 
-  let opts = defaults &
-       header "Fiware-Service" .~ [convertString service] &
-       param  "attrs"          .~ ["dateModified,dateCreated,*"] &
-       param  "metadata"       .~ ["dateModified,dateCreated,*"] 
-  let url = (unpack $ baseUrl <> path) 
+  (url, opts) <- getOrionDetails path 
   info $ "Issuing ORION DELETE with url: " ++ (show url) 
   debug $ "  headers: " ++ (show $ opts ^. W.headers) 
   eRes <- C.try $ liftIO $ W.deleteWith opts url

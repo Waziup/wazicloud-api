@@ -58,10 +58,16 @@ swaggerDoc = toSwagger (Proxy :: Proxy WaziupAPI)
   & S.info . S.version     .~ "v2.0.0"
   & S.info . S.description ?~ "This is the API of Waziup"
   & S.basePath ?~ "/api/v1"
-  & S.applyTagsFor sensorsOperations ["Sensors"]
+  & S.applyTagsFor sensorsOps ["Sensors"]
+  & S.applyTagsFor authOps    ["Auth"]
+  & S.applyTagsFor projectOps ["Projects"]
+  & S.applyTagsFor ontoOps    ["Ontologies"]
   where
-    sensorsOperations :: Traversal' S.Swagger S.Operation
-    sensorsOperations = subOperations (Proxy :: Proxy SensorsAPI) (Proxy :: Proxy WaziupAPI)
+    sensorsOps, authOps, projectOps, ontoOps :: Traversal' S.Swagger S.Operation
+    sensorsOps = subOperations (Proxy :: Proxy SensorsAPI)    (Proxy :: Proxy WaziupAPI)
+    authOps    = subOperations (Proxy :: Proxy AuthAPI)       (Proxy :: Proxy WaziupAPI)
+    projectOps = subOperations (Proxy :: Proxy ProjectsAPI)    (Proxy :: Proxy WaziupAPI)
+    ontoOps    = subOperations (Proxy :: Proxy OntologiesAPI) (Proxy :: Proxy WaziupAPI)
 
 authServer :: ServerT AuthAPI Waziup
 authServer = getPerms :<|> postAuth

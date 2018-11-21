@@ -94,8 +94,11 @@ getSensors tok mq mlimit moffset = do
   info "Get sensors"
   sensors <- runOrion $ O.getSensorsOrion mq mlimit moffset
   ps <- runKeycloak (getAllPermissions tok)
-  let sensors2 = filter (\s -> any (\p -> (rsname p) == (senId s)) ps) sensors
+  let sensors2 = filter (checkPermSensor SensorsView ps) sensors
   return sensors2
+
+checkPermSensor :: Scope -> [Permission] -> Sensor -> Bool
+checkPermSensor scope perms sen = any (\p -> (rsname p) == (senId sen) && (convertString $ show scope) `elem` (scopes p)) perms
 
 checkAuth :: SensorId -> Scope -> Maybe Token -> Waziup a -> Waziup a
 checkAuth sid scope tok act = do

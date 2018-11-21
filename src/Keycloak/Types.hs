@@ -20,13 +20,6 @@ import Control.Monad.Reader as R
 import qualified Data.ByteString as BS
 import Data.Word8 (isSpace, _colon, toLower)
 
-type ResourceId = Text
-type ResourceName = Text
-type ScopeId = Text
-type ScopeName = Text
-type Scope = Text 
-type Username = Text
-
 type Keycloak a = ReaderT KCConfig (ExceptT KCError IO) a
 
 data KCError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
@@ -55,7 +48,7 @@ defaultKCConfig = KCConfig {
   guestPassword = "guest"}
 
 type Path = Text
-data Token = Token {unToken :: BS.ByteString} deriving (Eq, Show)
+newtype Token = Token {unToken :: BS.ByteString} deriving (Eq, Show, Generic)
 
 instance FromHttpApiData Token where
   parseQueryParam = parseHeader . encodeUtf8
@@ -72,6 +65,12 @@ extractBearerAuth bs =
 instance ToHttpApiData Token where
   toQueryParam (Token token) = "Bearer " <> (decodeUtf8 token)
 
+type ResourceId = Text
+type ResourceName = Text
+type ScopeId = Text
+type ScopeName = Text
+type Scope = Text 
+
 data Permission = Permission 
   { rsname :: ResourceName,
     rsid   :: ResourceId,
@@ -85,9 +84,11 @@ parsePermission = do
     scopes  <- AB.keyMay "scopes" (eachInArray asText) 
     return $ Permission rsname rsid (if (isJust scopes) then (fromJust scopes) else [])
 
+type Username = Text
+
 data Owner = Owner {
   ownId   :: Maybe Text,
-  ownName :: Text
+  ownName :: Username
   } deriving (Generic, Show)
 
 instance FromJSON Owner where

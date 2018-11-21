@@ -15,14 +15,22 @@ import Control.Monad.IO.Class
 import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.Error.Class (MonadError)
+import Control.Lens hiding ((.=))
 import Data.Maybe
 import Data.Proxy (Proxy(..))
 import Data.Text hiding (map, filter, foldl, any)
 import Data.String.Conversions
 import Data.Aeson.BetterErrors as AB
 import qualified Data.ByteString as BS
+import Data.Aeson
+import qualified Data.List as L
+import qualified Data.Swagger as S
 import Servant
 import Servant.Server
+import Servant.Swagger
+import Servant.Swagger.UI
+import Servant.Swagger.UI.Core
+import Servant.Swagger.Internal
 import Keycloak as KC hiding (info, warn, debug, Scope) 
 import qualified Orion as O
 import Mongo as M hiding (info, warn, debug, Scope) 
@@ -34,10 +42,26 @@ import GHC.Generics (Generic)
 import System.Log.Logger
 import Paths_Waziup_Servant
 import System.FilePath ((</>))
-import           Data.Aeson
 
-server :: ServerT WaziupAPI Waziup
-server = authServer :<|> sensorsServer :<|> projectsServer :<|> ontologiesServer
+server :: ServerT API Waziup
+server = serverWaziup :<|> serverDocs
+
+serverWaziup :: ServerT WaziupAPI Waziup
+serverWaziup = authServer :<|> sensorsServer :<|> projectsServer :<|> ontologiesServer
+
+serverDocs :: ServerT WaziupDocs Waziup
+serverDocs = hoistDocs $ swaggerSchemaUIServer swaggerDoc
+
+swaggerDoc :: S.Swagger
+swaggerDoc = toSwagger (Proxy :: Proxy WaziupAPI)
+  & S.info . S.title       .~ "Waziup API"
+  & S.info . S.version     .~ "v2.0.0"
+  & S.info . S.description ?~ "This is the API of Waziup"
+  & S.basePath ?~ "/api/v1"
+  & S.applyTagsFor sensorsOperations ["Sensors"]
+  where
+    sensorsOperations :: Traversal' S.Swagger S.Operation
+    sensorsOperations = subOperations (Proxy :: Proxy SensorsAPI) (Proxy :: Proxy WaziupAPI)
 
 authServer :: ServerT AuthAPI Waziup
 authServer = getPerms :<|> postAuth
@@ -206,14 +230,18 @@ getUnits = do
 
 -- * Server
 
-waziupAPI :: Proxy WaziupAPI
+waziupAPI :: Proxy API
 waziupAPI = Proxy
 
-nt :: WaziupInfo -> Waziup a -> Servant.Handler a
-nt s x = runReaderT x s
+getHandler :: WaziupInfo -> Waziup a -> Servant.Handler a
+getHandler s x = runReaderT x s
 
 waziupServer :: WaziupInfo -> Application
-waziupServer c = serve waziupAPI $ Servant.Server.hoistServer waziupAPI (nt c) server
+waziupServer conf = serve waziupAPI $ Servant.Server.hoistServer waziupAPI (getHandler conf) server
+
+hoistDocs :: ServerT WaziupDocs Servant.Handler -> ServerT WaziupDocs Waziup
+hoistDocs s = Servant.Server.hoistServer (Proxy :: Proxy WaziupDocs) lift s
+
 
 -- * Lifting
 runOrion :: O.Orion a -> Waziup a

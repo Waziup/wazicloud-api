@@ -23,6 +23,8 @@ import           Data.Char
 import           Data.Monoid
 import           Data.Time.ISO8601
 import           Data.Aeson.BetterErrors as AB
+import qualified Data.Swagger as S
+import           Control.Lens hiding ((.=))
 import           Control.Monad
 import           Control.Monad.Except (ExceptT, throwError)
 import           Control.Monad.Catch as C
@@ -86,6 +88,8 @@ instance FromJSON AuthBody where
   parseJSON (Object v) = AuthBody <$> v .: "username" <*> v .: "password"
   parseJSON _          = mzero 
 
+instance S.ToSchema AuthBody
+
 -- | Permission
 data Perm = Perm
   { permResource :: Text -- ^ 
@@ -96,6 +100,7 @@ instance FromJSON Perm where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "perm")
 instance ToJSON Perm where
   toJSON = genericToJSON (removeFieldLabelPrefix False "perm")
+instance S.ToSchema Perm
 
 data Scope = SensorsCreate
            | SensorsUpdate
@@ -108,6 +113,7 @@ data Scope = SensorsCreate
 instance ToJSON Scope where
   toJSON = toJSON . show
 instance FromJSON Scope
+instance S.ToSchema Scope
 
 readScope :: Text -> Maybe Scope
 readScope "sensors:create"      = Just SensorsCreate    
@@ -155,6 +161,7 @@ instance ToJSON Sensor where
    toJSON = genericToJSON $ aesonDrop 3 snakeCase
 instance FromJSON Sensor where
    parseJSON = genericParseJSON $ aesonDrop 3 snakeCase
+instance S.ToSchema Sensor
 
 
 data Visibility = Public | Private
@@ -165,6 +172,7 @@ instance ToJSON Visibility where
   toJSON Private = "private" 
 instance FromJSON Visibility where
   parseJSON = Aeson.withText "String" (\x -> return $ fromJust $ readVisibility x)
+instance S.ToSchema Visibility
 
 instance Show Visibility where
   show Public = "public"
@@ -186,6 +194,7 @@ instance FromJSON Location where
   parseJSON = genericParseJSON defaultOptions
 instance ToJSON Location where
   toJSON = genericToJSON defaultOptions
+instance S.ToSchema Location
 
 
 -- * Measurements
@@ -210,6 +219,7 @@ instance FromJSON Measurement where
   parseJSON = genericParseJSON $ aesonDrop 4 snakeCase 
 instance ToJSON Measurement where
   toJSON = genericToJSON $ aesonDrop 4 snakeCase
+instance S.ToSchema Measurement
 
 
 -- | measurement value 
@@ -223,6 +233,11 @@ instance FromJSON MeasurementValue where
   parseJSON = genericParseJSON $ aesonDrop 4 snakeCase
 instance ToJSON MeasurementValue where
   toJSON = genericToJSON $ aesonDrop 4 snakeCase
+instance S.ToSchema MeasurementValue
+
+instance S.ToSchema Value where
+  declareNamedSchema _ = pure (S.NamedSchema (Just "Value") (mempty & S.type_ .~ S.SwaggerObject))
+  
 
 
 -- * Notifications
@@ -242,6 +257,7 @@ instance FromJSON Notification where
   parseJSON = genericParseJSON $ aesonDrop 5 snakeCase
 instance ToJSON Notification where
   toJSON = genericToJSON $ aesonDrop 5 snakeCase
+instance S.ToSchema Notification
 
 -- | notification condition
 data NotificationCondition = NotificationCondition
@@ -253,6 +269,7 @@ instance FromJSON NotificationCondition where
   parseJSON = genericParseJSON $ aesonDrop 5 snakeCase
 instance ToJSON NotificationCondition where
   toJSON = genericToJSON (removeFieldLabelPrefix False "notificationCondition")
+instance S.ToSchema NotificationCondition
 
 -- | notification subject
 data NotificationSubject = NotificationSubject
@@ -264,6 +281,7 @@ instance FromJSON NotificationSubject where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "notificationSubject")
 instance ToJSON NotificationSubject where
   toJSON = genericToJSON (removeFieldLabelPrefix False "notificationSubject")
+instance S.ToSchema NotificationSubject
 
 
 -- * Socials
@@ -273,6 +291,7 @@ type SocialMessageText = Text
 
 instance ToJSON Channel
 instance FromJSON Channel
+instance S.ToSchema Channel
 
 -- | One social network message
 data SocialMessage = SocialMessage
@@ -285,6 +304,7 @@ instance FromJSON SocialMessage where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "socialMessage")
 instance ToJSON SocialMessage where
   toJSON = genericToJSON (removeFieldLabelPrefix False "socialMessage")
+instance S.ToSchema SocialMessage
 
 -- | A message to be sent to several users and socials
 data SocialMessageBatch = SocialMessageBatch
@@ -297,6 +317,7 @@ instance FromJSON SocialMessageBatch where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "socialMessageBatch")
 instance ToJSON SocialMessageBatch where
   toJSON = genericToJSON (removeFieldLabelPrefix False "socialMessageBatch")
+instance S.ToSchema SocialMessageBatch
 
 -- | User 
 data User = User
@@ -317,6 +338,7 @@ instance FromJSON User where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "user")
 instance ToJSON User where
   toJSON = genericToJSON (removeFieldLabelPrefix False "user")
+instance S.ToSchema User
 
 data HistoricalValue = HistoricalValue
   { historicalValueId            :: Text -- ^ UUID of the sensor
@@ -328,6 +350,7 @@ instance FromJSON HistoricalValue where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "historicalValue")
 instance ToJSON HistoricalValue where
   toJSON = genericToJSON (removeFieldLabelPrefix False "historicalValue")
+instance S.ToSchema HistoricalValue
 
 -- * Projects
 type DeviceId = Text
@@ -354,6 +377,8 @@ instance FromJSON Project where
                                  <*> v .:  "gateways"
   parseJSON _          = mzero 
 
+instance S.ToSchema Project
+
 
 -- * Ontologies
 
@@ -373,6 +398,8 @@ parseSDI = do
 instance ToJSON SensingDeviceInfo where
   toJSON = genericToJSON (removeFieldLabelPrefix False "sd")
 
+instance S.ToSchema SensingDeviceInfo
+
 data QuantityKindInfo = QuantityKindInfo {
   qkId :: QuantityKind,
   qkLabel :: Text,
@@ -389,6 +416,8 @@ parseQKI = do
 instance ToJSON QuantityKindInfo where
   toJSON = genericToJSON (removeFieldLabelPrefix False "qk")
 
+instance S.ToSchema QuantityKindInfo
+
 data UnitInfo = UnitInfo {
   uId :: Unit,
   uLabel :: Text
@@ -403,6 +432,8 @@ parseUnit = do
 instance ToJSON UnitInfo where
   toJSON = genericToJSON (removeFieldLabelPrefix False "u")
 
+instance S.ToSchema UnitInfo
+
 -- | Error message 
 data Error = Error
   { errorError :: Text -- ^ 
@@ -414,6 +445,7 @@ instance FromJSON Error where
 instance ToJSON Error where
   toJSON = genericToJSON (removeFieldLabelPrefix False "error")
 
+instance S.ToSchema Error
 
 -- * Helpers
 

@@ -22,6 +22,8 @@ Executable waziup-servant
                      , Orion
                      , Orion.Client
                      , Orion.Types
+  data-dir: data
+  data-files: ontologies/*.json
   ghc-options:         -Wall
   build-depends:       base
                      , aeson
@@ -31,12 +33,16 @@ Executable waziup-servant
                      , network-uri
                      , servant
                      , http-api-data
+                     , servant
                      , servant-client
                      , servant-server
                      , servant-flatten
-                     , servant
+                     , servant-swagger
+                     , servant-swagger-ui
+                     , servant-swagger-ui-core
+                     , swagger2
                      , warp
---                     , transformers
+                     , transformers
                      , mtl
                      , http-client
                      , http-types

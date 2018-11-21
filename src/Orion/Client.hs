@@ -38,10 +38,16 @@ import           Debug.Trace
 
 getSensorsOrion :: Maybe Text -> Maybe Int -> Maybe Int -> Orion [Sensor]
 getSensorsOrion mq mlimit moffset = do
-  let (query :: Query) = [("type", Just ("SensingDevice" :: C8.ByteString)),
-               ("q", encodeUtf8 <$> mq),
-               ("limit", C8.pack . show <$> mlimit),
-               ("offset", C8.pack . show <$> moffset)]
+  let qq = case mq of
+       Just q -> [("q", Just $ encodeUtf8 q)]
+       Nothing -> []
+  let limitq = case mlimit of
+       Just limit -> [("limit", Just $ C8.pack $ show limit)]
+       Nothing -> []
+  let offsetq = case moffset of
+       Just offset -> [("offset", Just $ C8.pack $ show offset)]
+       Nothing -> []
+  let (query :: Query) = qq ++ limitq ++ offsetq ++ [("type", Just ("SensingDevice" :: C8.ByteString))]
   ents <- orionGet (decodeUtf8 $ "/v2/entities" <> (renderQuery True query))  (eachInArray parseEntity)
   return $ map getSensor ents
 

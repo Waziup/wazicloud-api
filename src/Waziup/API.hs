@@ -11,13 +11,17 @@ import Servant
 import Servant.API.Flatten
 import Waziup.Types
 import Data.Text
+import Data.Swagger hiding (Header)
 import Keycloak
-
+import Servant.Swagger.UI
 
 -- | Waziup type-level API
 
-type WaziupAPI = "api" :> "v1" :> (AuthAPI :<|> SensorsAPI :<|> ProjectsAPI :<|> OntologiesAPI)
+type API = ("api" :> "v1" :> WaziupAPI) :<|> WaziupDocs 
 
+type WaziupAPI = (AuthAPI :<|> SensorsAPI :<|> ProjectsAPI :<|> OntologiesAPI)
+
+type WaziupDocs = SwaggerSchemaUI "swagger-ui" "swagger.json"
 
 -- * Authentication
 
@@ -57,3 +61,8 @@ type OntologiesAPI = "ontologies" :> ( "sensing_devices" :> Get '[JSON] [Sensing
                                        "quantity_kinds"  :> Get '[JSON] [QuantityKindInfo] :<|>
                                        "units"           :> Get '[JSON] [UnitInfo])
 
+
+instance ToParamSchema Token where
+  toParamSchema _ = binaryParamSchema
+instance ToSchema Token where
+  declareNamedSchema _ = pure (NamedSchema (Just "Token") binarySchema)

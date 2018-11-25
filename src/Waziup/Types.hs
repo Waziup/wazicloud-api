@@ -4,13 +4,15 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Waziup.Types where
 
 import           Data.List (stripPrefix)
 import           Data.Maybe (fromMaybe)
 import           Data.Aeson as Aeson
-import           Data.Aeson.Types (Options(..), defaultOptions, Pair)
+import           Data.Aeson.Types as AT (Options(..), defaultOptions, Pair)
 import           Data.Aeson.Casing
 import           Data.Text (Text)
 import qualified Data.Text as T
@@ -18,18 +20,22 @@ import qualified Data.Map as Map
 import qualified Data.HashMap.Strict as HM
 import           Data.Function ((&))
 import           Data.Time
+import           Data.Time.ISO8601
 import           Data.Maybe
 import           Data.Char
 import           Data.Monoid
 import           Data.Time.ISO8601
 import           Data.Aeson.BetterErrors as AB
-import qualified Data.Swagger as S
+import           Data.Swagger
+import           Data.Swagger.Internal
+import           Data.Swagger.Lens
 import           Control.Lens hiding ((.=))
 import           Control.Monad
 import           Control.Monad.Except (ExceptT, throwError)
 import           Control.Monad.Catch as C
 import           Control.Monad.Reader
 import           Servant
+import           Servant.Swagger
 import           Servant.API.Flatten
 import           Keycloak as KC hiding (info, warn, debug, Scope, Username) 
 import           GHC.Generics (Generic)
@@ -84,11 +90,15 @@ data AuthBody = AuthBody
   , authBodyPassword :: Password
   } deriving (Show, Eq, Generic)
 
+instance ToJSON AuthBody where
+  toJSON = genericToJSON (removeFieldLabelPrefix False "authBody")
 instance FromJSON AuthBody where
   parseJSON (Object v) = AuthBody <$> v .: "username" <*> v .: "password"
   parseJSON _          = mzero 
 
-instance S.ToSchema AuthBody
+instance ToSchema AuthBody where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON (AuthBody "cdupont" "password")
 
 -- | Permission
 data Perm = Perm
@@ -100,7 +110,7 @@ instance FromJSON Perm where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "perm")
 instance ToJSON Perm where
   toJSON = genericToJSON (removeFieldLabelPrefix False "perm")
-instance S.ToSchema Perm
+instance ToSchema Perm
 
 data Scope = SensorsCreate
            | SensorsUpdate
@@ -113,7 +123,7 @@ data Scope = SensorsCreate
 instance ToJSON Scope where
   toJSON = toJSON . show
 instance FromJSON Scope
-instance S.ToSchema Scope
+instance ToSchema Scope
 
 readScope :: Text -> Maybe Scope
 readScope "sensors:create"      = Just SensorsCreate    
@@ -144,25 +154,40 @@ type SensorsOffset = Int
 
 -- | one sensor 
 data Sensor = Sensor
-  { senId           :: SensorId         -- ^ Unique ID of the sensor node
+  { senId           :: SensorId   -- ^ Unique ID of the sensor node
   , senGatewayId    :: Maybe GatewayId  -- ^ Unique ID of the gateway
   , senName         :: Maybe SensorName -- ^ name of the sensor node
-  , senOwner        :: Maybe Text       -- ^ owner of the sensor node
-  , senMeasurements :: [Measurement]
   , senLocation     :: Maybe Location
   , senDomain       :: Maybe Domain     -- ^ the domain of this sensor.
+  , senVisibility   :: Maybe Visibility
+  , senMeasurements :: [Measurement]
+  , senOwner        :: Maybe Text       -- ^ owner of the sensor node
   , senDateCreated  :: Maybe UTCTime    -- ^ creation date of the sensor node
   , senDateUpdated  :: Maybe UTCTime    -- ^ last update date of the sensor nodei
-  , senVisibility   :: Maybe Visibility
   , senKeycloakId   :: Maybe Text 
   } deriving (Show, Eq, Generic)
+
+defaultSensor = Sensor
+  { senId           = "MyDevice"
+  , senGatewayId    = Just "ea0541de1ab7132a1d45b85f9b2139f5" 
+  , senName         = Just "My weather station" 
+  , senLocation     = Just defaultLocation 
+  , senDomain       = Just "waziup" 
+  , senVisibility   = Just Public
+  , senMeasurements = [defaultMeasurement]
+  , senOwner        = Just "cdupont" 
+  , senDateCreated  = parseISO8601 "2016-06-08T18:20:27.873Z"
+  , senDateUpdated  = parseISO8601 "2016-06-08T18:20:27.873Z"
+  , senKeycloakId   = Nothing 
+  }
 
 instance ToJSON Sensor where
    toJSON = genericToJSON $ aesonDrop 3 snakeCase
 instance FromJSON Sensor where
    parseJSON = genericParseJSON $ aesonDrop 3 snakeCase
-instance S.ToSchema Sensor
-
+instance ToSchema Sensor where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON defaultSensor 
 
 data Visibility = Public | Private
   deriving (Eq, Generic)
@@ -172,7 +197,7 @@ instance ToJSON Visibility where
   toJSON Private = "private" 
 instance FromJSON Visibility where
   parseJSON = Aeson.withText "String" (\x -> return $ fromJust $ readVisibility x)
-instance S.ToSchema Visibility
+instance ToSchema Visibility
 
 instance Show Visibility where
   show Public = "public"
@@ -190,11 +215,15 @@ data Location = Location
   , longitude :: Double
   } deriving (Show, Eq, Generic)
 
+defaultLocation = Location 5.36 4.0083 
+
 instance FromJSON Location where
   parseJSON = genericParseJSON defaultOptions
 instance ToJSON Location where
   toJSON = genericToJSON defaultOptions
-instance S.ToSchema Location
+instance ToSchema Location where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON defaultLocation 
 
 
 -- * Measurements
@@ -215,11 +244,22 @@ data Measurement = Measurement
   , measLastValue     :: Maybe MeasurementValue -- ^ last value received by the platform
   } deriving (Show, Eq, Generic)
 
+defaultMeasurement = Measurement 
+  { measId            = "TC1" 
+  , measName          = Just "My garden temperature" 
+  , measSensingDevice = Just "Thermometer" 
+  , measQuantityKind  = Just "AirTemperature" 
+  , measUnit          = Just "DegreeCelsius"
+  , measLastValue     = Just defaultMeasurementValue 
+  } 
+
 instance FromJSON Measurement where
   parseJSON = genericParseJSON $ aesonDrop 4 snakeCase 
 instance ToJSON Measurement where
   toJSON = genericToJSON $ aesonDrop 4 snakeCase
-instance S.ToSchema Measurement
+instance ToSchema Measurement where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON defaultMeasurement 
 
 
 -- | measurement value 
@@ -229,14 +269,22 @@ data MeasurementValue = MeasurementValue
   , measDateReceived :: Maybe UTCTime  -- ^ time at which the measurement has been received on the Cloud
   } deriving (Show, Eq, Generic)
 
+defaultMeasurementValue = MeasurementValue 
+  { measValue        = Number 25
+  , measTimestamp    = parseISO8601 "2016-06-08T18:20:27.873Z"
+  , measDateReceived = parseISO8601 "2016-06-08T18:20:27.873Z"
+  }
+
 instance FromJSON MeasurementValue where
   parseJSON = genericParseJSON $ aesonDrop 4 snakeCase
 instance ToJSON MeasurementValue where
   toJSON = genericToJSON $ aesonDrop 4 snakeCase
-instance S.ToSchema MeasurementValue
+instance ToSchema MeasurementValue where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON defaultMeasurementValue 
 
-instance S.ToSchema Value where
-  declareNamedSchema _ = pure (S.NamedSchema (Just "Value") (mempty & S.type_ .~ S.SwaggerObject))
+instance ToSchema Value where
+  declareNamedSchema _ = pure (NamedSchema (Just "Value") (mempty & type_ .~ SwaggerObject))
   
 
 
@@ -257,7 +305,7 @@ instance FromJSON Notification where
   parseJSON = genericParseJSON $ aesonDrop 5 snakeCase
 instance ToJSON Notification where
   toJSON = genericToJSON $ aesonDrop 5 snakeCase
-instance S.ToSchema Notification
+instance ToSchema Notification
 
 -- | notification condition
 data NotificationCondition = NotificationCondition
@@ -269,7 +317,7 @@ instance FromJSON NotificationCondition where
   parseJSON = genericParseJSON $ aesonDrop 5 snakeCase
 instance ToJSON NotificationCondition where
   toJSON = genericToJSON (removeFieldLabelPrefix False "notificationCondition")
-instance S.ToSchema NotificationCondition
+instance ToSchema NotificationCondition
 
 -- | notification subject
 data NotificationSubject = NotificationSubject
@@ -281,7 +329,7 @@ instance FromJSON NotificationSubject where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "notificationSubject")
 instance ToJSON NotificationSubject where
   toJSON = genericToJSON (removeFieldLabelPrefix False "notificationSubject")
-instance S.ToSchema NotificationSubject
+instance ToSchema NotificationSubject
 
 
 -- * Socials
@@ -291,7 +339,7 @@ type SocialMessageText = Text
 
 instance ToJSON Channel
 instance FromJSON Channel
-instance S.ToSchema Channel
+instance ToSchema Channel
 
 -- | One social network message
 data SocialMessage = SocialMessage
@@ -304,7 +352,7 @@ instance FromJSON SocialMessage where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "socialMessage")
 instance ToJSON SocialMessage where
   toJSON = genericToJSON (removeFieldLabelPrefix False "socialMessage")
-instance S.ToSchema SocialMessage
+instance ToSchema SocialMessage
 
 -- | A message to be sent to several users and socials
 data SocialMessageBatch = SocialMessageBatch
@@ -317,7 +365,7 @@ instance FromJSON SocialMessageBatch where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "socialMessageBatch")
 instance ToJSON SocialMessageBatch where
   toJSON = genericToJSON (removeFieldLabelPrefix False "socialMessageBatch")
-instance S.ToSchema SocialMessageBatch
+instance ToSchema SocialMessageBatch
 
 -- | User 
 data User = User
@@ -338,7 +386,7 @@ instance FromJSON User where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "user")
 instance ToJSON User where
   toJSON = genericToJSON (removeFieldLabelPrefix False "user")
-instance S.ToSchema User
+instance ToSchema User
 
 data HistoricalValue = HistoricalValue
   { historicalValueId            :: Text -- ^ UUID of the sensor
@@ -350,7 +398,7 @@ instance FromJSON HistoricalValue where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "historicalValue")
 instance ToJSON HistoricalValue where
   toJSON = genericToJSON (removeFieldLabelPrefix False "historicalValue")
-instance S.ToSchema HistoricalValue
+instance ToSchema HistoricalValue
 
 -- * Projects
 type DeviceId = Text
@@ -377,7 +425,7 @@ instance FromJSON Project where
                                  <*> v .:  "gateways"
   parseJSON _          = mzero 
 
-instance S.ToSchema Project
+instance ToSchema Project
 
 
 -- * Ontologies
@@ -398,7 +446,7 @@ parseSDI = do
 instance ToJSON SensingDeviceInfo where
   toJSON = genericToJSON (removeFieldLabelPrefix False "sd")
 
-instance S.ToSchema SensingDeviceInfo
+instance ToSchema SensingDeviceInfo
 
 data QuantityKindInfo = QuantityKindInfo {
   qkId :: QuantityKind,
@@ -416,7 +464,7 @@ parseQKI = do
 instance ToJSON QuantityKindInfo where
   toJSON = genericToJSON (removeFieldLabelPrefix False "qk")
 
-instance S.ToSchema QuantityKindInfo
+instance ToSchema QuantityKindInfo
 
 data UnitInfo = UnitInfo {
   uId :: Unit,
@@ -432,7 +480,7 @@ parseUnit = do
 instance ToJSON UnitInfo where
   toJSON = genericToJSON (removeFieldLabelPrefix False "u")
 
-instance S.ToSchema UnitInfo
+instance ToSchema UnitInfo
 
 -- | Error message 
 data Error = Error
@@ -445,7 +493,7 @@ instance FromJSON Error where
 instance ToJSON Error where
   toJSON = genericToJSON (removeFieldLabelPrefix False "error")
 
-instance S.ToSchema Error
+instance ToSchema Error
 
 -- * Helpers
 
@@ -459,7 +507,7 @@ unCapitalize [] = []
 removeFieldLabelPrefix :: Bool -> String -> Options
 removeFieldLabelPrefix forParsing prefix =
   defaultOptions
-  {fieldLabelModifier = fromMaybe (error ("did not find prefix " ++ prefix)) . fmap unCapitalize . stripPrefix prefix . replaceSpecialChars}
+  {AT.fieldLabelModifier = fromMaybe (error ("did not find prefix " ++ prefix)) . fmap unCapitalize . stripPrefix prefix . replaceSpecialChars}
   where
     replaceSpecialChars field = foldl (&) field (map mkCharReplacement specialChars)
     specialChars =
@@ -503,3 +551,5 @@ removeFieldLabelPrefix forParsing prefix =
       if forParsing
         then flip T.replace
         else T.replace
+
+makeLenses ''AuthBody

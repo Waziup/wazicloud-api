@@ -161,10 +161,10 @@ data Sensor = Sensor
   , senDomain       :: Maybe Domain     -- ^ the domain of this sensor.
   , senVisibility   :: Maybe Visibility
   , senMeasurements :: [Measurement]
-  , senOwner        :: Maybe Text       -- ^ owner of the sensor node
-  , senDateCreated  :: Maybe UTCTime    -- ^ creation date of the sensor node
-  , senDateUpdated  :: Maybe UTCTime    -- ^ last update date of the sensor nodei
-  , senKeycloakId   :: Maybe Text 
+  , senOwner        :: Maybe Text       -- ^ owner of the sensor node (output only)
+  , senDateCreated  :: Maybe UTCTime    -- ^ creation date of the sensor node (output only)
+  , senDateUpdated  :: Maybe UTCTime    -- ^ last update date of the sensor nodei (output only)
+  , senKeycloakId   :: Maybe Text       -- ^ The is of the resource in Keycloak
   } deriving (Show, Eq, Generic)
 
 defaultSensor = Sensor
@@ -175,14 +175,14 @@ defaultSensor = Sensor
   , senDomain       = Just "waziup" 
   , senVisibility   = Just Public
   , senMeasurements = [defaultMeasurement]
-  , senOwner        = Just "cdupont" 
-  , senDateCreated  = parseISO8601 "2016-06-08T18:20:27.873Z"
-  , senDateUpdated  = parseISO8601 "2016-06-08T18:20:27.873Z"
+  , senOwner        = Nothing
+  , senDateCreated  = Nothing
+  , senDateUpdated  = Nothing
   , senKeycloakId   = Nothing 
   }
 
 instance ToJSON Sensor where
-   toJSON = genericToJSON $ aesonDrop 3 snakeCase
+   toJSON = genericToJSON (aesonDrop 3 snakeCase) {omitNothingFields = True}
 instance FromJSON Sensor where
    parseJSON = genericParseJSON $ aesonDrop 3 snakeCase
 instance ToSchema Sensor where
@@ -250,13 +250,13 @@ defaultMeasurement = Measurement
   , measSensingDevice = Just "Thermometer" 
   , measQuantityKind  = Just "AirTemperature" 
   , measUnit          = Just "DegreeCelsius"
-  , measLastValue     = Just defaultMeasurementValue 
+  , measLastValue     = Nothing
   } 
 
 instance FromJSON Measurement where
   parseJSON = genericParseJSON $ aesonDrop 4 snakeCase 
 instance ToJSON Measurement where
-  toJSON = genericToJSON $ aesonDrop 4 snakeCase
+  toJSON = genericToJSON (aesonDrop 4 snakeCase) {omitNothingFields = True}
 instance ToSchema Measurement where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON defaultMeasurement 
@@ -278,7 +278,7 @@ defaultMeasurementValue = MeasurementValue
 instance FromJSON MeasurementValue where
   parseJSON = genericParseJSON $ aesonDrop 4 snakeCase
 instance ToJSON MeasurementValue where
-  toJSON = genericToJSON $ aesonDrop 4 snakeCase
+  toJSON = genericToJSON (aesonDrop 4 snakeCase) {omitNothingFields = True}
 instance ToSchema MeasurementValue where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON defaultMeasurementValue 
@@ -551,5 +551,3 @@ removeFieldLabelPrefix forParsing prefix =
       if forParsing
         then flip T.replace
         else T.replace
-
-makeLenses ''AuthBody

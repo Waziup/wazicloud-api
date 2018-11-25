@@ -27,24 +27,24 @@ data KCError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
              | EmptyError               -- ^ Empty error to serve as a zero element for Monoid.
 
 data KCConfig = KCConfig {
-  baseUrl :: Text,
-  realm :: Text,
-  clientId :: Text,
-  clientSecret :: Text,
-  adminLogin :: Text,
+  baseUrl       :: Text,
+  realm         :: Text,
+  clientId      :: Text,
+  clientSecret  :: Text,
+  adminLogin    :: Text,
   adminPassword :: Text,
-  guestLogin :: Text,
+  guestLogin    :: Text,
   guestPassword :: Text} deriving (Eq, Show)
 
 defaultKCConfig :: KCConfig
 defaultKCConfig = KCConfig {
-  baseUrl = "http://localhost:8080/auth",
-  realm = "waziup",
-  clientId = "api-server",
-  clientSecret = "4e9dcb80-efcd-484c-b3d7-1e95a0096ac0",
-  adminLogin = "cdupont",
+  baseUrl       = "http://localhost:8080/auth",
+  realm         = "waziup",
+  clientId      = "api-server",
+  clientSecret  = "4e9dcb80-efcd-484c-b3d7-1e95a0096ac0",
+  adminLogin    = "cdupont",
   adminPassword = "password",
-  guestLogin = "guest",
+  guestLogin    = "guest",
   guestPassword = "guest"}
 
 type Path = Text

@@ -2,8 +2,8 @@ WAZIUP API Server
 =================
 
 
- Install
-========
+Install
+=======
 
 Installation follows the standard approach to installing Stack-based projects.
 

@@ -45,7 +45,8 @@ main = do
        Right pipe -> pipe
        Left e -> error "Cannot connect to MongoDB"
   ontologies <- loadOntologies
-  Main.info "Running on http://localhost:8081"
+  Main.info "API is running on http://localhost:8081/api/v1"
+  Main.info "Documentation is on http://localhost:8081/swagger-ui"
   run 8081 $ waziupServer $ WaziupInfo pipe conf ontologies
 
 opts :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> ParserInfo WaziupConfig

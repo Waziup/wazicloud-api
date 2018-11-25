@@ -183,11 +183,11 @@ getMeasLastValue mval mets = do
                              (getSimpleMetadata "dateModified" mets >>= parseISO8601.unpack)
 
 getEntity :: Sensor -> Entity
-getEntity (Sensor sid sgid sname sown meas sloc sdom _ _ svis skey) = 
+getEntity (Sensor sid sgid sname sloc sdom svis meas sown _ _ skey) = 
   Entity sid "SensingDevice" $ catMaybes [getSimpleAttr "name" sname,
                               getSimpleAttr "gateway_id" sgid,
                               getSimpleAttr "owner" sown,
-                              getSimpleAttr "domain" sown,
+                              getSimpleAttr "domain" sdom,
                               getSimpleAttr "keycloak_id" skey,
                               getSimpleAttr "visibility" ((pack.show) <$> svis),
                               getLocationAttr sloc] <>

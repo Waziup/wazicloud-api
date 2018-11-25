@@ -5,6 +5,7 @@
 module Main where
 
 import Network.Wai.Handler.Warp
+import Network.Wai.Middleware.RequestLogger
 import Waziup.Server
 import Waziup.Types 
 import Data.Maybe
@@ -47,7 +48,7 @@ main = do
   ontologies <- loadOntologies
   Main.info "API is running on http://localhost:8081/api/v1"
   Main.info "Documentation is on http://localhost:8081/swagger-ui"
-  run 8081 $ waziupServer $ WaziupInfo pipe conf ontologies
+  run 8081 $ logStdout $ waziupServer $ WaziupInfo pipe conf ontologies
 
 opts :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> ParserInfo WaziupConfig
 opts serv m kc o = Opts.info ((waziupConfigParser serv m kc o) <**> helper) parserInfo

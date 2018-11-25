@@ -47,6 +47,7 @@ Executable waziup-servant
                      , http-client
                      , http-types
                      , wai
+                     , wai-extra
                      , wreq
                      , lens
                      , lens-aeson

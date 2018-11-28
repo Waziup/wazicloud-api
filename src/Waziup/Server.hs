@@ -42,6 +42,7 @@ import GHC.Generics (Generic)
 import System.Log.Logger
 import Paths_Waziup_Servant
 import System.FilePath ((</>))
+import Data.ByteString.Base64 as B64
 
 server :: ServerT API Waziup
 server = serverWaziup :<|> serverDocs
@@ -135,7 +136,11 @@ postSensor tok s@(Sensor sid _ _ _ _ _ _ _ _ vis _) = do
   debug "Create resource"
   resId <- runKeycloak $ createResource res tok
   debug "Create entity"
-  res2 <- C.try $ runOrion $ O.postSensorOrion (s {senKeycloakId = Just resId})
+  let username = case tok of
+       Just t -> getUsername t
+       Nothing -> Just "guest"
+  debug $ "Onwer: " <> (show username)
+  res2 <- C.try $ runOrion $ O.postSensorOrion (s {senKeycloakId = Just resId, senOwner = username})
   case res2 of
     Right _ -> return NoContent
     Left (e :: HttpException) -> do

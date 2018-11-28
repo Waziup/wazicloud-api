@@ -9,6 +9,7 @@ import Network.Wreq as W hiding (statusCode)
 import Network.Wreq.Types
 import Control.Lens
 import Data.Aeson as JSON
+import Data.Aeson.Types
 import Data.Aeson.BetterErrors as AB
 import Data.Text hiding (head, tail, map)
 import Data.Text.Encoding
@@ -25,6 +26,8 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL
 import Network.HTTP.Types.Method 
 import Data.ByteString.Base64 as B64
+import Data.String.Conversions
+import Debug.Trace
 
 checkPermission :: ResourceId -> Scope -> Maybe Token -> Keycloak ()
 checkPermission res scope tok = do
@@ -159,5 +162,17 @@ getErrorStatus _ = Nothing
 try :: MonadError a m => m b -> m (Either a b)
 try act = catchError (Right <$> act) (return . Left)
 
-getUsername :: Token -> Username
-getUsername (Token tok) = undefined $ B64.decodeLenient tok 
+decodeToken :: Token -> Either String TokenDec
+decodeToken (Token tok) = case (BS.split '.' tok) ^? element 1 of
+    Nothing -> Left "Token is not formed correctly"
+    Just part2 -> case AB.parse parseTokenDec (traceShowId $ convertString $ B64.decodeLenient $ traceShowId part2) of
+      Right td -> Right td
+      Left (e :: ParseError String) -> Left $ show e
+
+getUsername :: Token -> Maybe Username
+getUsername tok = do 
+  case decodeToken tok of
+    Right t -> Just $ preferredUsername t
+    Left e -> do
+      traceM $ "Error while decoding token: " ++ (show e)
+      Nothing

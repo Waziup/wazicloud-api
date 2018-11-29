@@ -5,29 +5,29 @@
 
 module Keycloak.Client where
 
-import Network.Wreq as W hiding (statusCode)
-import Network.Wreq.Types
-import Control.Lens
-import Data.Aeson as JSON
-import Data.Aeson.Types
-import Data.Aeson.BetterErrors as AB
-import Data.Text hiding (head, tail, map)
-import Data.Text.Encoding
-import Data.Maybe
-import Control.Monad.Reader as R
-import Keycloak.Types
-import Network.HTTP.Client as HC hiding (responseBody)
-import Network.HTTP.Types.Status
-import Data.Monoid
+import           Control.Lens hiding ((.=))
+import           Control.Monad.Reader as R
 import qualified Control.Monad.Catch as C
-import Control.Monad.Except (throwError, catchError, MonadError)
-import System.Log.Logger
+import           Control.Monad.Except (throwError, catchError, MonadError)
+import           Data.Aeson as JSON
+import           Data.Aeson.Types hiding ((.=))
+import           Data.Aeson.BetterErrors as AB
+import           Data.Text hiding (head, tail, map)
+import           Data.Text.Encoding
+import           Data.Maybe
+import           Data.ByteString.Base64 as B64
+import           Data.String.Conversions
+import           Data.Monoid
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL
-import Network.HTTP.Types.Method 
-import Data.ByteString.Base64 as B64
-import Data.String.Conversions
-import Debug.Trace
+import           Keycloak.Types
+import           Network.HTTP.Client as HC hiding (responseBody)
+import           Network.HTTP.Types.Status
+import           Network.Wreq as W hiding (statusCode)
+import           Network.Wreq.Types
+import           Network.HTTP.Types.Method 
+import           System.Log.Logger
+import           Debug.Trace
 
 checkPermission :: ResourceId -> Scope -> Maybe Token -> Keycloak ()
 checkPermission (ResourceId res) scope tok = do

@@ -7,42 +7,42 @@
 
 module Waziup.Server where
 
-import Waziup.Types
-import Waziup.API
-import Waziup.Utils
-import Control.Monad.Except (ExceptT, throwError, withExceptT, runExceptT)
-import Control.Monad.IO.Class
-import Control.Monad
-import Control.Monad.Reader
-import Control.Monad.Error.Class (MonadError)
-import Control.Lens hiding ((.=))
-import Data.Maybe
-import Data.Proxy (Proxy(..))
-import Data.Text hiding (map, filter, foldl, any)
-import Data.String.Conversions
-import Data.Aeson.BetterErrors as AB
+import           Waziup.Types
+import           Waziup.API
+import           Waziup.Utils
+import           Control.Monad.Except (ExceptT, throwError, withExceptT, runExceptT)
+import           Control.Monad.IO.Class
+import           Control.Monad
+import           Control.Monad.Reader
+import           Control.Monad.Error.Class (MonadError)
+import           Control.Lens hiding ((.=))
+import           Control.Monad.Catch as C
+import           Data.Maybe
+import           Data.Proxy (Proxy(..))
+import           Data.Text hiding (map, filter, foldl, any)
+import           Data.String.Conversions
+import           Data.Aeson.BetterErrors as AB
 import qualified Data.ByteString as BS
-import Data.Aeson
+import           Data.Aeson
 import qualified Data.List as L
 import qualified Data.Swagger as S
-import Servant
-import Servant.Server
-import Servant.Swagger
-import Servant.Swagger.UI
-import Servant.Swagger.UI.Core
-import Servant.Swagger.Internal
-import Keycloak as KC hiding (info, warn, debug, err, Scope) 
+import           Data.ByteString.Base64 as B64
+import           Servant
+import           Servant.Server
+import           Servant.Swagger
+import           Servant.Swagger.UI
+import           Servant.Swagger.UI.Core
+import           Servant.Swagger.Internal
+import           Servant.API.Flatten
+import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
 import qualified Orion as O
-import Mongo as M hiding (info, warn, debug, err, Scope) 
-import Database.MongoDB as DB
-import Control.Monad.Catch as C
-import Servant.API.Flatten
-import Network.HTTP.Client (HttpException)
-import GHC.Generics (Generic)
-import System.Log.Logger
-import Paths_Waziup_Servant
-import System.FilePath ((</>))
-import Data.ByteString.Base64 as B64
+import           Mongo as M hiding (info, warn, debug, err, Scope) 
+import           Database.MongoDB as DB
+import           Network.HTTP.Client (HttpException)
+import           GHC.Generics (Generic)
+import           System.Log.Logger
+import           System.FilePath ((</>))
+import           Paths_Waziup_Servant
 
 server :: ServerT API Waziup
 server = serverWaziup :<|> serverDocs

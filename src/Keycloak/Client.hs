@@ -50,10 +50,16 @@ isAuthorized res scope tok = do
 getAllPermissions :: Maybe Token -> Keycloak [Permission]
 getAllPermissions mtok = do
   debug "Get all permissions"
+  let allScopes = [("sensors:update" :: Text),
+                   "Sensors:view",
+                   "Sensors:delete",
+                   "Sensors-data:create",
+                   "Sensors-data:view"]
   client <- asks clientId
   let dat = ["grant_type" := ("urn:ietf:params:oauth:grant-type:uma-ticket" :: Text),
              "audience" := client,
              "response_mode" := ("permissions" :: Text)]
+             <> map (\s -> "permission" := ("#" <> s)) allScopes
   keycloakPostDef "protocol/openid-connect/token" dat mtok (eachInArray parsePermission)
 
   

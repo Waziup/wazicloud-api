@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Keycloak.Types where
 
@@ -65,7 +66,7 @@ extractBearerAuth bs =
 instance ToHttpApiData Token where
   toQueryParam (Token token) = "Bearer " <> (decodeUtf8 token)
 
-type ResourceId = Text
+newtype ResourceId = ResourceId {unResId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
 type ResourceName = Text
 type ScopeId = Text
 type ScopeName = Text
@@ -82,7 +83,7 @@ parsePermission = do
     rsname  <- AB.key "rsname" asText
     rsid    <- AB.key "rsid" asText
     scopes  <- AB.keyMay "scopes" (eachInArray asText) 
-    return $ Permission rsname rsid (if (isJust scopes) then (fromJust scopes) else [])
+    return $ Permission rsname (ResourceId rsid) (if (isJust scopes) then (fromJust scopes) else [])
 
 type Username = Text
 
@@ -110,7 +111,13 @@ data Resource = Resource {
 instance FromJSON Resource where
   parseJSON = genericParseJSON $ aesonDrop 3 camelCase 
 instance ToJSON Resource where
-  toJSON = genericToJSON $ (aesonDrop 3 camelCase) {omitNothingFields = True}
+  toJSON (Resource id name typ uris scopes own uma attrs) =
+    object ["name" .= toJSON name,
+            "uris" .= toJSON uris,
+            "scopes" .= toJSON scopes,
+            "owner" .= toJSON own,
+            "ownerManagedAccess" .= toJSON uma,
+            "attributes" .= object (map (\(Attribute name vals) -> name .= toJSON vals) attrs)]
 
 data Attribute = Attribute {
   attName   :: Text,
@@ -120,7 +127,7 @@ data Attribute = Attribute {
 instance FromJSON Attribute where
   parseJSON = genericParseJSON $ aesonDrop 3 camelCase 
 instance ToJSON Attribute where
-  toJSON = genericToJSON $ (aesonDrop 3 camelCase) {omitNothingFields = True}
+  toJSON (Attribute name vals) = object [name .= toJSON vals] 
 
 
 data TokenDec = TokenDec {

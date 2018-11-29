@@ -31,6 +31,7 @@ import           Control.Monad.Except (ExceptT, throwError, MonadError, catchErr
 import           Control.Exception hiding (try)
 import qualified Control.Monad.Catch as C
 import           Orion.Types
+import           Keycloak.Types (ResourceId(..))
 import           System.Log.Logger
 import           GHC.Generics (Generic)
 import           Waziup.Types
@@ -60,11 +61,16 @@ postSensorOrion :: Sensor -> Orion ()
 postSensorOrion s = do
   debug $ C8.unpack $ "Create sensor in Orion: " <> (BSL.toStrict $ JSON.encode s)
   let entity = getEntity s
-  debug $ C8.unpack $ "Entity: " <> (BSL.toStrict $ JSON.encode entity)
+  debug $ convertString $ "Entity: " <> (JSON.encode entity)
   orionPost "/v2/entities" (toJSON entity)
 
 deleteSensorOrion :: EntityId -> Orion ()
 deleteSensorOrion eid = orionDelete ("/v2/entities/" <> eid)
+
+postSensorKeycloakOrion :: EntityId -> ResourceId -> Orion ()
+postSensorKeycloakOrion eid (ResourceId res) = do
+  debug $ convertString $ "put Keycloak ID in Orion: " <> res
+  orionPost ("/v2/entities/" <> eid <> "/attrs") (object ["keycloak_id" .= (toJSON $ (Attribute "String" (Just $ toJSON res) []) :: Value)])
 
 -- Get Orion URI and options
 getOrionDetails :: Path -> Orion (String, Options)
@@ -123,6 +129,19 @@ orionDelete path = do
       warn $ "Orion HTTP Error: " ++ (show err)
       throwError $ HTTPError err
 
+orionPut :: (Putable dat, Show dat) => Path -> dat -> Orion ()
+orionPut path dat = do 
+  (url, opts) <- getOrionDetails path 
+  info $ "Issuing ORION PUT with url: " ++ (show url) 
+  debug $ "  data: " ++ (show dat) 
+  debug $ "  headers: " ++ (show $ opts ^. W.headers) 
+  eRes <- C.try $ liftIO $ W.putWith opts url dat
+  case eRes of 
+    Right res -> return ()
+    Left err -> do
+      warn $ "Orion HTTP Error: " ++ (show err)
+      throwError $ HTTPError err
+
 
 -- * Helper functions
 
@@ -137,7 +156,7 @@ getSensor (Entity eId etype attrs) = Sensor { senId           = eId,
                                               senDateCreated  = getSimpleAttribute "dateCreated" attrs >>= parseISO8601.unpack,
                                               senDateUpdated  = getSimpleAttribute "dateModified" attrs >>= parseISO8601.unpack,
                                               senMeasurements = getMeasurements attrs,
-                                              senKeycloakId   = getSimpleAttribute "keycloak_id" attrs}
+                                              senKeycloakId   = ResourceId <$> getSimpleAttribute "keycloak_id" attrs}
                          
 getSimpleAttribute :: Text -> [(Text, Attribute)] -> Maybe Text
 getSimpleAttribute attName attrs = do
@@ -188,7 +207,7 @@ getEntity (Sensor sid sgid sname sloc sdom svis meas sown _ _ skey) =
                               getSimpleAttr "gateway_id" sgid,
                               getSimpleAttr "owner" sown,
                               getSimpleAttr "domain" sdom,
-                              getSimpleAttr "keycloak_id" skey,
+                              getSimpleAttr "keycloak_id" (unResId <$> skey),
                               getSimpleAttr "visibility" ((pack.show) <$> svis),
                               getLocationAttr sloc] <>
                               map getMeasurementAttr meas

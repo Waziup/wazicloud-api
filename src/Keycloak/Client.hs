@@ -30,7 +30,7 @@ import Data.String.Conversions
 import Debug.Trace
 
 checkPermission :: ResourceId -> Scope -> Maybe Token -> Keycloak ()
-checkPermission res scope tok = do
+checkPermission (ResourceId res) scope tok = do
   debug $ "Checking permissions: " ++ (show res) ++ " " ++ (show scope)
   client <- asks clientId
   let dat = ["grant_type" := ("urn:ietf:params:oauth:grant-type:uma-ticket" :: Text),
@@ -81,11 +81,11 @@ getClientAuthToken = do
 
 createResource :: Resource -> Maybe Token -> Keycloak ResourceId
 createResource r mtok = do
-  debug $ BS.unpack $ BL.toStrict $ "Creating resource: " <> (JSON.encode r)
-  keycloakPostDef "authz/protection/resource_set" (toJSON r) mtok (AB.key "_id" asText) 
+  debug $ convertString $ "Creating resource: " <> (JSON.encode r)
+  keycloakPostDef "authz/protection/resource_set" (toJSON r) mtok (ResourceId <$> AB.key "_id" asText) 
 
 deleteResource :: ResourceId -> Maybe Token -> Keycloak ()
-deleteResource rid mtok = do
+deleteResource (ResourceId rid) mtok = do
   keycloakDeleteDef ("authz/protection/resource_set/" <> rid) mtok 
   return ()
 

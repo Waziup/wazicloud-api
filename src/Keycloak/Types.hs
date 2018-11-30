@@ -5,21 +5,21 @@
 
 module Keycloak.Types where
 
-import Data.Aeson as JSON
-import Data.Aeson.Types
-import Data.Aeson.Casing
-import Data.Text hiding (head, tail, map, toLower)
-import Data.Text.Encoding
-import GHC.Generics (Generic)
-import Data.Maybe
-import Data.Aeson.BetterErrors as AB
-import Web.HttpApiData (FromHttpApiData(..), ToHttpApiData(..))
-import Network.HTTP.Client as HC hiding (responseBody)
-import Data.Monoid
-import Control.Monad.Except (ExceptT)
-import Control.Monad.Reader as R
+import           Data.Aeson as JSON
+import           Data.Aeson.Types
+import           Data.Aeson.Casing
+import           Data.Text hiding (head, tail, map, toLower)
+import           Data.Text.Encoding
+import           Data.Monoid
+import           Data.Maybe
+import           Data.Aeson.BetterErrors as AB
 import qualified Data.ByteString as BS
-import Data.Word8 (isSpace, _colon, toLower)
+import           Data.Word8 (isSpace, _colon, toLower)
+import           Control.Monad.Except (ExceptT)
+import           Control.Monad.Reader as R
+import           GHC.Generics (Generic)
+import           Web.HttpApiData (FromHttpApiData(..), ToHttpApiData(..))
+import           Network.HTTP.Client as HC hiding (responseBody)
 
 type Keycloak a = ReaderT KCConfig (ExceptT KCError IO) a
 

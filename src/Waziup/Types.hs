@@ -163,7 +163,7 @@ data Sensor = Sensor
   , senMeasurements :: [Measurement]
   , senOwner        :: Maybe Text       -- ^ owner of the sensor node (output only)
   , senDateCreated  :: Maybe UTCTime    -- ^ creation date of the sensor node (output only)
-  , senDateUpdated  :: Maybe UTCTime    -- ^ last update date of the sensor nodei (output only)
+  , senDateModified :: Maybe UTCTime    -- ^ last update date of the sensor nodei (output only)
   , senKeycloakId   :: Maybe ResourceId -- ^ The is of the resource in Keycloak
   } deriving (Show, Eq, Generic)
 
@@ -177,7 +177,7 @@ defaultSensor = Sensor
   , senMeasurements = [defaultMeasurement]
   , senOwner        = Nothing
   , senDateCreated  = Nothing
-  , senDateUpdated  = Nothing
+  , senDateModified = Nothing
   , senKeycloakId   = Nothing 
   }
 

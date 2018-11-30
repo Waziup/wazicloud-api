@@ -154,7 +154,7 @@ getSensor (Entity eId etype attrs) = Sensor { senId           = eId,
                                               senDomain       = getSimpleAttribute "domain" attrs,
                                               senVisibility   = getSimpleAttribute "visibility" attrs >>= readVisibility,
                                               senDateCreated  = getSimpleAttribute "dateCreated" attrs >>= parseISO8601.unpack,
-                                              senDateUpdated  = getSimpleAttribute "dateModified" attrs >>= parseISO8601.unpack,
+                                              senDateModified = getSimpleAttribute "dateModified" attrs >>= parseISO8601.unpack,
                                               senMeasurements = getMeasurements attrs,
                                               senKeycloakId   = ResourceId <$> getSimpleAttribute "keycloak_id" attrs}
                          

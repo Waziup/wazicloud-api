@@ -49,6 +49,7 @@ defaultKCConfig = KCConfig {
   guestPassword = "guest"}
 
 type Path = Text
+
 newtype Token = Token {unToken :: BS.ByteString} deriving (Eq, Show, Generic)
 
 instance FromHttpApiData Token where

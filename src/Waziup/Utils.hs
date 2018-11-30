@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Waziup.Utils where
 
@@ -62,10 +61,4 @@ fromKCError (KC.HTTPError s) = err500 {errBody = encode $ show s}
 fromKCError (KC.ParseError s) = err500 {errBody = encode s} 
 fromKCError KC.EmptyError = err500 {errBody = "EmptyError"}
 
-instance MimeRender PlainText Token where
-  mimeRender _ (Token tok) = BL.fromStrict tok
 
-instance MimeRender PlainText Visibility where
-  mimeRender _ vis = convertString $ show vis
-
-instance MimeUnrender PlainText Visibility where

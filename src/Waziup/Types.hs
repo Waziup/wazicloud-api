@@ -2,6 +2,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Waziup.Types where
 
@@ -192,6 +193,8 @@ instance FromJSON Visibility where
   parseJSON = Aeson.withText "String" (\x -> return $ fromJust $ readVisibility x)
 instance ToParamSchema Visibility
 instance ToSchema Visibility
+instance MimeRender PlainText Visibility
+instance MimeUnrender PlainText Visibility
 
 instance Show Visibility where
   show Public = "public"

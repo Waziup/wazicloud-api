@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Waziup.Server where
 
@@ -7,11 +8,13 @@ import           Waziup.API
 import           Waziup.Sensors
 import           Waziup.Ontologies
 import           Waziup.Projects
+import qualified Keycloak.Types as KC
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 import           Control.Lens hiding ((.=))
 import           Data.Proxy (Proxy(..))
 import qualified Data.Swagger as S
+import qualified Data.ByteString.Lazy as BL
 import           Servant
 import           Servant.Server
 import           Servant.Swagger
@@ -82,3 +85,5 @@ info  s = liftIO $ infoM "API" s
 warn  s = liftIO $ warningM "API" s
 err   s = liftIO $ errorM "API" s
 
+instance MimeRender PlainText KC.Token where
+  mimeRender _ (KC.Token tok) = BL.fromStrict tok

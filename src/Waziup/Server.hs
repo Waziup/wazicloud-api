@@ -85,7 +85,12 @@ ontologiesServer = getSensingDevices :<|> getQuantityKinds :<|> getUnits
 getPerms :: Maybe Token -> Waziup [Perm]
 getPerms tok = do
   info "Get Permissions"
-  ps <- runKeycloak (getAllPermissions tok)
+  let allScopes = [SensorsUpdate,
+                   SensorsView,
+                   SensorsDelete,
+                   SensorsDataCreate,
+                   SensorsDataView]
+  ps <- runKeycloak $ getAllPermissions (map (convertString.show) allScopes) tok
   let getP :: KC.Permission -> Perm
       getP (KC.Permission rsname _ scopes) = Perm rsname (mapMaybe readScope scopes)
   return $ map getP ps 
@@ -100,12 +105,12 @@ getSensors :: Maybe Token -> Maybe SensorsQuery -> Maybe SensorsLimit -> Maybe S
 getSensors tok mq mlimit moffset = do
   info "Get sensors"
   sensors <- runOrion $ O.getSensorsOrion mq mlimit moffset
-  ps <- runKeycloak (getAllPermissions tok)
+  ps <- getPerms tok
   let sensors2 = filter (checkPermSensor SensorsView ps) sensors
   return sensors2
 
-checkPermSensor :: Scope -> [Permission] -> Sensor -> Bool
-checkPermSensor scope perms sen = any (\p -> (rsname p) == (senId sen) && (convertString $ show scope) `elem` (scopes p)) perms
+checkPermSensor :: Scope -> [Perm] -> Sensor -> Bool
+checkPermSensor scope perms sen = any (\p -> (permResource p) == (senId sen) && scope `elem` (permScopes p)) perms
 
 getSensor :: Maybe Token -> SensorId -> Waziup Sensor
 getSensor tok sid = do

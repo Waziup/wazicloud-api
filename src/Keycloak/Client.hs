@@ -47,19 +47,14 @@ isAuthorized res scope tok = do
     Left e | (statusCode <$> getErrorStatus e) == Just 403 -> return False
     Left e -> throwError e --rethrow the error
 
-getAllPermissions :: Maybe Token -> Keycloak [Permission]
-getAllPermissions mtok = do
+getAllPermissions :: [Scope] -> Maybe Token -> Keycloak [Permission]
+getAllPermissions scopes mtok = do
   debug "Get all permissions"
-  let allScopes = [("sensors:update" :: Text),
-                   "Sensors:view",
-                   "Sensors:delete",
-                   "Sensors-data:create",
-                   "Sensors-data:view"]
   client <- asks clientId
   let dat = ["grant_type" := ("urn:ietf:params:oauth:grant-type:uma-ticket" :: Text),
              "audience" := client,
              "response_mode" := ("permissions" :: Text)]
-             <> map (\s -> "permission" := ("#" <> s)) allScopes
+             <> map (\s -> "permission" := ("#" <> s)) scopes
   keycloakPostDef "protocol/openid-connect/token" dat mtok (eachInArray parsePermission)
 
   

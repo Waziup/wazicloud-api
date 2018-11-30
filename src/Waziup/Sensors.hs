@@ -109,9 +109,6 @@ deleteSensor tok sid = do
     runOrion $ O.deleteSensorOrion sid
   return NoContent
 
-putSensorOwner :: Maybe Token -> SensorId -> KC.Username -> Waziup NoContent
-putSensorOwner mtok sid u = undefined
-
 putSensorLocation :: Maybe Token -> SensorId -> Location -> Waziup NoContent
 putSensorLocation mtok sid loc = do
   info $ "Put sensor location: " ++ (show loc)
@@ -129,7 +126,27 @@ putSensorName mtok sid name = do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
     debug "Update Orion resource"
-    runOrion $ O.putSensorNameOrion sid name
+    runOrion $ O.putSensorTextAttribute sid "name" name
+  return NoContent
+
+putSensorGatewayId :: Maybe Token -> SensorId -> GatewayId -> Waziup NoContent
+putSensorGatewayId mtok sid gid = do
+  info $ "Put sensor gateway ID: " ++ (show gid)
+  withKCId sid $ \keyId -> do
+    debug "Check permissions"
+    runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
+    debug "Update Orion resource"
+    runOrion $ O.putSensorTextAttribute sid "gateway_id" gid
+  return NoContent
+
+putSensorVisibility :: Maybe Token -> SensorId -> Visibility -> Waziup NoContent
+putSensorVisibility mtok sid vis = do
+  info $ "Put sensor visibility: " ++ (show vis)
+  withKCId sid $ \keyId -> do
+    debug "Check permissions"
+    runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
+    debug "Update Orion resource"
+    runOrion $ O.putSensorTextAttribute sid "visibility" (convertString $ show vis)
   return NoContent
 
 withKCId :: SensorId -> (ResourceId -> Waziup a) -> Waziup a
@@ -140,12 +157,6 @@ withKCId sid f = do
     Nothing -> do
       error "Cannot delete sensor: KC Id not present"
       throwError err500 {errBody = "Cannot delete sensor: KC Id not present"}
-
-putSensorGatewayId :: Maybe Token -> SensorId -> GatewayId -> Waziup NoContent
-putSensorGatewayId mtok sid gid = undefined
-
-putSensorVisibility :: Maybe Token -> SensorId -> Visibility -> Waziup NoContent
-putSensorVisibility mtok sid v = undefined
 
 
 -- Logging

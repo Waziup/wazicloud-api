@@ -72,6 +72,11 @@ postSensorKeycloakOrion eid (ResourceId res) = do
   debug $ convertString $ "put Keycloak ID in Orion: " <> res
   orionPost ("/v2/entities/" <> eid <> "/attrs") (object ["keycloak_id" .= (toJSON $ (Attribute "String" (Just $ toJSON res) []) :: Value)])
 
+putSensorNameOrion :: EntityId -> SensorName -> Orion ()
+putSensorNameOrion eid name = do
+  debug $ convertString $ "put Sensor name in Orion: " <> name
+  orionPost ("/v2/entities/" <> eid <> "/attrs") (object ["name" .= (toJSON $ (Attribute "String" (Just $ toJSON name) []) :: Value)])
+
 -- Get Orion URI and options
 getOrionDetails :: Path -> Orion (String, Options)
 getOrionDetails path = do

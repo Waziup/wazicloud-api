@@ -100,34 +100,45 @@ postSensor tok s@(Sensor sid _ _ _ _ vis _ _ _ _ _) = do
 deleteSensor :: Maybe Token -> SensorId -> Waziup NoContent
 deleteSensor tok sid = do
   info "Delete sensor"
+  withKCId sid $ \keyId -> do
+    debug "Check permissions"
+    runKeycloak $ checkPermission keyId (pack $ show SensorsDelete) tok
+    debug "Delete Keycloak resource"
+    runKeycloak $ deleteResource keyId tok
+    debug "Delete Orion resource"
+    runOrion $ O.deleteSensorOrion sid
+  return NoContent
+
+putSensorOwner :: Maybe Token -> SensorId -> KC.Username -> Waziup NoContent
+putSensorOwner mtok sid u = undefined
+
+putSensorLocation :: Maybe Token -> SensorId -> Location -> Waziup NoContent
+putSensorLocation mtok sid loc = undefined
+
+putSensorName :: Maybe Token -> SensorId -> SensorName -> Waziup NoContent
+putSensorName mtok sid name = do
+  info $ "Put sensor name: " ++ (show name)
+  withKCId sid $ \keyId -> do
+    debug "Check permissions"
+    runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
+    debug "Update Orion resource"
+    runOrion $ O.putSensorNameOrion sid name
+  return NoContent
+
+withKCId :: SensorId -> (ResourceId -> Waziup a) -> Waziup a
+withKCId sid f = do
   sensor <- runOrion (O.getSensorOrion sid)
   case (senKeycloakId sensor) of
-    Just keyId -> do
-      debug "Check permissions"
-      runKeycloak $ checkPermission keyId (pack $ show SensorsDelete) tok
-      debug "Delete Keycloak resource"
-      runKeycloak $ deleteResource keyId tok
-      debug "Delete Orion resource"
-      runOrion $ O.deleteSensorOrion sid
+    Just keyId -> f keyId 
     Nothing -> do
       error "Cannot delete sensor: KC Id not present"
       throwError err500 {errBody = "Cannot delete sensor: KC Id not present"}
-  return NoContent
 
-putSensorOwner :: Maybe Token -> KC.Username -> Waziup NoContent
-putSensorOwner mtok u = undefined
+putSensorGatewayId :: Maybe Token -> SensorId -> GatewayId -> Waziup NoContent
+putSensorGatewayId mtok sid gid = undefined
 
-putSensorLocation :: Maybe Token -> Location -> Waziup NoContent
-putSensorLocation mtok loc = undefined
-
-putSensorName :: Maybe Token -> SensorName -> Waziup NoContent
-putSensorName mtok name = undefined
-
-putSensorGatewayId :: Maybe Token -> GatewayId -> Waziup NoContent
-putSensorGatewayId mtok gid = undefined
-
-putSensorVisibility :: Maybe Token -> Visibility -> Waziup NoContent
-putSensorVisibility mtok v = undefined
+putSensorVisibility :: Maybe Token -> SensorId -> Visibility -> Waziup NoContent
+putSensorVisibility mtok sid v = undefined
 
 
 -- Logging

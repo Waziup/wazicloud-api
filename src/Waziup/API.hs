@@ -34,14 +34,14 @@ type SensorsAPI = Flat (
                  ReqBody '[JSON] Sensor :> PostNoContent '[JSON] NoContent :<|>
                  SensorAPI))
 
-type SensorAPI = (
+type SensorAPI = Flat (
   Capture "id" Text :> (Get '[JSON] Sensor :<|>
-                        DeleteNoContent '[JSON] NoContent) :<|>
-                        "owner"      :> ReqBody '[PlainText] Username :> PutNoContent '[JSON] NoContent :<|>
-                        "location"   :> ReqBody '[JSON] Location :> PutNoContent '[JSON] NoContent :<|>
-                        "name"       :> ReqBody '[PlainText] SensorName :> PutNoContent '[JSON] NoContent :<|>
-                        "gateway_id" :> ReqBody '[PlainText] GatewayId :> PutNoContent '[JSON] NoContent :<|>
-                        "visibility" :> ReqBody '[PlainText] Visibility :> PutNoContent '[JSON] NoContent) -- :<|>
+                        DeleteNoContent '[JSON] NoContent :<|>
+                        ("name"       :> ReqBody '[PlainText] SensorName :> PutNoContent '[JSON] NoContent))) -- :<|>
+                        --("owner"      :> ReqBody '[PlainText] Username :> PutNoContent '[JSON] NoContent) --:<|>
+                        --("location"   :> ReqBody '[JSON] Location :> PutNoContent '[JSON] NoContent :<|>
+                        --("gateway_id" :> ReqBody '[PlainText] GatewayId :> PutNoContent '[JSON] NoContent :<|>
+                        --("visibility" :> ReqBody '[PlainText] Visibility :> PutNoContent '[JSON] NoContent) -- :<|>
                         --MeasurementsAPI)
 
 --type MeasurementsAPI = (

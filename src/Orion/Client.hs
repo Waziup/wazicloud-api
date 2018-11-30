@@ -197,9 +197,14 @@ getString _ = Nothing
 getMeasLastValue :: Maybe Value -> [(Text, Metadata)] -> Maybe MeasurementValue
 getMeasLastValue mval mets = do
    value <- mval
+   guard $ not $ isNull value
    return $ MeasurementValue value 
                              (getSimpleMetadata "timestamp" mets    >>= parseISO8601.unpack)
                              (getSimpleMetadata "dateModified" mets >>= parseISO8601.unpack)
+
+isNull :: Value -> Bool
+isNull Null = True
+isNull _    = False
 
 getEntity :: Sensor -> Entity
 getEntity (Sensor sid sgid sname sloc sdom svis meas sown _ _ skey) = 

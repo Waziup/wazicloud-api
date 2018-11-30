@@ -2,10 +2,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Waziup.Types where
 
@@ -222,6 +218,7 @@ data Location = Location
   , longitude :: Longitude
   } deriving (Show, Eq, Generic)
 
+defaultLocation :: Location
 defaultLocation = Location (Latitude 5.36) (Longitude 4.0083)
 
 instance FromJSON Location where

@@ -8,8 +8,6 @@ import Network.Wai.Handler.Warp
 import Network.Wai.Middleware.RequestLogger
 import Waziup.Server
 import Waziup.Types 
-import Data.Maybe
-import Data.Text hiding (map, any)
 import Data.String.Conversions
 import Data.Aeson.BetterErrors as AB
 import qualified Data.ByteString as BS
@@ -21,7 +19,6 @@ import System.Log.Handler hiding (setLevel)
 import System.Log.Handler.Simple
 import System.Log.Handler.Log4jXML
 import System.IO
-import System.Environment
 import Mongo
 import Keycloak hiding (try)
 import Orion hiding (try)
@@ -29,9 +26,9 @@ import Database.MongoDB as DB hiding (value)
 import Options.Applicative as Opts hiding (Success, Failure)
 import Control.Exception
 import Control.Monad.IO.Class
-import Control.Applicative.Lift
 import System.FilePath ((</>))
 import Paths_Waziup_Servant
+
 
 main :: IO ()
 main = do

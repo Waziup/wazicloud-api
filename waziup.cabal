@@ -1,11 +1,11 @@
 name:                waziup
 version:             0.1.0.0
-synopsis:            Auto-generated API bindings for waziup
+synopsis:            API server for Waziup 
 description:         Please see README.md
-homepage:            https://github.com/swagger-api/swagger-codegen#readme
-author:              Author Name Here
-maintainer:          author.name@email.com
-copyright:           YEAR - AUTHOR
+homepage:            https://github.com/cdupont/Waziup-API-HS.git
+author:              Corentin Dupont
+maintainer:          corentin.dupont@gmail.com
+copyright:           2018 - Waziup
 category:            Web
 build-type:          Simple
 cabal-version:       >=1.10
@@ -14,6 +14,10 @@ Executable waziup-servant
   hs-source-dirs:      src
   Main-Is:             Main.hs
   other-modules:       Waziup.API
+                     , Waziup.Ontologies
+                     , Waziup.Projects
+                     , Waziup.Sensors
+                     , Waziup.Server
                      , Waziup.Types
                      , Waziup.Utils
                      , Keycloak
@@ -22,6 +26,10 @@ Executable waziup-servant
                      , Orion
                      , Orion.Client
                      , Orion.Types
+                     , Mongo
+                     , Mongo.Client
+                     , Mongo.Types
+                     , Paths_Waziup_Servant
   data-dir: data
   data-files: ontologies/*.json
   ghc-options:         -Wall

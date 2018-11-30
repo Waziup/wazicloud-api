@@ -33,7 +33,7 @@ import           Control.Monad.Reader
 import           Servant
 import           Servant.Swagger
 import           Servant.API.Flatten
-import           Keycloak as KC hiding (info, warn, debug, Scope, Username) 
+import           Keycloak as KC hiding (info, warn, debug, Scope) 
 import           GHC.Generics (Generic)
 import qualified Database.MongoDB as DB
 import qualified Orion.Types as O
@@ -77,10 +77,6 @@ data Ontologies = Ontologies {
 
 -- * Authentication & authorization
 
-type Username = Text
-type Password = Text
-
--- | Auth details 
 data AuthBody = AuthBody
   { authBodyUsername :: Username
   , authBodyPassword :: Password
@@ -157,7 +153,7 @@ data Sensor = Sensor
   , senDomain       :: Maybe Domain     -- ^ the domain of this sensor.
   , senVisibility   :: Maybe Visibility
   , senMeasurements :: [Measurement]
-  , senOwner        :: Maybe Text       -- ^ owner of the sensor node (output only)
+  , senOwner        :: Maybe Username   -- ^ owner of the sensor node (output only)
   , senDateCreated  :: Maybe UTCTime    -- ^ creation date of the sensor node (output only)
   , senDateModified :: Maybe UTCTime    -- ^ last update date of the sensor nodei (output only)
   , senKeycloakId   :: Maybe ResourceId -- ^ The is of the resource in Keycloak
@@ -194,6 +190,7 @@ instance ToJSON Visibility where
   toJSON Private = "private" 
 instance FromJSON Visibility where
   parseJSON = Aeson.withText "String" (\x -> return $ fromJust $ readVisibility x)
+instance ToParamSchema Visibility
 instance ToSchema Visibility
 
 instance Show Visibility where

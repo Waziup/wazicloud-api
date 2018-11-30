@@ -32,10 +32,10 @@ data KCConfig = KCConfig {
   realm         :: Text,
   clientId      :: Text,
   clientSecret  :: Text,
-  adminLogin    :: Text,
-  adminPassword :: Text,
-  guestLogin    :: Text,
-  guestPassword :: Text} deriving (Eq, Show)
+  adminLogin    :: Username,
+  adminPassword :: Password,
+  guestLogin    :: Username,
+  guestPassword :: Password} deriving (Eq, Show)
 
 defaultKCConfig :: KCConfig
 defaultKCConfig = KCConfig {
@@ -86,6 +86,7 @@ parsePermission = do
     return $ Permission rsname (ResourceId rsid) (if (isJust scopes) then (fromJust scopes) else [])
 
 type Username = Text
+type Password = Text
 
 data Owner = Owner {
   ownId   :: Maybe Text,

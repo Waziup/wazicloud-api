@@ -114,6 +114,21 @@ deleteSensor tok sid = do
       throwError err500 {errBody = "Cannot delete sensor: KC Id not present"}
   return NoContent
 
+putSensorOwner :: Maybe Token -> KC.Username -> Waziup NoContent
+putSensorOwner mtok u = undefined
+
+putSensorLocation :: Maybe Token -> Location -> Waziup NoContent
+putSensorLocation mtok loc = undefined
+
+putSensorName :: Maybe Token -> SensorName -> Waziup NoContent
+putSensorName mtok name = undefined
+
+putSensorGatewayId :: Maybe Token -> GatewayId -> Waziup NoContent
+putSensorGatewayId mtok gid = undefined
+
+putSensorVisibility :: Maybe Token -> Visibility -> Waziup NoContent
+putSensorVisibility mtok v = undefined
+
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

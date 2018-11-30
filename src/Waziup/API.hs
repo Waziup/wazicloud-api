@@ -36,7 +36,19 @@ type SensorsAPI = Flat (
 
 type SensorAPI = (
   Capture "id" Text :> (Get '[JSON] Sensor :<|>
-                        DeleteNoContent '[JSON] NoContent))
+                        DeleteNoContent '[JSON] NoContent) :<|>
+                        "owner"      :> ReqBody '[PlainText] Username :> PutNoContent '[JSON] NoContent :<|>
+                        "location"   :> ReqBody '[JSON] Location :> PutNoContent '[JSON] NoContent :<|>
+                        "name"       :> ReqBody '[PlainText] SensorName :> PutNoContent '[JSON] NoContent :<|>
+                        "gateway_id" :> ReqBody '[PlainText] GatewayId :> PutNoContent '[JSON] NoContent :<|>
+                        "visibility" :> ReqBody '[PlainText] Visibility :> PutNoContent '[JSON] NoContent) -- :<|>
+                        --MeasurementsAPI)
+
+--type MeasurementsAPI = (
+--  Capture "measurements" Text :> 
+--                (QueryParam "q" SensorsQuery :> QueryParam "limit" SensorsLimit :> QueryParam "offset" SensorsOffset :> Get '[JSON] [Sensor] :<|>
+--                 ReqBody '[JSON] Sensor :> PostNoContent '[JSON] NoContent :<|>
+--                 SensorAPI))
 
 -- * Projects
 

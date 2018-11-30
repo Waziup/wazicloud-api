@@ -9,6 +9,7 @@ import           Keycloak as KC
 import           Control.Monad.Except (throwError, runExceptT)
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
+import           Data.String.Conversions
 import           Data.Aeson
 import qualified Data.ByteString.Lazy as BL
 import           Network.HTTP.Types.Status as HTS
@@ -64,3 +65,7 @@ fromKCError KC.EmptyError = err500 {errBody = "EmptyError"}
 instance MimeRender PlainText Token where
   mimeRender _ (Token tok) = BL.fromStrict tok
 
+instance MimeRender PlainText Visibility where
+  mimeRender _ vis = convertString $ show vis
+
+instance MimeUnrender PlainText Visibility where

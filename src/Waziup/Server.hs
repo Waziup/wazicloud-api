@@ -18,6 +18,8 @@ import           Servant.Swagger
 import           Servant.Swagger.UI
 import           System.Log.Logger
 
+-- * Building the server
+
 server :: ServerT API Waziup
 server = serverWaziup :<|> serverDocs
 
@@ -27,6 +29,23 @@ serverWaziup = authServer :<|> sensorsServer :<|> projectsServer :<|> ontologies
 serverDocs :: ServerT WaziupDocs Waziup
 serverDocs = hoistDocs $ swaggerSchemaUIServer swaggerDoc
 
+authServer :: ServerT AuthAPI Waziup
+authServer = getPerms :<|> postAuth
+
+sensorsServer :: ServerT SensorsAPI Waziup
+sensorsServer = getSensors :<|> postSensor :<|> getSensor :<|> deleteSensor :<|> putSensorOwner :<|> putSensorLocation :<|> putSensorName :<|> putSensorGatewayId :<|> putSensorVisibility
+
+projectsServer :: ServerT ProjectsAPI Waziup
+projectsServer = getProjects :<|> postProject :<|> getProject :<|> deleteProject :<|> putProjectDevices :<|> putProjectGateways
+
+ontologiesServer :: ServerT OntologiesAPI Waziup
+ontologiesServer = getSensingDevices :<|> getQuantityKinds :<|> getUnits
+
+-- final server
+waziupServer :: WaziupInfo -> Application
+waziupServer conf = serve waziupAPI $ Servant.Server.hoistServer waziupAPI (getHandler conf) server
+
+-- Swagger docs
 swaggerDoc :: S.Swagger
 swaggerDoc = toSwagger (Proxy :: Proxy WaziupAPI)
   & S.info . S.title       .~ "Waziup API"
@@ -44,29 +63,13 @@ swaggerDoc = toSwagger (Proxy :: Proxy WaziupAPI)
     projectOps = subOperations (Proxy :: Proxy ProjectsAPI)    (Proxy :: Proxy WaziupAPI)
     ontoOps    = subOperations (Proxy :: Proxy OntologiesAPI) (Proxy :: Proxy WaziupAPI)
 
-authServer :: ServerT AuthAPI Waziup
-authServer = getPerms :<|> postAuth
-
-sensorsServer :: ServerT SensorsAPI Waziup
-sensorsServer = getSensors :<|> postSensor :<|> getSensor :<|> deleteSensor
-
-projectsServer :: ServerT ProjectsAPI Waziup
-projectsServer = getProjects :<|> postProject :<|> getProject :<|> deleteProject :<|> putProjectDevices :<|> putProjectGateways
-
-ontologiesServer :: ServerT OntologiesAPI Waziup
-ontologiesServer = getSensingDevices :<|> getQuantityKinds :<|> getUnits
-
-
--- * Server
+-- * helpers
 
 waziupAPI :: Proxy API
 waziupAPI = Proxy
 
 getHandler :: WaziupInfo -> Waziup a -> Servant.Handler a
 getHandler s x = runReaderT x s
-
-waziupServer :: WaziupInfo -> Application
-waziupServer conf = serve waziupAPI $ Servant.Server.hoistServer waziupAPI (getHandler conf) server
 
 hoistDocs :: ServerT WaziupDocs Servant.Handler -> ServerT WaziupDocs Waziup
 hoistDocs s = Servant.Server.hoistServer (Proxy :: Proxy WaziupDocs) lift s

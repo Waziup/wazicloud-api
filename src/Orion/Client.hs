@@ -181,8 +181,8 @@ getLocation attrs = do
     (Attribute _ mval _) <- lookup "location" attrs
     (Object o) <- mval
     (Array a) <- lookup "coordinates" $ H.toList o
-    let [Number lat, Number lon] = V.toList a
-    return $ Location (toRealFloat lat) (toRealFloat lon)
+    let [Number lon, Number lat] = V.toList a
+    return $ Location (Latitude $ toRealFloat lat) (Longitude $ toRealFloat lon)
  
 getSimpleMetadata :: Text -> [(Text, Metadata)] -> Maybe Text
 getSimpleMetadata name mets = do
@@ -222,7 +222,7 @@ getSimpleAttr name (Just val) = Just (name, Attribute "String" (Just $ toJSON va
 getSimpleAttr _ Nothing = Nothing
 
 getLocationAttr :: Maybe Location -> Maybe (Text, Attribute)
-getLocationAttr (Just (Location lat lon)) = Just ("location", Attribute "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) [])
+getLocationAttr (Just (Location (Latitude lat) (Longitude lon))) = Just ("location", Attribute "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) [])
 getLocationAttr Nothing = Nothing
 
 getMeasurementAttr :: Measurement -> (Text, Attribute)

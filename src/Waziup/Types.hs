@@ -209,14 +209,20 @@ readVisibility "public" = Just Public
 readVisibility "private" = Just Private
 readVisibility _ = Nothing
 
+-- * Location
+
+newtype Latitude  = Latitude  Double deriving (Show, Eq, Generic, ToJSON, FromJSON)
+newtype Longitude = Longitude Double deriving (Show, Eq, Generic, ToJSON, FromJSON)
+instance ToSchema Longitude
+instance ToSchema Latitude
 
 -- | location is a pair [latitude, longitude] with the coordinates on earth in decimal notation (e.g. [40.418889, 35.89389]).
 data Location = Location
-  { latitude  :: Double
-  , longitude :: Double
+  { latitude  :: Latitude
+  , longitude :: Longitude
   } deriving (Show, Eq, Generic)
 
-defaultLocation = Location 5.36 4.0083 
+defaultLocation = Location (Latitude 5.36) (Longitude 4.0083)
 
 instance FromJSON Location where
   parseJSON = genericParseJSON defaultOptions

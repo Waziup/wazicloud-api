@@ -113,7 +113,14 @@ putSensorOwner :: Maybe Token -> SensorId -> KC.Username -> Waziup NoContent
 putSensorOwner mtok sid u = undefined
 
 putSensorLocation :: Maybe Token -> SensorId -> Location -> Waziup NoContent
-putSensorLocation mtok sid loc = undefined
+putSensorLocation mtok sid loc = do
+  info $ "Put sensor location: " ++ (show loc)
+  withKCId sid $ \keyId -> do
+    debug "Check permissions"
+    runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
+    debug "Update Orion resource"
+    runOrion $ O.putSensorLocationOrion sid loc
+  return NoContent
 
 putSensorName :: Maybe Token -> SensorId -> SensorName -> Waziup NoContent
 putSensorName mtok sid name = do

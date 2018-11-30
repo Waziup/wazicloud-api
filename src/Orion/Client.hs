@@ -77,6 +77,12 @@ putSensorNameOrion eid name = do
   debug $ convertString $ "put Sensor name in Orion: " <> name
   orionPost ("/v2/entities/" <> eid <> "/attrs") (object ["name" .= (toJSON $ (Attribute "String" (Just $ toJSON name) []) :: Value)])
 
+putSensorLocationOrion :: EntityId -> Location -> Orion ()
+putSensorLocationOrion eid loc = do
+  debug $ convertString $ "put Sensor location in Orion: " <> (show $ encode loc)
+  let (field, val) = getLocationAttr loc
+  orionPost ("/v2/entities/" <> eid <> "/attrs") (object [field .= (toJSON val)])
+
 -- Get Orion URI and options
 getOrionDetails :: Path -> Orion (String, Options)
 getOrionDetails path = do
@@ -213,22 +219,20 @@ isNull _    = False
 
 getEntity :: Sensor -> Entity
 getEntity (Sensor sid sgid sname sloc sdom svis meas sown _ _ skey) = 
-  Entity sid "SensingDevice" $ catMaybes [getSimpleAttr "name" sname,
-                              getSimpleAttr "gateway_id" sgid,
-                              getSimpleAttr "owner" sown,
-                              getSimpleAttr "domain" sdom,
-                              getSimpleAttr "keycloak_id" (unResId <$> skey),
-                              getSimpleAttr "visibility" ((pack.show) <$> svis),
-                              getLocationAttr sloc] <>
-                              map getMeasurementAttr meas
+  Entity sid "SensingDevice" $ catMaybes [getSimpleAttr "name"        <$> sname,
+                                          getSimpleAttr "gateway_id"  <$> sgid,
+                                          getSimpleAttr "owner"       <$> sown,
+                                          getSimpleAttr "domain"      <$> sdom,
+                                          getSimpleAttr "keycloak_id" <$> (unResId <$> skey),
+                                          getSimpleAttr "visibility"  <$> ((pack.show) <$> svis),
+                                          getLocationAttr             <$> sloc] <>
+                                          map getMeasurementAttr meas
 
-getSimpleAttr :: Text -> Maybe Text -> Maybe (Text, Attribute)
-getSimpleAttr name (Just val) = Just (name, Attribute "String" (Just $ toJSON val) [])
-getSimpleAttr _ Nothing = Nothing
+getSimpleAttr :: Text -> Text -> (Text, Attribute)
+getSimpleAttr name val = (name, Attribute "String" (Just $ toJSON val) [])
 
-getLocationAttr :: Maybe Location -> Maybe (Text, Attribute)
-getLocationAttr (Just (Location (Latitude lat) (Longitude lon))) = Just ("location", Attribute "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) [])
-getLocationAttr Nothing = Nothing
+getLocationAttr :: Location -> (Text, Attribute)
+getLocationAttr (Location (Latitude lat) (Longitude lon)) = ("location", Attribute "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) [])
 
 getMeasurementAttr :: Measurement -> (Text, Attribute)
 getMeasurementAttr (Measurement measId name sd qk u lv) = 
@@ -240,10 +244,10 @@ getMeasurementAttr (Measurement measId name sd qk u lv) =
                       ("unit", Metadata (Just "String") (Just $ toJSON u))])
 
 debug, warn, info, err :: (MonadIO m) => String -> m ()
-debug s = liftIO $ debugM "Orion" s
-info s = liftIO $ infoM "Orion" s
-warn s = liftIO $ warningM "Orion" s
-err s = liftIO $ errorM "Orion" s
+debug s = liftIO $ debugM   "Orion" s
+info s  = liftIO $ infoM    "Orion" s
+warn s  = liftIO $ warningM "Orion" s
+err s   = liftIO $ errorM   "Orion" s
 
 try :: MonadError a m => m b -> m (Either a b)
 try act = catchError (Right <$> act) (return . Left)

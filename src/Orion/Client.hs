@@ -89,6 +89,11 @@ postMeasurementOrion eid meas = do
   let (attId, att) = getMeasurementAttr meas
   orionPost ("/v2/entities/" <> eid <> "/attrs") (object [attId .= (toJSON att)])
 
+deleteMeasurementOrion :: EntityId -> MeasId -> Orion ()
+deleteMeasurementOrion eid mid = do
+  debug $ "Delete measurement in Orion"
+  orionDelete ("/v2/entities/" <> eid <> "/attrs/" <> mid)
+
 -- Get Orion URI and options
 getOrionDetails :: Path -> Orion (String, Options)
 getOrionDetails path = do

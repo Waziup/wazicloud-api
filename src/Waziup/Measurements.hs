@@ -64,7 +64,12 @@ getMeasurement tok sid mid = do
 deleteMeasurement :: Maybe Token -> SensorId -> MeasId -> Waziup NoContent
 deleteMeasurement tok sid mid = do
   info "Delete measurement"
-  undefined
+  withKCId sid $ \keyId -> do
+    debug "Check permissions"
+    runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) tok
+    debug "Permission granted, deleting measurement"
+    runOrion $ O.deleteMeasurementOrion sid mid 
+  return NoContent
 
 putMeasName :: Maybe Token -> SensorId -> MeasId -> MeasName -> Waziup NoContent
 putMeasName mtok sid mid name = do

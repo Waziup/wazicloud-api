@@ -94,6 +94,7 @@ deleteMeasurementOrion eid mid = do
   debug $ "Delete measurement in Orion"
   orionDelete ("/v2/entities/" <> eid <> "/attrs/" <> mid)
 
+
 -- Get Orion URI and options
 getOrionDetails :: Path -> Orion (String, Options)
 getOrionDetails path = do
@@ -165,23 +166,23 @@ orionPut path dat = do
       throwError $ HTTPError err
 
 
--- * Helper functions
+-- * From Orion to Waziup types
 
 getSensor :: Entity -> Sensor
 getSensor (Entity eId etype attrs) = Sensor { senId           = eId,
-                                              senGatewayId    = getSimpleAttribute "gateway_id" attrs,
-                                              senName         = getSimpleAttribute "name" attrs,
-                                              senOwner        = getSimpleAttribute "owner" attrs,
+                                              senGatewayId    = fromSimpleAttribute "gateway_id" attrs,
+                                              senName         = fromSimpleAttribute "name" attrs,
+                                              senOwner        = fromSimpleAttribute "owner" attrs,
                                               senLocation     = getLocation attrs,
-                                              senDomain       = getSimpleAttribute "domain" attrs,
-                                              senVisibility   = getSimpleAttribute "visibility" attrs >>= readVisibility,
-                                              senDateCreated  = getSimpleAttribute "dateCreated" attrs >>= parseISO8601.unpack,
-                                              senDateModified = getSimpleAttribute "dateModified" attrs >>= parseISO8601.unpack,
+                                              senDomain       = fromSimpleAttribute "domain" attrs,
+                                              senVisibility   = fromSimpleAttribute "visibility" attrs >>= readVisibility,
+                                              senDateCreated  = fromSimpleAttribute "dateCreated" attrs >>= parseISO8601.unpack,
+                                              senDateModified = fromSimpleAttribute "dateModified" attrs >>= parseISO8601.unpack,
                                               senMeasurements = getMeasurements attrs,
-                                              senKeycloakId   = ResourceId <$> getSimpleAttribute "keycloak_id" attrs}
+                                              senKeycloakId   = ResourceId <$> fromSimpleAttribute "keycloak_id" attrs}
                          
-getSimpleAttribute :: Text -> [(Text, Attribute)] -> Maybe Text
-getSimpleAttribute attName attrs = do
+fromSimpleAttribute :: Text -> [(Text, Attribute)] -> Maybe Text
+fromSimpleAttribute attName attrs = do
    (Attribute _ mval _) <- lookup attName attrs
    val <- mval
    getString val
@@ -193,10 +194,10 @@ getMeasurement :: (Text, Attribute) -> Maybe Measurement
 getMeasurement (name, Attribute aType val mets) =
   if (aType == "Measurement") 
     then Just $ Measurement { measId            = name,
-                              measName          = getSimpleMetadata "name" mets,
-                              measQuantityKind  = getSimpleMetadata "quantity_kind" mets,
-                              measSensingDevice = getSimpleMetadata "sensing_device" mets,
-                              measUnit          = getSimpleMetadata "unit" mets,
+                              measName          = fromSimpleMetadata "name" mets,
+                              measQuantityKind  = fromSimpleMetadata "quantity_kind" mets,
+                              measSensingDevice = fromSimpleMetadata "sensing_device" mets,
+                              measUnit          = fromSimpleMetadata "unit" mets,
                               measLastValue     = getMeasLastValue val mets}
     else Nothing
 
@@ -209,8 +210,8 @@ getLocation attrs = do
     let [Number lon, Number lat] = V.toList a
     return $ Location (Latitude $ toRealFloat lat) (Longitude $ toRealFloat lon)
  
-getSimpleMetadata :: Text -> [(Text, Metadata)] -> Maybe Text
-getSimpleMetadata name mets = do
+fromSimpleMetadata :: Text -> [(Text, Metadata)] -> Maybe Text
+fromSimpleMetadata name mets = do
    (Metadata _ mval) <- lookup name mets
    val <- mval
    getString val
@@ -224,12 +225,15 @@ getMeasLastValue mval mets = do
    value <- mval
    guard $ not $ isNull value
    return $ MeasurementValue value 
-                             (getSimpleMetadata "timestamp" mets    >>= parseISO8601.unpack)
-                             (getSimpleMetadata "dateModified" mets >>= parseISO8601.unpack)
+                             (fromSimpleMetadata "timestamp" mets    >>= parseISO8601.unpack)
+                             (fromSimpleMetadata "dateModified" mets >>= parseISO8601.unpack)
 
 isNull :: Value -> Bool
 isNull Null = True
 isNull _    = False
+
+
+-- * From Waziup to Orion types
 
 getEntity :: Sensor -> Entity
 getEntity (Sensor sid sgid sname sloc sdom svis meas sown _ _ skey) = 
@@ -252,10 +256,13 @@ getMeasurementAttr :: Measurement -> (Text, Attribute)
 getMeasurementAttr (Measurement measId name sd qk u lv) = 
   (measId, Attribute "Measurement"
                      (measValue <$> lv)
-                     [("name", Metadata (Just "String") (Just $ toJSON name)),
-                      ("quantity_kind", Metadata (Just "String") (Just $ toJSON qk)),
-                      ("sensing_device", Metadata (Just "String") (Just $ toJSON sd)),
-                      ("unit", Metadata (Just "String") (Just $ toJSON u))])
+                     (catMaybes [getTextMetadata "name" <$> name,
+                      getTextMetadata "quantity_kind" <$> qk,
+                      getTextMetadata "sensing_device" <$> sd,
+                      getTextMetadata "unit" <$> u]))
+
+getTextMetadata :: MetadataId -> Text -> (Text, Metadata)
+getTextMetadata metId val = (metId, Metadata (Just "String") (Just $ toJSON val))
 
 debug, warn, info, err :: (MonadIO m) => String -> m ()
 debug s = liftIO $ debugM   "Orion" s

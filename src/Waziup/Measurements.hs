@@ -74,7 +74,23 @@ deleteMeasurement tok sid mid = do
 putMeasName :: Maybe Token -> SensorId -> MeasId -> MeasName -> Waziup NoContent
 putMeasName mtok sid mid name = do
   info $ "Put meas name: " ++ (show name)
-  undefined
+  sensor <- runOrion (O.getSensorOrion sid)
+  case (senKeycloakId sensor) of
+    Just keyId -> do
+      debug "Check permissions"
+      runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
+      debug "Permission granted, updating measurement"
+      case L.find (\m -> (measId m) == mid) (senMeasurements sensor) of
+        Just meas -> do
+          let meas' = meas {measName = Just name}
+          runOrion $ O.postMeasurementOrion sid meas' 
+        Nothing -> do 
+          warn "Measurement not found"
+          throwError err404 {errBody = "Measurement not found"}
+    Nothing -> do
+      err "Error, sensor does not have a Keycloak ID"
+      throwError err500 {errBody = "Not authorized"}
+  return NoContent
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

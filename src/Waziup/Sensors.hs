@@ -40,7 +40,8 @@ postAuth (AuthBody username password) = do
 getSensors :: Maybe Token -> Maybe SensorsQuery -> Maybe SensorsLimit -> Maybe SensorsOffset -> Waziup [Sensor]
 getSensors tok mq mlimit moffset = do
   info "Get sensors"
-  sensors <- runOrion $ O.getSensorsOrion mq mlimit moffset
+  entities <- runOrion $ O.getEntities mq
+  let sensors = map O.getSensor entities
   ps <- getPerms tok
   let sensors2 = filter (checkPermSensor SensorsView ps) sensors
   return sensors2
@@ -51,7 +52,7 @@ checkPermSensor scope perms sen = any (\p -> (permResource p) == (senId sen) && 
 getSensor :: Maybe Token -> SensorId -> Waziup Sensor
 getSensor tok sid = do
   info "Get sensor"
-  sensor <- runOrion (O.getSensorOrion sid)
+  sensor <- O.getSensor <$> runOrion (O.getEntity sid)
   case (senKeycloakId sensor) of
     Just keyId -> do
       debug "Check permissions"
@@ -72,7 +73,8 @@ postSensor tok s@(Sensor sid _ _ _ _ vis _ _ _ _ _) = do
        Just t -> getUsername t
        Nothing -> Just "guest"
   debug $ "Onwer: " <> (show username)
-  res2 <- C.try $ runOrion $ O.postSensorOrion (s {senOwner = username})
+  let entity = O.getEntity' (s {senOwner = username})
+  res2 <- C.try $ runOrion $ O.postEntity entity 
   case res2 of
     Right _ -> do 
       let res = KC.Resource {
@@ -86,12 +88,12 @@ postSensor tok s@(Sensor sid _ _ _ _ vis _ _ _ _ _) = do
          resAttributes = if (isJust vis) then [Attribute "visibility" [pack $ show $ fromJust vis]] else []}
       keyRes <- C.try $ runKeycloak $ createResource res tok
       case keyRes of
-        Right resId -> do
-          runOrion $ O.postSensorKeycloakOrion sid resId
+        Right (ResourceId resId) -> do
+          runOrion $ O.postTextAttributeOrion sid "keycloak_id" resId
           return NoContent
         Left err -> do
           error $ "Keycloak error: " ++ (show err) ++ " deleting sensor"
-          (_ :: Either ServantErr ()) <- C.try $ runOrion $ O.deleteSensorOrion sid
+          (_ :: Either ServantErr ()) <- C.try $ runOrion $ O.deleteEntity sid
           throwError err
     Left (err :: ServantErr)  -> do
       warn "Orion error"
@@ -106,7 +108,7 @@ deleteSensor tok sid = do
     debug "Delete Keycloak resource"
     runKeycloak $ deleteResource keyId tok
     debug "Delete Orion resource"
-    runOrion $ O.deleteSensorOrion sid
+    runOrion $ O.deleteEntity sid
   return NoContent
 
 putSensorLocation :: Maybe Token -> SensorId -> Location -> Waziup NoContent
@@ -116,7 +118,8 @@ putSensorLocation mtok sid loc = do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
     debug "Update Orion resource"
-    runOrion $ O.putSensorLocationOrion sid loc
+    let (attId, att) = O.getLocationAttr loc
+    runOrion $ O.postAttribute sid attId att 
   return NoContent
 
 putSensorName :: Maybe Token -> SensorId -> SensorName -> Waziup NoContent
@@ -126,7 +129,7 @@ putSensorName mtok sid name = do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
     debug "Update Orion resource"
-    runOrion $ O.putSensorTextAttribute sid "name" name
+    runOrion $ O.postTextAttributeOrion sid "name" name
   return NoContent
 
 putSensorGatewayId :: Maybe Token -> SensorId -> GatewayId -> Waziup NoContent
@@ -136,7 +139,7 @@ putSensorGatewayId mtok sid gid = do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
     debug "Update Orion resource"
-    runOrion $ O.putSensorTextAttribute sid "gateway_id" gid
+    runOrion $ O.postTextAttributeOrion sid "gateway_id" gid
   return NoContent
 
 putSensorVisibility :: Maybe Token -> SensorId -> Visibility -> Waziup NoContent
@@ -146,7 +149,7 @@ putSensorVisibility mtok sid vis = do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
     debug "Update Orion resource"
-    runOrion $ O.putSensorTextAttribute sid "visibility" (convertString $ show vis)
+    runOrion $ O.postTextAttributeOrion sid "visibility" (convertString $ show vis)
   return NoContent
 
 

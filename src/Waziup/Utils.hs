@@ -18,7 +18,7 @@ import           Database.MongoDB as DB
 
 withKCId :: SensorId -> (ResourceId -> Waziup a) -> Waziup a
 withKCId sid f = do
-  sensor <- runOrion (O.getSensorOrion sid)
+  sensor <- O.getSensor <$> runOrion (O.getEntity sid)
   case (senKeycloakId sensor) of
     Just keyId -> f keyId 
     Nothing -> do

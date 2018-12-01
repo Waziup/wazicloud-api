@@ -22,7 +22,7 @@ import           Paths_Waziup_Servant
 getMeasurements :: Maybe Token -> SensorId -> Waziup [Measurement]
 getMeasurements tok sid = do
   info "Get measurements"
-  sensor <- runOrion (O.getSensorOrion sid)
+  sensor <- O.getSensor <$> runOrion (O.getEntity sid)
   case (senKeycloakId sensor) of
     Just keyId -> do
       debug "Check permissions"
@@ -40,13 +40,14 @@ postMeasurement tok sid meas = do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) tok
     debug "Permission granted, creating measurement"
-    runOrion $ O.postMeasurementOrion sid meas 
+    let (attId, att) = O.getMeasurementAttr meas
+    runOrion $ O.postAttribute sid attId att 
   return NoContent
  
 getMeasurement :: Maybe Token -> SensorId -> MeasId -> Waziup Measurement
 getMeasurement tok sid mid = do
   info "Get measurement"
-  sensor <- runOrion (O.getSensorOrion sid)
+  sensor <- O.getSensor <$> runOrion (O.getEntity sid)
   case (senKeycloakId sensor) of
     Just keyId -> do
       debug "Check permissions"
@@ -68,13 +69,13 @@ deleteMeasurement tok sid mid = do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) tok
     debug "Permission granted, deleting measurement"
-    runOrion $ O.deleteMeasurementOrion sid mid 
+    runOrion $ O.deleteAttribute sid mid 
   return NoContent
 
 putMeasName :: Maybe Token -> SensorId -> MeasId -> MeasName -> Waziup NoContent
 putMeasName mtok sid mid name = do
   info $ "Put meas name: " ++ (show name)
-  sensor <- runOrion (O.getSensorOrion sid)
+  sensor <- O.getSensor <$> runOrion (O.getEntity sid)
   case (senKeycloakId sensor) of
     Just keyId -> do
       debug "Check permissions"
@@ -83,7 +84,8 @@ putMeasName mtok sid mid name = do
       case L.find (\m -> (measId m) == mid) (senMeasurements sensor) of
         Just meas -> do
           let meas' = meas {measName = Just name}
-          runOrion $ O.postMeasurementOrion sid meas' 
+          let (attId, att) = O.getMeasurementAttr meas'
+          runOrion $ O.postAttribute sid attId att 
         Nothing -> do 
           warn "Measurement not found"
           throwError err404 {errBody = "Measurement not found"}

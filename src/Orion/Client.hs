@@ -37,63 +37,42 @@ import           GHC.Generics (Generic)
 import           Waziup.Types
 import           Debug.Trace
 
-getSensorsOrion :: Maybe Text -> Maybe Int -> Maybe Int -> Orion [Sensor]
-getSensorsOrion mq mlimit moffset = do
+getEntities :: Maybe Text -> Orion [Entity]
+getEntities mq = do
   let qq = case mq of
        Just q -> [("q", Just $ encodeUtf8 q)]
        Nothing -> []
-  let limitq = case mlimit of
-       Just limit -> [("limit", Just $ C8.pack $ show limit)]
-       Nothing -> []
-  let offsetq = case moffset of
-       Just offset -> [("offset", Just $ C8.pack $ show offset)]
-       Nothing -> []
-  let (query :: Query) = qq ++ limitq ++ offsetq ++ [("type", Just ("SensingDevice" :: C8.ByteString))]
-  ents <- orionGet (decodeUtf8 $ "/v2/entities" <> (renderQuery True query))  (eachInArray parseEntity)
-  return $ map getSensor ents
+  let (query :: Query) = qq ++ [("limit", Just $ encodeUtf8 "1000")]
+  orionGet (decodeUtf8 $ "/v2/entities" <> (renderQuery True query))  (eachInArray parseEntity)
 
-getSensorOrion :: EntityId -> Orion Sensor
-getSensorOrion eid = do
-  ent <- orionGet ("/v2/entities/" <> eid) parseEntity
-  return $ getSensor ent
+postEntity :: Entity -> Orion ()
+postEntity e = do
+  debug $ convertString $ "Entity: " <> (JSON.encode e)
+  orionPost "/v2/entities" (toJSON e)
 
-postSensorOrion :: Sensor -> Orion ()
-postSensorOrion s = do
-  debug $ "Create sensor in Orion: " <> (convertString $ JSON.encode s)
-  let entity = getEntity s
-  debug $ convertString $ "Entity: " <> (JSON.encode entity)
-  orionPost "/v2/entities" (toJSON entity)
+getEntity :: EntityId -> Orion Entity
+getEntity eid = orionGet ("/v2/entities/" <> eid) parseEntity
 
-deleteSensorOrion :: EntityId -> Orion ()
-deleteSensorOrion eid = orionDelete ("/v2/entities/" <> eid)
+deleteEntity :: EntityId -> Orion ()
+deleteEntity eid = orionDelete ("/v2/entities/" <> eid)
 
-postSensorKeycloakOrion :: EntityId -> ResourceId -> Orion ()
-postSensorKeycloakOrion eid (ResourceId res) = do
-  debug $ convertString $ "put Keycloak ID in Orion: " <> res
-  orionPost ("/v2/entities/" <> eid <> "/attrs") (object ["keycloak_id" .= (toJSON $ (Attribute "String" (Just $ toJSON res) []) :: Value)])
-
-putSensorTextAttribute :: EntityId -> AttributeId -> Text -> Orion ()
-putSensorTextAttribute eid attId val = do
-  debug $ convertString $ "put Sensor attribute in Orion: " <> val
-  orionPost ("/v2/entities/" <> eid <> "/attrs") (object [attId .= (toJSON $ (Attribute "String" (Just $ toJSON val) []) :: Value)])
-
-putSensorLocationOrion :: EntityId -> Location -> Orion ()
-putSensorLocationOrion eid loc = do
-  debug $ convertString $ "put Sensor location in Orion: " <> (show $ encode loc)
-  let (field, val) = getLocationAttr loc
-  orionPost ("/v2/entities/" <> eid <> "/attrs") (object [field .= (toJSON val)])
-
-postMeasurementOrion :: EntityId -> Measurement -> Orion ()
-postMeasurementOrion eid meas = do
-  debug $ "Create measurement in Orion: " <> (convertString $ JSON.encode meas)
-  let (attId, att) = getMeasurementAttr meas
+postAttribute :: EntityId -> AttributeId -> Attribute -> Orion ()
+postAttribute eid attId att = do
+  debug $ "Post attributen: " <> (convertString $ JSON.encode att)
   orionPost ("/v2/entities/" <> eid <> "/attrs") (object [attId .= (toJSON att)])
 
-deleteMeasurementOrion :: EntityId -> MeasId -> Orion ()
-deleteMeasurementOrion eid mid = do
-  debug $ "Delete measurement in Orion"
-  orionDelete ("/v2/entities/" <> eid <> "/attrs/" <> mid)
+postTextAttributeOrion :: EntityId -> AttributeId -> Text -> Orion ()
+postTextAttributeOrion eid attId val = do
+  debug $ convertString $ "put Sensor attribute in Orion: " <> val
+  orionPost ("/v2/entities/" <> eid <> "/attrs") (object [attId .= (toJSON $ getStringAttr val)])
 
+deleteAttribute :: EntityId -> AttributeId -> Orion ()
+deleteAttribute eid attId = do
+  debug $ "Delete attribute"
+  orionDelete ("/v2/entities/" <> eid <> "/attrs/" <> attId)
+
+getStringAttr :: Text -> Attribute
+getStringAttr val = Attribute "String" (Just $ toJSON val) []
 
 -- Get Orion URI and options
 getOrionDetails :: Path -> Orion (String, Options)
@@ -235,8 +214,8 @@ isNull _    = False
 
 -- * From Waziup to Orion types
 
-getEntity :: Sensor -> Entity
-getEntity (Sensor sid sgid sname sloc sdom svis meas sown _ _ skey) = 
+getEntity' :: Sensor -> Entity
+getEntity' (Sensor sid sgid sname sloc sdom svis meas sown _ _ skey) = 
   Entity sid "SensingDevice" $ catMaybes [getSimpleAttr "name"        <$> sname,
                                           getSimpleAttr "gateway_id"  <$> sgid,
                                           getSimpleAttr "owner"       <$> sown,

@@ -59,7 +59,7 @@ getSensorOrion eid = do
 
 postSensorOrion :: Sensor -> Orion ()
 postSensorOrion s = do
-  debug $ C8.unpack $ "Create sensor in Orion: " <> (BSL.toStrict $ JSON.encode s)
+  debug $ "Create sensor in Orion: " <> (convertString $ JSON.encode s)
   let entity = getEntity s
   debug $ convertString $ "Entity: " <> (JSON.encode entity)
   orionPost "/v2/entities" (toJSON entity)
@@ -83,10 +83,11 @@ putSensorLocationOrion eid loc = do
   let (field, val) = getLocationAttr loc
   orionPost ("/v2/entities/" <> eid <> "/attrs") (object [field .= (toJSON val)])
 
-getMeasurementOrion :: EntityId -> MeasId -> Orion Measurement
-getMeasurementOrion eid mid = do
-  ent <- orionGet ("/v2/entities/" <> eid <> "/attrs/" <> mid) parseAttribute
-  return $ fromJust $ getMeasurement (mid, ent)
+postMeasurementOrion :: EntityId -> Measurement -> Orion ()
+postMeasurementOrion eid meas = do
+  debug $ "Create measurement in Orion: " <> (convertString $ JSON.encode meas)
+  let (attId, att) = getMeasurementAttr meas
+  orionPost ("/v2/entities/" <> eid <> "/attrs") (object [attId .= (toJSON att)])
 
 -- Get Orion URI and options
 getOrionDetails :: Path -> Orion (String, Options)

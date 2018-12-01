@@ -16,6 +16,15 @@ import           Network.HTTP.Client as HC
 import           Servant
 import           Database.MongoDB as DB
 
+withKCId :: SensorId -> (ResourceId -> Waziup a) -> Waziup a
+withKCId sid f = do
+  sensor <- runOrion (O.getSensorOrion sid)
+  case (senKeycloakId sensor) of
+    Just keyId -> f keyId 
+    Nothing -> do
+      error "Cannot delete sensor: KC Id not present"
+      throwError err500 {errBody = "Cannot delete sensor: KC Id not present"}
+
 -- * Lifting
 runOrion :: O.Orion a -> Waziup a
 runOrion orion = do

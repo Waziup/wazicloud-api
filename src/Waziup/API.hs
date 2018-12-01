@@ -24,7 +24,7 @@ type WaziupDocs = SwaggerSchemaUI "swagger-ui" "swagger.json"
 
 type AuthAPI = 
   "auth" :>  (
-         "permissions" :> Header "Authorization" Token :> Get '[JSON] [Perm]
+         "permissions" :> Header "Authorization" Token :> Get  '[JSON]      [Perm]
     :<|> "token"       :> ReqBody '[JSON] AuthBody     :> Post '[PlainText] Token
     )
 
@@ -32,42 +32,48 @@ type AuthAPI =
 
 type SensorsAPI = Flat ( 
   "sensors" :> Header "Authorization" Token :> ( 
-          QueryParam "q" SensorsQuery :> QueryParam "limit" SensorsLimit :> QueryParam "offset" SensorsOffset :> Get '[JSON] [Sensor] 
+          QueryParam "q" SensorsQuery :> QueryParam "limit" SensorsLimit :> QueryParam "offset" SensorsOffset :> Get           '[JSON] [Sensor] 
     :<|>  ReqBody '[JSON] Sensor                                                                              :> PostNoContent '[JSON] NoContent
     :<|>  SensorAPI
     ))
 
 type SensorAPI = Flat (
-  Capture "id" Text :> (                                     Get '[JSON] Sensor
-    :<|>                                                     DeleteNoContent '[JSON] NoContent
-    :<|>  "name"       :> ReqBody '[PlainText] SensorName :> PutNoContent '[JSON] NoContent
-    :<|>  "location"   :> ReqBody '[JSON] Location        :> PutNoContent '[JSON] NoContent
-    :<|>  "gateway_id" :> ReqBody '[PlainText] GatewayId  :> PutNoContent '[JSON] NoContent
-    :<|>  "visibility" :> ReqBody '[PlainText] Visibility :> PutNoContent '[JSON] NoContent
+  Capture "sensor_id" Text :> (                             Get             '[JSON] Sensor
+    :<|>                                                    DeleteNoContent '[JSON] NoContent
+    :<|> "name"       :> ReqBody '[PlainText] SensorName :> PutNoContent    '[JSON] NoContent
+    :<|> "location"   :> ReqBody '[JSON]      Location   :> PutNoContent    '[JSON] NoContent
+    :<|> "gateway_id" :> ReqBody '[PlainText] GatewayId  :> PutNoContent    '[JSON] NoContent
+    :<|> "visibility" :> ReqBody '[PlainText] Visibility :> PutNoContent    '[JSON] NoContent
+    :<|> MeasurementsAPI
     ))
-                        --MeasurementsAPI)
 
---type MeasurementsAPI = (
---  Capture "measurements" Text :> 
---                (Get '[JSON] [Measurement] :<|>
---                 ReqBody '[JSON] Measurement :> PostNoContent '[JSON] NoContent :<|>
---                 SensorAPI))
+type MeasurementsAPI = Flat (
+  "measurements" :> (                   Get           '[JSON] [Measurement]
+    :<|> ReqBody '[JSON] Measurement :> PostNoContent '[JSON] NoContent
+    :<|> MeasurementAPI
+    ))
+
+type MeasurementAPI = Flat (
+  Capture "meas_id" Text :> (                             Get             '[JSON] Measurement
+    :<|>                                                  DeleteNoContent '[JSON] NoContent
+    :<|> "name"       :> ReqBody '[PlainText] MeasName :> PutNoContent    '[JSON] NoContent
+    ))
 
 -- * Projects
 
 type ProjectsAPI = Flat ( 
   "projects" :> 
     Header "Authorization" Token :> (
-                                     Get '[JSON] [Project]
+                                     Get  '[JSON]      [Project]
     :<|>  ReqBody '[JSON] Project :> Post '[PlainText] ProjectId
     :<|>  ProjectAPI
     ))
 
 type ProjectAPI = (
-  Capture "id" Text :> (                              Get '[JSON] Project
+  Capture "id" Text :> (                              Get             '[JSON] Project
     :<|>                                              DeleteNoContent '[JSON] NoContent
-    :<|> "devices"  :> ReqBody '[JSON] [DeviceId]  :> PutNoContent '[JSON] NoContent
-    :<|> "gateways" :> ReqBody '[JSON] [GatewayId] :> PutNoContent '[JSON] NoContent))
+    :<|> "devices"  :> ReqBody '[JSON] [DeviceId]  :> PutNoContent    '[JSON] NoContent
+    :<|> "gateways" :> ReqBody '[JSON] [GatewayId] :> PutNoContent    '[JSON] NoContent))
 
 -- * Ontologies
 

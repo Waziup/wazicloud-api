@@ -83,6 +83,11 @@ putSensorLocationOrion eid loc = do
   let (field, val) = getLocationAttr loc
   orionPost ("/v2/entities/" <> eid <> "/attrs") (object [field .= (toJSON val)])
 
+getMeasurementOrion :: EntityId -> MeasId -> Orion Measurement
+getMeasurementOrion eid mid = do
+  ent <- orionGet ("/v2/entities/" <> eid <> "/attrs/" <> mid) parseAttribute
+  return $ fromJust $ getMeasurement (mid, ent)
+
 -- Get Orion URI and options
 getOrionDetails :: Path -> Orion (String, Options)
 getOrionDetails path = do
@@ -176,15 +181,18 @@ getSimpleAttribute attName attrs = do
    getString val
 
 getMeasurements :: [(Text, Attribute)] -> [Measurement]
-getMeasurements attrs = mapMaybe getMeas attrs where 
-  getMeas (name, Attribute aType val mets) = if (aType == "Measurement") 
-     then Just $ Measurement { measId            = name,
-                               measName          = getSimpleMetadata "name" mets,
-                               measQuantityKind  = getSimpleMetadata "quantity_kind" mets,
-                               measSensingDevice = getSimpleMetadata "sensing_device" mets,
-                               measUnit          = getSimpleMetadata "unit" mets,
-                               measLastValue     = getMeasLastValue val mets}
-     else Nothing
+getMeasurements attrs = mapMaybe getMeasurement attrs where 
+
+getMeasurement :: (Text, Attribute) -> Maybe Measurement
+getMeasurement (name, Attribute aType val mets) =
+  if (aType == "Measurement") 
+    then Just $ Measurement { measId            = name,
+                              measName          = getSimpleMetadata "name" mets,
+                              measQuantityKind  = getSimpleMetadata "quantity_kind" mets,
+                              measSensingDevice = getSimpleMetadata "sensing_device" mets,
+                              measUnit          = getSimpleMetadata "unit" mets,
+                              measLastValue     = getMeasLastValue val mets}
+    else Nothing
 
 
 getLocation :: [(Text, Attribute)] -> Maybe Location

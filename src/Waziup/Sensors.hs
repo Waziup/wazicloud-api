@@ -149,15 +149,6 @@ putSensorVisibility mtok sid vis = do
     runOrion $ O.putSensorTextAttribute sid "visibility" (convertString $ show vis)
   return NoContent
 
-withKCId :: SensorId -> (ResourceId -> Waziup a) -> Waziup a
-withKCId sid f = do
-  sensor <- runOrion (O.getSensorOrion sid)
-  case (senKeycloakId sensor) of
-    Just keyId -> f keyId 
-    Nothing -> do
-      error "Cannot delete sensor: KC Id not present"
-      throwError err500 {errBody = "Cannot delete sensor: KC Id not present"}
-
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

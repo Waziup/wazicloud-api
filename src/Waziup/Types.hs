@@ -137,13 +137,49 @@ instance Show Scope where
 
 -- * Sensors
 
-type SensorId      = Text
+-- Id of a sensor
+newtype SensorId = SensorId {unSensorId :: Text} deriving (Show, Eq, Generic)
+
+instance ToSchema SensorId where
+  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON ("MySensor" :: Text)
+
+instance ToParamSchema SensorId
+
+instance ToJSON SensorId where
+  toJSON = genericToJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+instance FromJSON SensorId where
+  parseJSON = genericParseJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+instance MimeRender PlainText SensorId
+
+instance MimeUnrender PlainText SensorId
+
+instance FromHttpApiData SensorId where
+  parseUrlPiece a = Right $ SensorId a 
+
+instance ToHttpApiData SensorId where
+  toUrlPiece (SensorId a) = a
+
+-- Id of a gateway
+newtype GatewayId = GatewayId {unGatewayId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
+
+instance ToSchema GatewayId where
+  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON ("MyGatewayId" :: Text) 
+
+instance MimeRender PlainText GatewayId
+
+instance MimeUnrender PlainText GatewayId
+
 type SensorName    = Text
-type GatewayId     = Text
 type Domain        = Text
 type SensorsQuery  = Text
 type SensorsLimit  = Int
 type SensorsOffset = Int
+
+instance ToSchema ResourceId
 
 -- | one sensor 
 data Sensor = Sensor
@@ -161,8 +197,8 @@ data Sensor = Sensor
   } deriving (Show, Eq, Generic)
 
 defaultSensor = Sensor
-  { senId           = "MyDevice"
-  , senGatewayId    = Just "ea0541de1ab7132a1d45b85f9b2139f5" 
+  { senId           = SensorId "MyDevice"
+  , senGatewayId    = Just $ GatewayId "ea0541de1ab7132a1d45b85f9b2139f5" 
   , senName         = Just "My weather station" 
   , senLocation     = Just defaultLocation 
   , senDomain       = Just "waziup" 
@@ -175,13 +211,15 @@ defaultSensor = Sensor
   }
 
 instance ToJSON Sensor where
-   toJSON = genericToJSON (aesonDrop 3 snakeCase) {omitNothingFields = True}
+  toJSON = genericToJSON (aesonDrop 3 snakeCase) {omitNothingFields = True}
+
 instance FromJSON Sensor where
-   parseJSON = genericParseJSON $ aesonDrop 3 snakeCase
+  parseJSON = genericParseJSON $ aesonDrop 3 snakeCase
+
 instance ToSchema Sensor where
-   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON defaultSensor 
-instance ToSchema ResourceId
+
 
 data Visibility = Public | Private
   deriving (Eq, Generic)
@@ -232,7 +270,25 @@ instance ToSchema Location where
 
 -- * Measurements
 
-type MeasId        = Text
+-- Id of a measurement
+newtype MeasId = MeasId {unMeasId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
+
+instance ToSchema MeasId where
+  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON ("TC" :: Text) 
+
+instance ToParamSchema MeasId
+
+instance MimeRender PlainText MeasId
+
+instance MimeUnrender PlainText MeasId
+
+instance FromHttpApiData MeasId where
+  parseUrlPiece a = Right $ MeasId a 
+
+instance ToHttpApiData MeasId where
+  toUrlPiece (MeasId a) = a
+
 type MeasName      = Text
 type SensingDevice = Text
 type QuantityKind  = Text
@@ -249,7 +305,7 @@ data Measurement = Measurement
   } deriving (Show, Eq, Generic)
 
 defaultMeasurement = Measurement 
-  { measId            = "TC1" 
+  { measId            = MeasId "TC1" 
   , measName          = Just "My garden temperature" 
   , measSensingDevice = Just "Thermometer" 
   , measQuantityKind  = Just "AirTemperature" 
@@ -259,12 +315,13 @@ defaultMeasurement = Measurement
 
 instance FromJSON Measurement where
   parseJSON = genericParseJSON $ aesonDrop 4 snakeCase 
+
 instance ToJSON Measurement where
   toJSON = genericToJSON (aesonDrop 4 snakeCase) {omitNothingFields = True}
+
 instance ToSchema Measurement where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON defaultMeasurement 
-
 
 -- | measurement value 
 data MeasurementValue = MeasurementValue
@@ -281,8 +338,10 @@ defaultMeasurementValue = MeasurementValue
 
 instance FromJSON MeasurementValue where
   parseJSON = genericParseJSON $ aesonDrop 4 snakeCase
+
 instance ToJSON MeasurementValue where
   toJSON = genericToJSON (aesonDrop 4 snakeCase) {omitNothingFields = True}
+
 instance ToSchema MeasurementValue where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON defaultMeasurementValue 
@@ -290,8 +349,6 @@ instance ToSchema MeasurementValue where
 instance ToSchema Value where
   declareNamedSchema _ = pure (NamedSchema (Just "Value") (mempty & type_ .~ SwaggerObject))
   
-
-
 -- * Notifications
 
 type NotifId  = Text

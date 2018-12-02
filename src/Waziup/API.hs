@@ -38,7 +38,7 @@ type SensorsAPI = Flat (
     ))
 
 type SensorAPI = Flat (
-  Capture "sensor_id" Text :> (                             Get             '[JSON] Sensor
+  Capture "sensor_id" SensorId :> (                         Get             '[JSON] Sensor
     :<|>                                                    DeleteNoContent '[JSON] NoContent
     :<|> "name"       :> ReqBody '[PlainText] SensorName :> PutNoContent    '[JSON] NoContent
     :<|> "location"   :> ReqBody '[JSON]      Location   :> PutNoContent    '[JSON] NoContent
@@ -54,7 +54,7 @@ type MeasurementsAPI = Flat (
     ))
 
 type MeasurementAPI = Flat (
-  Capture "meas_id" Text :> (                             Get             '[JSON] Measurement
+  Capture "meas_id" MeasId :> (                           Get             '[JSON] Measurement
     :<|>                                                  DeleteNoContent '[JSON] NoContent
     :<|> "name"       :> ReqBody '[PlainText] MeasName :> PutNoContent    '[JSON] NoContent
     ))

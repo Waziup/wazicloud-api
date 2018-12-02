@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Orion.Types where
 
@@ -34,11 +35,11 @@ defaultOrionConfig = OrionConfig {
   orionUrl      = "http://localhost:1026",
   fiwareService = "waziup"}
 
-type EntityId = Text
+newtype EntityId = EntityId {unEntityId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
 type EntityType = Text
-type AttributeId = Text
+newtype AttributeId = AttributeId {unAttributeId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
 type AttributeType = Text
-type MetadataId = Text
+newtype MetadataId = MetadataId {unMetadataId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
 type MetadataType = Text
 
 data Entity = Entity {
@@ -51,19 +52,19 @@ instance ToJSON Entity where
    toJSON (Entity entId entType attrs) = 
      object $ ["id" .= entId, 
                "type" .= entType] 
-              <> map (\(attId, att) -> attId .= toJSON att) attrs
+              <> map (\((AttributeId attId), att) -> attId .= toJSON att) attrs
 
 parseEntity :: Parse e Entity
 parseEntity = do
     eId   <- AB.key "id" asText
     eType <- AB.key "type" asText
     attrs <- catMaybes <$> forEachInObject parseAtt
-    return $ Entity eId eType attrs where
+    return $ Entity (EntityId eId) eType attrs where
       parseAtt "id" = return Nothing 
       parseAtt "type" = return Nothing 
       parseAtt k = do
         a <- parseAttribute
-        return $ Just (k, a)
+        return $ Just (AttributeId k, a)
 
 data Attribute = Attribute {
   attType     :: AttributeType,
@@ -75,7 +76,7 @@ instance ToJSON Attribute where
    toJSON (Attribute attType attVal mets) = 
      object $ ["type" .= attType, 
                "value" .= attVal,
-               "metadata" .= object (map (\(metId, met) -> metId .= toJSON met) mets)]
+               "metadata" .= object (map (\((MetadataId metId), met) -> metId .= toJSON met) mets)]
 
 parseAttribute :: Parse e Attribute
 parseAttribute = do
@@ -93,10 +94,10 @@ data Metadata = Metadata {
 instance ToJSON Metadata where
    toJSON = genericToJSON $ aesonDrop 3 snakeCase
 
-parseMetadatas :: Parse e [(Text, Metadata)]
+parseMetadatas :: Parse e [(MetadataId, Metadata)]
 parseMetadatas = forEachInObject $ \a -> do
   m <- parseMetadata
-  return (a, m)
+  return (MetadataId a, m)
 
 parseMetadata :: Parse e Metadata
 parseMetadata = Metadata <$> AB.keyMay "type" asText

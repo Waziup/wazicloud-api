@@ -51,23 +51,23 @@ postEntity e = do
   orionPost "/v2/entities" (toJSON e)
 
 getEntity :: EntityId -> Orion Entity
-getEntity eid = orionGet ("/v2/entities/" <> eid) parseEntity
+getEntity (EntityId eid) = orionGet ("/v2/entities/" <> eid) parseEntity
 
 deleteEntity :: EntityId -> Orion ()
-deleteEntity eid = orionDelete ("/v2/entities/" <> eid)
+deleteEntity (EntityId eid) = orionDelete ("/v2/entities/" <> eid)
 
 postAttribute :: EntityId -> AttributeId -> Attribute -> Orion ()
-postAttribute eid attId att = do
+postAttribute (EntityId eid) (AttributeId attId) att = do
   debug $ "Post attributen: " <> (convertString $ JSON.encode att)
   orionPost ("/v2/entities/" <> eid <> "/attrs") (object [attId .= (toJSON att)])
 
 postTextAttributeOrion :: EntityId -> AttributeId -> Text -> Orion ()
-postTextAttributeOrion eid attId val = do
+postTextAttributeOrion (EntityId eid) (AttributeId attId) val = do
   debug $ convertString $ "put Sensor attribute in Orion: " <> val
   orionPost ("/v2/entities/" <> eid <> "/attrs") (object [attId .= (toJSON $ getStringAttr val)])
 
 deleteAttribute :: EntityId -> AttributeId -> Orion ()
-deleteAttribute eid attId = do
+deleteAttribute (EntityId eid) (AttributeId attId) = do
   debug $ "Delete attribute"
   orionDelete ("/v2/entities/" <> eid <> "/attrs/" <> attId)
 
@@ -147,13 +147,13 @@ orionPut path dat = do
 
 -- * Helpers
 
-fromSimpleAttribute :: Text -> [(Text, Attribute)] -> Maybe Text
+fromSimpleAttribute :: AttributeId -> [(AttributeId, Attribute)] -> Maybe Text
 fromSimpleAttribute attName attrs = do
    (Attribute _ mval _) <- lookup attName attrs
    val <- mval
    getString val
 
-fromSimpleMetadata :: Text -> [(Text, Metadata)] -> Maybe Text
+fromSimpleMetadata :: MetadataId -> [(MetadataId, Metadata)] -> Maybe Text
 fromSimpleMetadata name mets = do
    (Metadata _ mval) <- lookup name mets
    val <- mval
@@ -163,10 +163,10 @@ getString :: Value -> Maybe Text
 getString (String s) = Just s
 getString _ = Nothing
 
-getSimpleAttr :: Text -> Text -> (Text, Attribute)
+getSimpleAttr :: AttributeId -> Text -> (AttributeId, Attribute)
 getSimpleAttr name val = (name, Attribute "String" (Just $ toJSON val) [])
 
-getTextMetadata :: MetadataId -> Text -> (Text, Metadata)
+getTextMetadata :: MetadataId -> Text -> (MetadataId, Metadata)
 getTextMetadata metId val = (metId, Metadata (Just "String") (Just $ toJSON val))
 
 debug, warn, info, err :: (MonadIO m) => String -> m ()

@@ -50,12 +50,12 @@ deleteProjectMongo pid = do
      _ -> return False 
 
 putProjectGatewaysMongo :: ProjectId -> [GatewayId] -> Action IO Bool
-putProjectGatewaysMongo pid ids = do
+putProjectGatewaysMongo pid gids = do
   let sel = ["_id" =: (ObjId $ read $ convertString pid)]
   mdoc <- findOne (select sel "projects")
   case mdoc of
      Just _ -> do
-       modify (select sel "projects") [ "$set" := Doc ["gateways" := val ids]]
+       modify (select sel "projects") [ "$set" := Doc ["gateways" := val (map unGatewayId gids)]]
        return True
      _ -> return False 
 

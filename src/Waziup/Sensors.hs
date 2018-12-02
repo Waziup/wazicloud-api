@@ -8,10 +8,16 @@ import           Waziup.Utils
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
 import           Control.Monad.Catch as C
+import           Control.Monad
 import           Data.Maybe
 import           Data.Text hiding (map, filter, foldl, any)
 import           Data.String.Conversions
 import qualified Data.List as L
+import qualified Data.Vector as V
+import           Data.Scientific
+import qualified Data.HashMap.Strict as H
+import           Data.Aeson as JSON hiding (Options)
+import           Data.Time.ISO8601
 import           Servant
 import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
 import qualified Orion as O
@@ -41,9 +47,9 @@ getSensors :: Maybe Token -> Maybe SensorsQuery -> Maybe SensorsLimit -> Maybe S
 getSensors tok mq mlimit moffset = do
   info "Get sensors"
   entities <- runOrion $ O.getEntities mq
-  let sensors = map O.getSensor entities
+  let sensors = map getSensorFromEntity entities
   ps <- getPerms tok
-  let sensors2 = filter (checkPermSensor SensorsView ps) sensors
+  let sensors2 = filter (checkPermSensor SensorsView ps) sensors -- TODO limits
   return sensors2
 
 checkPermSensor :: Scope -> [Perm] -> Sensor -> Bool
@@ -52,7 +58,7 @@ checkPermSensor scope perms sen = any (\p -> (permResource p) == (senId sen) && 
 getSensor :: Maybe Token -> SensorId -> Waziup Sensor
 getSensor tok sid = do
   info "Get sensor"
-  sensor <- O.getSensor <$> runOrion (O.getEntity sid)
+  sensor <- getSensorFromEntity <$> runOrion (O.getEntity sid)
   case (senKeycloakId sensor) of
     Just keyId -> do
       debug "Check permissions"
@@ -73,7 +79,7 @@ postSensor tok s@(Sensor sid _ _ _ _ vis _ _ _ _ _) = do
        Just t -> getUsername t
        Nothing -> Just "guest"
   debug $ "Onwer: " <> (show username)
-  let entity = O.getEntity' (s {senOwner = username})
+  let entity = getEntityFromSensor (s {senOwner = username})
   res2 <- C.try $ runOrion $ O.postEntity entity 
   case res2 of
     Right _ -> do 
@@ -118,7 +124,7 @@ putSensorLocation mtok sid loc = do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
     debug "Update Orion resource"
-    let (attId, att) = O.getLocationAttr loc
+    let (attId, att) = getLocationAttr loc
     runOrion $ O.postAttribute sid attId att 
   return NoContent
 
@@ -151,6 +157,90 @@ putSensorVisibility mtok sid vis = do
     debug "Update Orion resource"
     runOrion $ O.postTextAttributeOrion sid "visibility" (convertString $ show vis)
   return NoContent
+
+-- * From Orion to Waziup types
+
+getSensorFromEntity :: O.Entity -> Sensor
+getSensorFromEntity (O.Entity eId etype attrs) = 
+  Sensor { senId           = eId,
+           senGatewayId    = O.fromSimpleAttribute "gateway_id" attrs,
+           senName         = O.fromSimpleAttribute "name" attrs,
+           senOwner        = O.fromSimpleAttribute "owner" attrs,
+           senLocation     = getLocation attrs,
+           senDomain       = O.fromSimpleAttribute "domain" attrs,
+           senVisibility   = O.fromSimpleAttribute "visibility" attrs >>= readVisibility,
+           senDateCreated  = O.fromSimpleAttribute "dateCreated" attrs >>= parseISO8601.unpack,
+           senDateModified = O.fromSimpleAttribute "dateModified" attrs >>= parseISO8601.unpack,
+           senMeasurements = mapMaybe getMeasurementFromAttribute attrs,
+           senKeycloakId   = ResourceId <$> O.fromSimpleAttribute "keycloak_id" attrs}
+
+getLocation :: [(Text, O.Attribute)] -> Maybe Location
+getLocation attrs = do 
+    (O.Attribute _ mval _) <- lookup "location" attrs
+    (Object o) <- mval
+    (Array a) <- lookup "coordinates" $ H.toList o
+    let [Number lon, Number lat] = V.toList a
+    return $ Location (Latitude $ toRealFloat lat) (Longitude $ toRealFloat lon)
+
+getMeasurementFromAttribute :: (Text, O.Attribute) -> Maybe Measurement
+getMeasurementFromAttribute (name, O.Attribute aType val mets) =
+  if (aType == "Measurement") 
+    then Just $ Measurement { measId            = name,
+                              measName          = O.fromSimpleMetadata "name" mets,
+                              measQuantityKind  = O.fromSimpleMetadata "quantity_kind" mets,
+                              measSensingDevice = O.fromSimpleMetadata "sensing_device" mets,
+                              measUnit          = O.fromSimpleMetadata "unit" mets,
+                              measLastValue     = getMeasLastValue val mets}
+    else Nothing
+
+getMeasLastValue :: Maybe Value -> [(Text, O.Metadata)] -> Maybe MeasurementValue
+getMeasLastValue mval mets = do
+   value <- mval
+   guard $ not $ isNull value
+   return $ MeasurementValue value 
+                             (O.fromSimpleMetadata "timestamp" mets    >>= parseISO8601.unpack)
+                             (O.fromSimpleMetadata "dateModified" mets >>= parseISO8601.unpack)
+
+
+isNull :: Value -> Bool
+isNull Null = True
+isNull _    = False
+
+
+-- * From Waziup to Orion types
+
+getEntityFromSensor :: Sensor -> O.Entity
+getEntityFromSensor (Sensor sid sgid sname sloc sdom svis meas sown _ _ skey) = 
+  O.Entity sid "SensingDevice" $ catMaybes [O.getSimpleAttr "name"        <$> sname,
+                                            O.getSimpleAttr "gateway_id"  <$> sgid,
+                                            O.getSimpleAttr "owner"       <$> sown,
+                                            O.getSimpleAttr "domain"      <$> sdom,
+                                            O.getSimpleAttr "keycloak_id" <$> (unResId <$> skey),
+                                            O.getSimpleAttr "visibility"  <$> ((pack.show) <$> svis),
+                                            getLocationAttr               <$> sloc] <>
+                                            map getAttributeFromMeasurement meas
+
+getLocationAttr :: Location -> (Text, O.Attribute)
+getLocationAttr (Location (Latitude lat) (Longitude lon)) = ("location", O.Attribute "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) [])
+
+getAttributeFromMeasurement :: Measurement -> (Text, O.Attribute)
+getAttributeFromMeasurement (Measurement measId name sd qk u lv) = 
+  (measId, O.Attribute "Measurement"
+                     (measValue <$> lv)
+                     (catMaybes [O.getTextMetadata "name" <$> name,
+                                 O.getTextMetadata "quantity_kind" <$> qk,
+                                 O.getTextMetadata "sensing_device" <$> sd,
+                                 O.getTextMetadata "unit" <$> u]))
+
+
+withKCId :: SensorId -> (ResourceId -> Waziup a) -> Waziup a
+withKCId sid f = do
+  sensor <- getSensorFromEntity <$> runOrion (O.getEntity sid)
+  case (senKeycloakId sensor) of
+    Just keyId -> f keyId 
+    Nothing -> do
+      error "Cannot delete sensor: KC Id not present"
+      throwError err500 {errBody = "Cannot delete sensor: KC Id not present"}
 
 
 -- Logging

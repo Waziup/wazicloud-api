@@ -5,6 +5,7 @@ module Waziup.Measurements where
 
 import           Waziup.Types
 import           Waziup.Utils
+import           Waziup.Sensors hiding (info, warn, debug, err)
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
 import           Control.Monad.Catch as C
@@ -14,7 +15,7 @@ import           Data.String.Conversions
 import qualified Data.List as L
 import           Servant
 import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
-import qualified Orion as O
+import qualified Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
 import           Paths_Waziup_Servant
 
@@ -22,7 +23,7 @@ import           Paths_Waziup_Servant
 getMeasurements :: Maybe Token -> SensorId -> Waziup [Measurement]
 getMeasurements tok sid = do
   info "Get measurements"
-  sensor <- O.getSensor <$> runOrion (O.getEntity sid)
+  sensor <- getSensorFromEntity <$> runOrion (O.getEntity sid)
   case (senKeycloakId sensor) of
     Just keyId -> do
       debug "Check permissions"
@@ -40,14 +41,14 @@ postMeasurement tok sid meas = do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) tok
     debug "Permission granted, creating measurement"
-    let (attId, att) = O.getMeasurementAttr meas
+    let (attId, att) = getAttributeFromMeasurement meas
     runOrion $ O.postAttribute sid attId att 
   return NoContent
  
 getMeasurement :: Maybe Token -> SensorId -> MeasId -> Waziup Measurement
 getMeasurement tok sid mid = do
   info "Get measurement"
-  sensor <- O.getSensor <$> runOrion (O.getEntity sid)
+  sensor <- getSensorFromEntity <$> runOrion (O.getEntity sid)
   case (senKeycloakId sensor) of
     Just keyId -> do
       debug "Check permissions"
@@ -75,7 +76,7 @@ deleteMeasurement tok sid mid = do
 putMeasName :: Maybe Token -> SensorId -> MeasId -> MeasName -> Waziup NoContent
 putMeasName mtok sid mid name = do
   info $ "Put meas name: " ++ (show name)
-  sensor <- O.getSensor <$> runOrion (O.getEntity sid)
+  sensor <- getSensorFromEntity <$> runOrion (O.getEntity sid)
   case (senKeycloakId sensor) of
     Just keyId -> do
       debug "Check permissions"
@@ -84,7 +85,7 @@ putMeasName mtok sid mid name = do
       case L.find (\m -> (measId m) == mid) (senMeasurements sensor) of
         Just meas -> do
           let meas' = meas {measName = Just name}
-          let (attId, att) = O.getMeasurementAttr meas'
+          let (attId, att) = getAttributeFromMeasurement meas'
           runOrion $ O.postAttribute sid attId att 
         Nothing -> do 
           warn "Measurement not found"

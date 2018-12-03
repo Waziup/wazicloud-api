@@ -41,8 +41,8 @@ postMeasurement tok (SensorId sid) meas = do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) tok
     debug "Permission granted, creating measurement"
-    let (attId, att) = getAttributeFromMeasurement meas
-    runOrion $ O.postAttribute (EntityId sid) attId att 
+    let att = getAttributeFromMeasurement meas
+    runOrion $ O.postAttribute (EntityId sid) att 
   return NoContent
  
 getMeasurement :: Maybe Token -> SensorId -> MeasId -> Waziup Measurement
@@ -85,8 +85,8 @@ putMeasName mtok (SensorId sid) mid name = do
       case L.find (\m -> (measId m) == mid) (senMeasurements sensor) of
         Just meas -> do
           let meas' = meas {measName = Just name}
-          let (attId, att) = getAttributeFromMeasurement meas'
-          runOrion $ O.postAttribute (EntityId sid) attId att 
+          let att = getAttributeFromMeasurement meas'
+          runOrion $ O.postAttribute (EntityId sid) att 
         Nothing -> do 
           warn "Measurement not found"
           throwError err404 {errBody = "Measurement not found"}

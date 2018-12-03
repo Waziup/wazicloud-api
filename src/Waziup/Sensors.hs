@@ -124,8 +124,8 @@ putSensorLocation mtok (SensorId sid) loc = do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
     debug "Update Orion resource"
-    let (attId, att) = getLocationAttr loc
-    runOrion $ O.postAttribute (EntityId sid) attId att 
+    let att = getLocationAttr loc
+    runOrion $ O.postAttribute (EntityId sid) att 
   return NoContent
 
 putSensorName :: Maybe Token -> SensorId -> SensorName -> Waziup NoContent
@@ -174,16 +174,16 @@ getSensorFromEntity (O.Entity (EntityId eId) etype attrs) =
            senMeasurements = mapMaybe getMeasurementFromAttribute attrs,
            senKeycloakId   = ResourceId <$> O.fromSimpleAttribute (AttributeId "keycloak_id") attrs}
 
-getLocation :: [(AttributeId, O.Attribute)] -> Maybe Location
+getLocation :: [O.Attribute] -> Maybe Location
 getLocation attrs = do 
-    (O.Attribute _ mval _) <- lookup (AttributeId "location") attrs
+    (O.Attribute _ _ mval _) <- L.find (\(O.Attribute attId _ _ _) -> attId == (AttributeId "location")) attrs
     (Object o) <- mval
     (Array a) <- lookup "coordinates" $ H.toList o
     let [Number lon, Number lat] = V.toList a
     return $ Location (Latitude $ toRealFloat lat) (Longitude $ toRealFloat lon)
 
-getMeasurementFromAttribute :: (AttributeId, O.Attribute) -> Maybe Measurement
-getMeasurementFromAttribute ((AttributeId name), O.Attribute aType val mets) =
+getMeasurementFromAttribute :: O.Attribute -> Maybe Measurement
+getMeasurementFromAttribute (O.Attribute (AttributeId name) aType val mets) =
   if (aType == "Measurement") 
     then Just $ Measurement { measId            = MeasId name,
                               measName          = O.fromSimpleMetadata (MetadataId "name") mets,
@@ -193,7 +193,7 @@ getMeasurementFromAttribute ((AttributeId name), O.Attribute aType val mets) =
                               measLastValue     = getMeasLastValue val mets}
     else Nothing
 
-getMeasLastValue :: Maybe Value -> [(MetadataId, O.Metadata)] -> Maybe MeasurementValue
+getMeasLastValue :: Maybe Value -> [O.Metadata] -> Maybe MeasurementValue
 getMeasLastValue mval mets = do
    value <- mval
    guard $ not $ isNull value
@@ -220,12 +220,12 @@ getEntityFromSensor (Sensor (SensorId sid) sgid sname sloc sdom svis meas sown _
                                                        getLocationAttr               <$> sloc] <>
                                                        map getAttributeFromMeasurement meas
 
-getLocationAttr :: Location -> (AttributeId, O.Attribute)
-getLocationAttr (Location (Latitude lat) (Longitude lon)) = (AttributeId "location", O.Attribute "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) [])
+getLocationAttr :: Location -> O.Attribute
+getLocationAttr (Location (Latitude lat) (Longitude lon)) = O.Attribute (AttributeId "location") "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) []
 
-getAttributeFromMeasurement :: Measurement -> (AttributeId, O.Attribute)
+getAttributeFromMeasurement :: Measurement -> O.Attribute
 getAttributeFromMeasurement (Measurement (MeasId measId) name sd qk u lv) = 
-  (AttributeId measId, O.Attribute "Measurement"
+  (O.Attribute (AttributeId measId) "Measurement"
                      (measValue <$> lv)
                      (catMaybes [O.getTextMetadata (MetadataId "name")           <$> name,
                                  O.getTextMetadata (MetadataId "quantity_kind")  <$> qk,

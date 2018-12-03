@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TupleSections #-}
 
 module Orion.Types where
 
@@ -20,12 +21,18 @@ import Control.Monad.Reader
 import Data.Foldable as F
 import Network.HTTP.Client (HttpException)
 import Control.Monad.Except (ExceptT)
+import qualified Data.HashMap.Lazy as HML 
+
+
+-- * Orion monad
 
 type Orion a = ReaderT OrionConfig (ExceptT OrionError IO) a
 
 data OrionError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
                 | ParseError Text          -- ^ Failed when parsing the response
                 | EmptyError               -- ^ Empty error to serve as a zero element for Monoid.
+
+-- * Orion config
 
 data OrionConfig = OrionConfig {
   orionUrl      :: Text,
@@ -35,24 +42,20 @@ defaultOrionConfig = OrionConfig {
   orionUrl      = "http://localhost:1026",
   fiwareService = "waziup"}
 
+-- * Entities
+
 newtype EntityId = EntityId {unEntityId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
 type EntityType = Text
-newtype AttributeId = AttributeId {unAttributeId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
-type AttributeType = Text
-newtype MetadataId = MetadataId {unMetadataId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
-type MetadataType = Text
 
 data Entity = Entity {
   entId         :: EntityId,
   entType       :: EntityType,
-  entAttributes :: [(AttributeId, Attribute)]
+  entAttributes :: [Attribute]
   } deriving (Generic, Show)
 
 instance ToJSON Entity where
    toJSON (Entity entId entType attrs) = 
-     object $ ["id" .= entId, 
-               "type" .= entType] 
-              <> map (\((AttributeId attId), att) -> attId .= toJSON att) attrs
+     merge_aeson $ (object ["id" .= entId, "type" .= entType]) : (map toJSON attrs)
 
 parseEntity :: Parse e Entity
 parseEntity = do
@@ -62,46 +65,59 @@ parseEntity = do
     return $ Entity (EntityId eId) eType attrs where
       parseAtt "id" = return Nothing 
       parseAtt "type" = return Nothing 
-      parseAtt k = do
-        a <- parseAttribute
-        return $ Just (AttributeId k, a)
+      parseAtt k = Just <$> parseAttribute (AttributeId k)
+
+-- * Attributes
+
+newtype AttributeId = AttributeId {unAttributeId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
+type AttributeType = Text
 
 data Attribute = Attribute {
+  attId       :: AttributeId,
   attType     :: AttributeType,
   attValue    :: Maybe Value,
-  attMetadata :: [(MetadataId, Metadata)]
+  attMetadata :: [Metadata]
   } deriving (Generic, Show)
 
 instance ToJSON Attribute where
-   toJSON (Attribute attType attVal mets) = 
-     object $ ["type" .= attType, 
-               "value" .= attVal,
-               "metadata" .= object (map (\((MetadataId metId), met) -> metId .= toJSON met) mets)]
+   toJSON (Attribute (AttributeId attId) attType attVal mets) = 
+     object [ attId .= 
+        (object $ ["type" .= attType, 
+                   "value" .= attVal,
+                   "metadata" .= merge_aeson (map toJSON mets)])]
 
-parseAttribute :: Parse e Attribute
-parseAttribute = do
+parseAttribute :: AttributeId -> Parse e Attribute
+parseAttribute attId = do
     aType  <- AB.key    "type" asText
     aValue <- AB.keyMay "value" AB.asValue
-    mets   <- AB.keyMay "metadata" parseMetadatas
-    return $ Attribute aType aValue (F.concat mets)
+    mets   <- AB.keyMay "metadata" (forEachInObject (parseMetadata.MetadataId))
+    return $ Attribute attId aType aValue (F.concat mets)
 
+-- * Metadata
+
+newtype MetadataId = MetadataId {unMeetadataId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
+type MetadataType = Text
 
 data Metadata = Metadata {
-  metType :: Maybe MetadataType,
+  metId    :: MetadataId,
+  metType  :: Maybe MetadataType,
   metValue :: Maybe Value
   } deriving (Generic, Show)
 
 instance ToJSON Metadata where
-   toJSON = genericToJSON $ aesonDrop 3 snakeCase
+   toJSON (Metadata (MetadataId id) mtyp mval) = 
+     object [ id .= 
+       (object $ catMaybes [("type",) <$> toJSON <$> mtyp,
+                            ("value",) <$> toJSON <$> mval]) ]
 
-parseMetadatas :: Parse e [(MetadataId, Metadata)]
-parseMetadatas = forEachInObject $ \a -> do
-  m <- parseMetadata
-  return (MetadataId a, m)
+parseMetadata :: MetadataId -> Parse e Metadata
+parseMetadata mid = Metadata <$> pure mid
+                             <*> AB.keyMay "type" AB.asText
+                             <*> AB.keyMay "value" AB.asValue
 
-parseMetadata :: Parse e Metadata
-parseMetadata = Metadata <$> AB.keyMay "type" asText
-                         <*> AB.keyMay "value" AB.asValue
+-- Miscellaneous
 
 type Path = Text
 
+merge_aeson :: [Value] -> Value
+merge_aeson = Object . HML.unions . map (\(Object x) -> x)

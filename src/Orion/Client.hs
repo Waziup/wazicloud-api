@@ -37,6 +37,8 @@ import           GHC.Generics (Generic)
 import           Waziup.Types
 import           Debug.Trace
 
+-- * Orion REST interface
+
 getEntities :: Maybe Text -> Orion [Entity]
 getEntities mq = do
   let qq = case mq of
@@ -56,23 +58,20 @@ getEntity (EntityId eid) = orionGet ("/v2/entities/" <> eid) parseEntity
 deleteEntity :: EntityId -> Orion ()
 deleteEntity (EntityId eid) = orionDelete ("/v2/entities/" <> eid)
 
-postAttribute :: EntityId -> AttributeId -> Attribute -> Orion ()
-postAttribute (EntityId eid) (AttributeId attId) att = do
+postAttribute :: EntityId -> Attribute -> Orion ()
+postAttribute (EntityId eid) att = do
   debug $ "Post attributen: " <> (convertString $ JSON.encode att)
-  orionPost ("/v2/entities/" <> eid <> "/attrs") (object [attId .= (toJSON att)])
+  orionPost ("/v2/entities/" <> eid <> "/attrs") (toJSON att)
 
 postTextAttributeOrion :: EntityId -> AttributeId -> Text -> Orion ()
-postTextAttributeOrion (EntityId eid) (AttributeId attId) val = do
+postTextAttributeOrion (EntityId eid) attId val = do
   debug $ convertString $ "put Sensor attribute in Orion: " <> val
-  orionPost ("/v2/entities/" <> eid <> "/attrs") (object [attId .= (toJSON $ getStringAttr val)])
+  orionPost ("/v2/entities/" <> eid <> "/attrs") (toJSON $ getSimpleAttr attId val)
 
 deleteAttribute :: EntityId -> AttributeId -> Orion ()
 deleteAttribute (EntityId eid) (AttributeId attId) = do
   debug $ "Delete attribute"
   orionDelete ("/v2/entities/" <> eid <> "/attrs/" <> attId)
-
-getStringAttr :: Text -> Attribute
-getStringAttr val = Attribute "String" (Just $ toJSON val) []
 
 -- * Requests to Orion.
 
@@ -147,15 +146,15 @@ orionPut path dat = do
 
 -- * Helpers
 
-fromSimpleAttribute :: AttributeId -> [(AttributeId, Attribute)] -> Maybe Text
-fromSimpleAttribute attName attrs = do
-   (Attribute _ mval _) <- lookup attName attrs
+fromSimpleAttribute :: AttributeId -> [Attribute] -> Maybe Text
+fromSimpleAttribute attId attrs = do
+   (Attribute _ _ mval _) <- find (\(Attribute attId' _ _ _) -> attId' == attId) attrs
    val <- mval
    getString val
 
-fromSimpleMetadata :: MetadataId -> [(MetadataId, Metadata)] -> Maybe Text
-fromSimpleMetadata name mets = do
-   (Metadata _ mval) <- lookup name mets
+fromSimpleMetadata :: MetadataId -> [Metadata] -> Maybe Text
+fromSimpleMetadata mid mets = do
+   (Metadata _ _ mval) <- find (\(Metadata mid' _ _) -> mid' == mid) mets
    val <- mval
    getString val
 
@@ -163,11 +162,11 @@ getString :: Value -> Maybe Text
 getString (String s) = Just s
 getString _ = Nothing
 
-getSimpleAttr :: AttributeId -> Text -> (AttributeId, Attribute)
-getSimpleAttr name val = (name, Attribute "String" (Just $ toJSON val) [])
+getSimpleAttr :: AttributeId -> Text -> Attribute
+getSimpleAttr attId val = Attribute attId "String" (Just $ toJSON val) []
 
-getTextMetadata :: MetadataId -> Text -> (MetadataId, Metadata)
-getTextMetadata metId val = (metId, Metadata (Just "String") (Just $ toJSON val))
+getTextMetadata :: MetadataId -> Text -> Metadata
+getTextMetadata metId val = Metadata metId (Just "String") (Just $ toJSON val)
 
 debug, warn, info, err :: (MonadIO m) => String -> m ()
 debug s = liftIO $ debugM   "Orion" s

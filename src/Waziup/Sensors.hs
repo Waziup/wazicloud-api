@@ -218,13 +218,13 @@ getEntityFromSensor (Sensor (SensorId sid) sgid sname sloc sdom svis meas sown _
                                                        getSimpleAttr (AttributeId "keycloak_id") <$> (unResId <$> skey),
                                                        getSimpleAttr (AttributeId "visibility")  <$> ((pack.show) <$> svis),
                                                        getLocationAttr               <$> sloc] <>
-                                                       map getAttributeFromMeasurement meas
+                                                       map getAttFromMeas meas
 
 getLocationAttr :: Location -> O.Attribute
 getLocationAttr (Location (Latitude lat) (Longitude lon)) = O.Attribute (AttributeId "location") "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) []
 
-getAttributeFromMeasurement :: Measurement -> O.Attribute
-getAttributeFromMeasurement (Measurement (MeasId measId) name sd qk u lv) = 
+getAttFromMeas :: Measurement -> O.Attribute
+getAttFromMeas (Measurement (MeasId measId) name sd qk u lv) = 
   (O.Attribute (AttributeId measId) "Measurement"
                      (measValue <$> lv)
                      (catMaybes [getTextMetadata (MetadataId "name")           <$> name,

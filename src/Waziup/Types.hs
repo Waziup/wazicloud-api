@@ -26,6 +26,7 @@ import           Data.Aeson.BetterErrors as AB
 import           Data.Swagger
 import           Data.Swagger.Internal
 import           Data.Swagger.Lens
+import           Data.String.Conversions
 import           Control.Lens hiding ((.=))
 import           Control.Monad
 import           Control.Monad.Except (ExceptT, throwError)
@@ -159,13 +160,28 @@ instance ToHttpApiData SensorId where
   toUrlPiece (SensorId a) = a
 
 -- Id of a gateway
-newtype GatewayId = GatewayId {unGatewayId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
+newtype GatewayId = GatewayId {unGatewayId :: Text} deriving (Show, Eq, Generic)
 
 instance ToSchema GatewayId where
   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON ("MyGatewayId" :: Text) 
 
-instance MimeUnrender PlainText GatewayId
+instance ToParamSchema GatewayId
+
+instance MimeUnrender PlainText GatewayId where
+  mimeUnrender proxy bs = Right $ GatewayId $ convertString bs 
+
+instance ToJSON GatewayId where
+  toJSON = genericToJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+instance FromJSON GatewayId where
+  parseJSON = genericParseJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+instance FromHttpApiData GatewayId where
+  parseUrlPiece a = Right $ GatewayId a 
+
+instance ToHttpApiData GatewayId where
+  toUrlPiece (GatewayId a) = a
 
 type SensorName    = Text
 type Domain        = Text
@@ -283,17 +299,6 @@ instance FromHttpApiData MeasId where
 instance ToHttpApiData MeasId where
   toUrlPiece (MeasId a) = a
 
--- Sensor Kind
-
-newtype SensorKindId = SensorKindId {unSensorKindId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
-
-instance ToSchema SensorKindId
-
-newtype QuantityKindId = QuantityKindId {unQuantityKindId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
-instance ToSchema QuantityKindId
-
-newtype UnitId = UnitId {unUnitId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
-instance ToSchema UnitId
 
 type MeasName      = Text
 
@@ -493,6 +498,26 @@ instance ToSchema Project
 
 
 -- * Ontologies
+
+newtype SensorKindId = SensorKindId {unSensorKindId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
+
+instance ToSchema SensorKindId
+instance MimeRender PlainText SensorKindId
+instance MimeUnrender PlainText SensorKindId where
+  mimeUnrender proxy bs = Right $ SensorKindId $ convertString bs 
+
+
+newtype QuantityKindId = QuantityKindId {unQuantityKindId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
+instance ToSchema QuantityKindId
+instance MimeRender PlainText QuantityKindId
+instance MimeUnrender PlainText QuantityKindId where
+  mimeUnrender proxy bs = Right $ QuantityKindId $ convertString bs 
+
+newtype UnitId = UnitId {unUnitId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
+instance ToSchema UnitId
+instance MimeRender PlainText UnitId
+instance MimeUnrender PlainText UnitId where
+  mimeUnrender proxy bs = Right $ UnitId $ convertString bs 
 
 data SensorKind = SensorKind {
   sdId    :: SensorKindId,

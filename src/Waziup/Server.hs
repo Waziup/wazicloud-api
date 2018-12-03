@@ -38,7 +38,7 @@ authServer = getPerms :<|> postAuth
 
 sensorsServer :: ServerT SensorsAPI Waziup
 sensorsServer = getSensors :<|> postSensor :<|> getSensor :<|> deleteSensor :<|> putSensorName :<|> putSensorLocation :<|> putSensorGatewayId :<|> putSensorVisibility :<|>
-                getMeasurements :<|> postMeasurement :<|> getMeasurement :<|> deleteMeasurement :<|> putMeasName
+                getMeasurements :<|> postMeasurement :<|> getMeasurement :<|> deleteMeasurement :<|> putMeasName :<|> putMeasSensorKind :<|> putMeasQuantityKind :<|> putMeasUnit
 
 projectsServer :: ServerT ProjectsAPI Waziup
 projectsServer = getProjects :<|> postProject :<|> getProject :<|> deleteProject :<|> putProjectDevices :<|> putProjectGateways

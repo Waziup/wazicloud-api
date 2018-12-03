@@ -41,7 +41,7 @@ postMeasurement tok (SensorId sid) meas = do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) tok
     debug "Permission granted, creating measurement"
-    let att = getAttributeFromMeasurement meas
+    let att = getAttFromMeas meas
     runOrion $ O.postAttribute (EntityId sid) att 
   return NoContent
  
@@ -74,8 +74,31 @@ deleteMeasurement tok (SensorId sid) (MeasId mid) = do
   return NoContent
 
 putMeasName :: Maybe Token -> SensorId -> MeasId -> MeasName -> Waziup NoContent
-putMeasName mtok (SensorId sid) mid name = do
+putMeasName mtok sid@(SensorId sidt) mid name = do
   info $ "Put meas name: " ++ (show name)
+  updateMeasField mtok sid mid $ \meas -> do 
+    runOrion $ O.postAttribute (EntityId sidt) $ getAttFromMeas (meas {measName = Just name})
+
+putMeasSensorKind :: Maybe Token -> SensorId -> MeasId -> SensorKindId -> Waziup NoContent
+putMeasSensorKind mtok sid@(SensorId sidt) mid sk = do
+  info $ "Put meas sensor kind: " ++ (show sk)
+  updateMeasField mtok sid mid $ \meas -> do 
+    runOrion $ O.postAttribute (EntityId sidt) $ getAttFromMeas (meas {measSensorKind = Just sk})
+
+putMeasQuantityKind :: Maybe Token -> SensorId -> MeasId -> QuantityKindId -> Waziup NoContent
+putMeasQuantityKind mtok sid@(SensorId sidt) mid qk = do
+  info $ "Put meas quantity kind: " ++ (show qk)
+  updateMeasField mtok sid mid $ \meas -> do 
+    runOrion $ O.postAttribute (EntityId sidt) $ getAttFromMeas (meas {measQuantityKind = Just qk})
+
+putMeasUnit :: Maybe Token -> SensorId -> MeasId -> UnitId -> Waziup NoContent
+putMeasUnit mtok sid@(SensorId sidt) mid u = do
+  info $ "Put meas unit: " ++ (show u)
+  updateMeasField mtok sid mid $ \meas -> do 
+    runOrion $ O.postAttribute (EntityId sidt) $ getAttFromMeas (meas {measUnit = Just u})
+  
+updateMeasField :: Maybe Token -> SensorId -> MeasId -> (Measurement -> Waziup ()) -> Waziup NoContent
+updateMeasField mtok (SensorId sid) mid w = do
   sensor <- getSensorFromEntity <$> runOrion (O.getEntity $ EntityId sid)
   case (senKeycloakId sensor) of
     Just keyId -> do
@@ -83,10 +106,7 @@ putMeasName mtok (SensorId sid) mid name = do
       runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
       debug "Permission granted, updating measurement"
       case L.find (\m -> (measId m) == mid) (senMeasurements sensor) of
-        Just meas -> do
-          let meas' = meas {measName = Just name}
-          let att = getAttributeFromMeasurement meas'
-          runOrion $ O.postAttribute (EntityId sid) att 
+        Just meas -> w meas
         Nothing -> do 
           warn "Measurement not found"
           throwError err404 {errBody = "Measurement not found"}

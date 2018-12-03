@@ -54,9 +54,12 @@ type MeasurementsAPI = Flat (
     ))
 
 type MeasurementAPI = Flat (
-  Capture "meas_id" MeasId :> (                           Get             '[JSON] Measurement
-    :<|>                                                  DeleteNoContent '[JSON] NoContent
-    :<|> "name"       :> ReqBody '[PlainText] MeasName :> PutNoContent    '[JSON] NoContent
+  Capture "meas_id" MeasId :> (                                    Get             '[JSON] Measurement
+    :<|>                                                           DeleteNoContent '[JSON] NoContent
+    :<|> "name"          :> ReqBody '[PlainText] MeasName       :> PutNoContent    '[JSON] NoContent
+    :<|> "sensor_kind"   :> ReqBody '[PlainText] SensorKindId   :> PutNoContent    '[JSON] NoContent
+    :<|> "quantity_kind" :> ReqBody '[PlainText] QuantityKindId :> PutNoContent    '[JSON] NoContent
+    :<|> "unit"          :> ReqBody '[PlainText] UnitId         :> PutNoContent    '[JSON] NoContent
     ))
 
 -- * Projects

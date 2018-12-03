@@ -164,13 +164,13 @@ getSensorFromEntity :: O.Entity -> Sensor
 getSensorFromEntity (O.Entity (EntityId eId) etype attrs) = 
   Sensor { senId           = SensorId eId,
            senGatewayId    = GatewayId <$> O.fromSimpleAttribute (AttributeId "gateway_id") attrs,
-           senName         = O.fromSimpleAttribute (AttributeId "name") attrs,
-           senOwner        = O.fromSimpleAttribute (AttributeId "owner") attrs,
+           senName         = fromSimpleAttribute (AttributeId "name") attrs,
+           senOwner        = fromSimpleAttribute (AttributeId "owner") attrs,
            senLocation     = getLocation attrs,
-           senDomain       = O.fromSimpleAttribute (AttributeId "domain") attrs,
-           senVisibility   = O.fromSimpleAttribute (AttributeId "visibility") attrs >>= readVisibility,
-           senDateCreated  = O.fromSimpleAttribute (AttributeId "dateCreated") attrs >>= parseISO8601.unpack,
-           senDateModified = O.fromSimpleAttribute (AttributeId "dateModified") attrs >>= parseISO8601.unpack,
+           senDomain       = fromSimpleAttribute (AttributeId "domain") attrs,
+           senVisibility   = fromSimpleAttribute (AttributeId "visibility") attrs >>= readVisibility,
+           senDateCreated  = fromSimpleAttribute (AttributeId "dateCreated") attrs >>= parseISO8601.unpack,
+           senDateModified = fromSimpleAttribute (AttributeId "dateModified") attrs >>= parseISO8601.unpack,
            senMeasurements = mapMaybe getMeasurementFromAttribute attrs,
            senKeycloakId   = ResourceId <$> O.fromSimpleAttribute (AttributeId "keycloak_id") attrs}
 
@@ -186,10 +186,10 @@ getMeasurementFromAttribute :: O.Attribute -> Maybe Measurement
 getMeasurementFromAttribute (O.Attribute (AttributeId name) aType val mets) =
   if (aType == "Measurement") 
     then Just $ Measurement { measId            = MeasId name,
-                              measName          = O.fromSimpleMetadata (MetadataId "name") mets,
-                              measQuantityKind  = O.fromSimpleMetadata (MetadataId "quantity_kind") mets,
-                              measSensingDevice = O.fromSimpleMetadata (MetadataId "sensing_device") mets,
-                              measUnit          = O.fromSimpleMetadata (MetadataId "unit") mets,
+                              measName          = fromSimpleMetadata (MetadataId "name") mets,
+                              measQuantityKind  = QuantityKindId <$> fromSimpleMetadata (MetadataId "quantity_kind") mets,
+                              measSensorKind    = SensorKindId <$> fromSimpleMetadata (MetadataId "sensing_device") mets,
+                              measUnit          = UnitId <$> fromSimpleMetadata (MetadataId "unit") mets,
                               measLastValue     = getMeasLastValue val mets}
     else Nothing
 
@@ -211,12 +211,12 @@ isNull _    = False
 
 getEntityFromSensor :: Sensor -> O.Entity
 getEntityFromSensor (Sensor (SensorId sid) sgid sname sloc sdom svis meas sown _ _ skey) = 
-  O.Entity (EntityId sid) "SensingDevice" $ catMaybes [O.getSimpleAttr (AttributeId "name")        <$> sname,
-                                                       O.getSimpleAttr (AttributeId "gateway_id")  <$> (unGatewayId <$> sgid),
-                                                       O.getSimpleAttr (AttributeId "owner")       <$> sown,
-                                                       O.getSimpleAttr (AttributeId "domain")      <$> sdom,
-                                                       O.getSimpleAttr (AttributeId "keycloak_id") <$> (unResId <$> skey),
-                                                       O.getSimpleAttr (AttributeId "visibility")  <$> ((pack.show) <$> svis),
+  O.Entity (EntityId sid) "SensingDevice" $ catMaybes [getSimpleAttr (AttributeId "name")        <$> sname,
+                                                       getSimpleAttr (AttributeId "gateway_id")  <$> (unGatewayId <$> sgid),
+                                                       getSimpleAttr (AttributeId "owner")       <$> sown,
+                                                       getSimpleAttr (AttributeId "domain")      <$> sdom,
+                                                       getSimpleAttr (AttributeId "keycloak_id") <$> (unResId <$> skey),
+                                                       getSimpleAttr (AttributeId "visibility")  <$> ((pack.show) <$> svis),
                                                        getLocationAttr               <$> sloc] <>
                                                        map getAttributeFromMeasurement meas
 
@@ -227,10 +227,10 @@ getAttributeFromMeasurement :: Measurement -> O.Attribute
 getAttributeFromMeasurement (Measurement (MeasId measId) name sd qk u lv) = 
   (O.Attribute (AttributeId measId) "Measurement"
                      (measValue <$> lv)
-                     (catMaybes [O.getTextMetadata (MetadataId "name")           <$> name,
-                                 O.getTextMetadata (MetadataId "quantity_kind")  <$> qk,
-                                 O.getTextMetadata (MetadataId "sensing_device") <$> sd,
-                                 O.getTextMetadata (MetadataId "unit")           <$> u]))
+                     (catMaybes [getTextMetadata (MetadataId "name")           <$> name,
+                                 getTextMetadata (MetadataId "quantity_kind")  <$> unQuantityKindId <$> qk,
+                                 getTextMetadata (MetadataId "sensing_device") <$> unSensorKindId <$> sd,
+                                 getTextMetadata (MetadataId "unit")           <$> unUnitId <$> u]))
 
 
 withKCId :: Text -> (ResourceId -> Waziup a) -> Waziup a

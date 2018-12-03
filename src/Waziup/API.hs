@@ -77,9 +77,9 @@ type ProjectAPI = (
 
 -- * Ontologies
 
-type OntologiesAPI = "ontologies" :> ( "sensing_devices" :> Get '[JSON] [SensingDeviceInfo] :<|>
-                                       "quantity_kinds"  :> Get '[JSON] [QuantityKindInfo] :<|>
-                                       "units"           :> Get '[JSON] [UnitInfo])
+type OntologiesAPI = "ontologies" :> ( "sensing_devices" :> Get '[JSON] [SensorKind] :<|>
+                                       "quantity_kinds"  :> Get '[JSON] [QuantityKind] :<|>
+                                       "units"           :> Get '[JSON] [Unit])
 
 
 instance ToParamSchema Token where

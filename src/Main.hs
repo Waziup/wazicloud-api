@@ -126,7 +126,7 @@ loadOntologies = do
     then return $ Ontologies sds qks us
     else error "Sensing devices ontology is not correct"
  
-loadSensingDevices :: IO [SensingDeviceInfo]
+loadSensingDevices :: IO [SensorKind]
 loadSensingDevices = do
   dir <- liftIO $ getDataDir
   msd <- liftIO $ BS.readFile $ dir </> "ontologies" </> "sensing_devices.json"
@@ -134,7 +134,7 @@ loadSensingDevices = do
     Right sd -> return sd
     Left (e :: AB.ParseError String) -> error $ "Cannot decode data file: " ++ (show e)
 
-loadQuantityKinds :: IO [QuantityKindInfo]
+loadQuantityKinds :: IO [QuantityKind]
 loadQuantityKinds = do
   dir <- liftIO getDataDir
   mqk <- liftIO $ BS.readFile $ dir </> "ontologies" </> "quantity_kinds.json"
@@ -142,7 +142,7 @@ loadQuantityKinds = do
     Right qk -> return qk
     Left (e :: AB.ParseError String) -> error $ "Cannot decode data file: " ++ (show e)
 
-loadUnits :: IO [UnitInfo]
+loadUnits :: IO [Unit]
 loadUnits = do
   dir <- liftIO getDataDir
   mus <- liftIO $ BS.readFile $ dir </> "ontologies" </> "units.json"
@@ -150,23 +150,23 @@ loadUnits = do
     Right us -> return us
     Left (e :: AB.ParseError String) -> error $ "Cannot decode data file: " ++ (show e)
 
-checkSensingDevices :: [SensingDeviceInfo] -> [QuantityKindInfo] -> Validation [String] ()
+checkSensingDevices :: [SensorKind] -> [QuantityKind] -> Validation [String] ()
 checkSensingDevices sds qks = sequenceA_ $ map (isSDValid qks) sds
 
-isSDValid :: [QuantityKindInfo] -> SensingDeviceInfo -> Validation [String] ()
-isSDValid qks (SensingDeviceInfo id _ qks') = sequenceA_ $ map (\qk -> if isQKValid qks qk then Success () else Failure [("quantity kind " ++ (show $ qk) ++ " referenced by sensing device " ++ (show id) ++ " is not defined")]) qks' 
+isSDValid :: [QuantityKind] -> SensorKind -> Validation [String] ()
+isSDValid qks (SensorKind id _ qks') = sequenceA_ $ map (\qk -> if isQKValid qks qk then Success () else Failure [("quantity kind " ++ (show $ qk) ++ " referenced by sensing device " ++ (show id) ++ " is not defined")]) qks' 
 
-isQKValid :: [QuantityKindInfo] -> QuantityKind -> Bool
-isQKValid qks id = any (\(QuantityKindInfo id' _ _) -> id == id') qks
+isQKValid :: [QuantityKind] -> QuantityKindId -> Bool
+isQKValid qks id = any (\(QuantityKind id' _ _) -> id == id') qks
 
-checkQuantityKinds :: [QuantityKindInfo] -> [UnitInfo] -> Validation [String] ()
+checkQuantityKinds :: [QuantityKind] -> [Unit] -> Validation [String] ()
 checkQuantityKinds qks us = sequenceA_ $ map (isQKInfoValid us) qks
 
-isQKInfoValid :: [UnitInfo] -> QuantityKindInfo -> Validation [String] ()
-isQKInfoValid us (QuantityKindInfo id _ us') = sequenceA_ $ map (\u -> if isUnitValid us u then Success () else Failure [("unit " ++ (show $ u) ++ " referenced by quantity kind " ++ (show id) ++ " is not defined")]) us' 
+isQKInfoValid :: [Unit] -> QuantityKind -> Validation [String] ()
+isQKInfoValid us (QuantityKind id _ us') = sequenceA_ $ map (\u -> if isUnitValid us u then Success () else Failure [("unit " ++ (show $ u) ++ " referenced by quantity kind " ++ (show id) ++ " is not defined")]) us' 
 
-isUnitValid :: [UnitInfo] -> Unit -> Bool
-isUnitValid us id = any (\(UnitInfo id' _) -> id == id') us
+isUnitValid :: [Unit] -> UnitId -> Bool
+isUnitValid us id = any (\(Unit id' _) -> id == id') us
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

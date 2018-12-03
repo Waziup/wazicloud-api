@@ -71,9 +71,9 @@ defaultServerConfig = ServerConfig {
   }
 
 data Ontologies = Ontologies {
-  sensingDevices :: [SensingDeviceInfo],
-  quantityKinds  :: [QuantityKindInfo],
-  units          :: [UnitInfo]
+  sensingDevices :: [SensorKind],
+  quantityKinds  :: [QuantityKind],
+  units          :: [Unit]
   } deriving (Eq, Show)
 
 -- * Authentication & authorization
@@ -152,10 +152,6 @@ instance ToJSON SensorId where
 instance FromJSON SensorId where
   parseJSON = genericParseJSON (defaultOptions {AT.unwrapUnaryRecords = True})
 
-instance MimeRender PlainText SensorId
-
-instance MimeUnrender PlainText SensorId
-
 instance FromHttpApiData SensorId where
   parseUrlPiece a = Right $ SensorId a 
 
@@ -168,8 +164,6 @@ newtype GatewayId = GatewayId {unGatewayId :: Text} deriving (Show, Eq, Generic,
 instance ToSchema GatewayId where
   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON ("MyGatewayId" :: Text) 
-
-instance MimeRender PlainText GatewayId
 
 instance MimeUnrender PlainText GatewayId
 
@@ -289,27 +283,36 @@ instance FromHttpApiData MeasId where
 instance ToHttpApiData MeasId where
   toUrlPiece (MeasId a) = a
 
+-- Sensor Kind
+
+newtype SensorKindId = SensorKindId {unSensorKindId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
+
+instance ToSchema SensorKindId
+
+newtype QuantityKindId = QuantityKindId {unQuantityKindId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
+instance ToSchema QuantityKindId
+
+newtype UnitId = UnitId {unUnitId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
+instance ToSchema UnitId
+
 type MeasName      = Text
-type SensingDevice = Text
-type QuantityKind  = Text
-type Unit          = Text
 
 -- | one measurement 
 data Measurement = Measurement
   { measId            :: MeasId                 -- ^ ID of the measurement
   , measName          :: Maybe MeasName         -- ^ name of the measurement
-  , measSensingDevice :: Maybe SensingDevice    -- ^ sensing platform used for the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/SensingDevices.js
-  , measQuantityKind  :: Maybe QuantityKind     -- ^ quantity measured, from https://github.com/Waziup/waziup-js/blob/master/src/model/QuantityKinds.js
-  , measUnit          :: Maybe Unit             -- ^ unit of the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/Units.js
+  , measSensorKind    :: Maybe SensorKindId     -- ^ sensing platform used for the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/SensingDevices.js
+  , measQuantityKind  :: Maybe QuantityKindId   -- ^ quantity measured, from https://github.com/Waziup/waziup-js/blob/master/src/model/QuantityKinds.js
+  , measUnit          :: Maybe UnitId           -- ^ unit of the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/Units.js
   , measLastValue     :: Maybe MeasurementValue -- ^ last value received by the platform
   } deriving (Show, Eq, Generic)
 
 defaultMeasurement = Measurement 
   { measId            = MeasId "TC1" 
   , measName          = Just "My garden temperature" 
-  , measSensingDevice = Just "Thermometer" 
-  , measQuantityKind  = Just "AirTemperature" 
-  , measUnit          = Just "DegreeCelsius"
+  , measSensorKind    = Just $ SensorKindId "Thermometer" 
+  , measQuantityKind  = Just $ QuantityKindId "AirTemperature" 
+  , measUnit          = Just $ UnitId "DegreeCelsius"
   , measLastValue     = Nothing
   } 
 
@@ -491,57 +494,57 @@ instance ToSchema Project
 
 -- * Ontologies
 
-data SensingDeviceInfo = SensingDeviceInfo {
-  sdId :: SensingDevice,
+data SensorKind = SensorKind {
+  sdId    :: SensorKindId,
   sdLabel :: Text,
-  sdQK :: [QuantityKind]
+  sdQk    :: [QuantityKindId]
   } deriving (Show, Eq, Generic)
 
-parseSDI :: Parse e SensingDeviceInfo
+parseSDI :: Parse e SensorKind
 parseSDI = do
-    id   <- AB.key "id" asText
+    id    <- AB.key "id" asText
     label <- AB.key "label" asText
     qks   <- AB.key "QK" (eachInArray asText) 
-    return $ SensingDeviceInfo id label qks
+    return $ SensorKind (SensorKindId id) label (map QuantityKindId qks)
 
-instance ToJSON SensingDeviceInfo where
+instance ToJSON SensorKind where
   toJSON = genericToJSON (removeFieldLabelPrefix False "sd")
 
-instance ToSchema SensingDeviceInfo
+instance ToSchema SensorKind
 
-data QuantityKindInfo = QuantityKindInfo {
-  qkId :: QuantityKind,
+data QuantityKind = QuantityKind {
+  qkId    :: QuantityKindId,
   qkLabel :: Text,
-  qkUnits :: [Unit]
+  qkUnits :: [UnitId]
   } deriving (Show, Eq, Generic)
 
-parseQKI :: Parse e QuantityKindInfo
+parseQKI :: Parse e QuantityKind
 parseQKI = do
-    id   <- AB.key "id" asText
+    id    <- AB.key "id" asText
     label <- AB.key "label" asText
-    us   <- AB.key "units" (eachInArray asText) 
-    return $ QuantityKindInfo id label us
+    us    <- AB.key "units" (eachInArray asText) 
+    return $ QuantityKind (QuantityKindId id) label (map UnitId us)
 
-instance ToJSON QuantityKindInfo where
+instance ToJSON QuantityKind where
   toJSON = genericToJSON (removeFieldLabelPrefix False "qk")
 
-instance ToSchema QuantityKindInfo
+instance ToSchema QuantityKind
 
-data UnitInfo = UnitInfo {
-  uId :: Unit,
+data Unit = Unit {
+  uId    :: UnitId,
   uLabel :: Text
   } deriving (Show, Eq, Generic)
 
-parseUnit :: Parse e UnitInfo
+parseUnit :: Parse e Unit
 parseUnit = do
-    id   <- AB.key "id" asText
+    id    <- AB.key "id" asText
     label <- AB.key "label" asText
-    return $ UnitInfo id label
+    return $ Unit (UnitId id) label
 
-instance ToJSON UnitInfo where
+instance ToJSON Unit where
   toJSON = genericToJSON (removeFieldLabelPrefix False "u")
 
-instance ToSchema UnitInfo
+instance ToSchema Unit
 
 -- | Error message 
 data Error = Error

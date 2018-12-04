@@ -1,6 +1,6 @@
 resolver: lts-12.20
 extra-deps:
-- servant-flatten-0.2
 packages:
 - '.'
 - './aesonbson'
+- './servant-flatten'

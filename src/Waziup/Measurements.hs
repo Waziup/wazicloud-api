@@ -16,6 +16,7 @@ import qualified Data.List as L
 import           Servant
 import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
 import           Orion as O hiding (info, warn, debug, err)
+import           Mongo as M hiding (info, warn, debug, err)
 import           System.Log.Logger
 import           Paths_Waziup_Servant
 
@@ -102,6 +103,7 @@ putMeasValue mtok sid@(SensorId sidt) mid measVal = do
   info $ "Put meas value: " ++ (show measVal)
   updateMeasField mtok sid mid $ \meas -> do 
     runOrion $ O.postAttribute (EntityId sidt) $ getAttFromMeas (meas {measLastValue = Just measVal})
+    runMongo $ M.postDatapoint $ Datapoint sid mid measVal
   
 updateMeasField :: Maybe Token -> SensorId -> MeasId -> (Measurement -> Waziup ()) -> Waziup NoContent
 updateMeasField mtok (SensorId sid) mid w = do

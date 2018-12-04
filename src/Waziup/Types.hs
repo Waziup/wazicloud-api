@@ -341,7 +341,7 @@ data MeasurementValue = MeasurementValue
 defaultMeasurementValue = MeasurementValue 
   { measValue        = Number 25
   , measTimestamp    = parseISO8601 "2016-06-08T18:20:27.873Z"
-  , measDateReceived = parseISO8601 "2016-06-08T18:20:27.873Z"
+  , measDateReceived = Nothing
   }
 
 instance FromJSON MeasurementValue where
@@ -356,7 +356,32 @@ instance ToSchema MeasurementValue where
 
 instance ToSchema Value where
   declareNamedSchema _ = pure (NamedSchema (Just "Value") (mempty & type_ .~ SwaggerObject))
-  
+
+-- * Data points
+
+-- | one datapoint 
+data Datapoint = Datapoint
+  { dataSensorId :: SensorId               -- ^ ID of the sensor
+  , dataMeasId   :: MeasId                 -- ^ ID of the measurement
+  , dataValue    :: MeasurementValue -- ^ last value received by the platform
+  } deriving (Show, Eq, Generic)
+
+defaultDatapoint = Datapoint 
+  { dataSensorId = SensorId "MyDevice90"   -- ^ ID of the sensor
+  , dataMeasId   = MeasId "TC1"            -- ^ ID of the measurement
+  , dataValue    = defaultMeasurementValue -- ^ last value received by the platform
+  }
+
+instance FromJSON Datapoint where
+  parseJSON = genericParseJSON $ aesonDrop 4 snakeCase
+
+instance ToJSON Datapoint where
+  toJSON = genericToJSON (aesonDrop 4 snakeCase) {omitNothingFields = True}
+
+instance ToSchema Datapoint where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON defaultDatapoint 
+
 -- * Notifications
 
 type NotifId  = Text

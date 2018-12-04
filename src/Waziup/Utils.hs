@@ -35,7 +35,7 @@ runKeycloak kc = do
 runMongo :: Action IO a -> Waziup a
 runMongo dbAction = do
   (WaziupInfo pipe _ _) <- ask
-  liftIO $ access pipe DB.master "projects" dbAction
+  liftIO $ access pipe DB.master "waziup" dbAction
 
 -- * error convertions
 fromOrionError :: O.OrionError -> ServantErr

@@ -15,6 +15,20 @@ import Control.Monad.IO.Class
 import System.Log.Logger
 import Data.String.Conversions
 
+
+-- * Sensor values
+
+postDatapoint :: Datapoint -> Action IO ()
+postDatapoint d = do
+  debug "Post datapoint to Mongo"
+  let ob = case toJSON d of
+       JSON.Object o -> o
+       _ -> error "Wrong object format"
+  res <- insert "waziup_history" (bsonify ob)
+  return ()
+
+-- * Projects
+
 getProjectsMongo :: Action IO [Project]
 getProjectsMongo = do
   docs <- rest =<< find (select [] "projects")
@@ -70,7 +84,7 @@ putProjectDevicesMongo pid ids = do
      _ -> return False 
 
 debug, warn, info, err :: (MonadIO m) => String -> m ()
-debug s = liftIO $ debugM "Mongo" s
-info s  = liftIO $ infoM "Mongo" s
+debug s = liftIO $ debugM   "Mongo" s
+info s  = liftIO $ infoM    "Mongo" s
 warn s  = liftIO $ warningM "Mongo" s
-err s   = liftIO $ errorM "Mongo" s
+err s   = liftIO $ errorM   "Mongo" s

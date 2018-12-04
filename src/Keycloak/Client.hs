@@ -32,7 +32,7 @@ import           Debug.Trace
 checkPermission :: ResourceId -> Scope -> Maybe Token -> Keycloak ()
 checkPermission (ResourceId res) scope tok = do
   debug $ "Checking permissions: " ++ (show res) ++ " " ++ (show scope)
-  client <- asks clientId
+  client <- asks _clientId
   let dat = ["grant_type" := ("urn:ietf:params:oauth:grant-type:uma-ticket" :: Text),
              "audience" := client,
              "permission"  := res <> "#" <> scope]
@@ -50,7 +50,7 @@ isAuthorized res scope tok = do
 getAllPermissions :: [Scope] -> Maybe Token -> Keycloak [Permission]
 getAllPermissions scopes mtok = do
   debug "Get all permissions"
-  client <- asks clientId
+  client <- asks _clientId
   let dat = ["grant_type" := ("urn:ietf:params:oauth:grant-type:uma-ticket" :: Text),
              "audience" := client,
              "response_mode" := ("permissions" :: Text)]
@@ -61,8 +61,8 @@ getAllPermissions scopes mtok = do
 getUserAuthToken :: Text -> Text -> Keycloak Token
 getUserAuthToken username password = do 
   debug "Get user token"
-  client <- asks clientId
-  secret <- asks clientSecret
+  client <- asks _clientId
+  secret <- asks _clientSecret
   let dat = ["client_id" := client, 
              "client_secret" := secret,
              "grant_type" := ("password" :: Text),
@@ -73,8 +73,8 @@ getUserAuthToken username password = do
 getClientAuthToken :: Keycloak Token
 getClientAuthToken = do
   debug "Get client token"
-  client <- asks clientId
-  secret <- asks clientSecret
+  client <- asks _clientId
+  secret <- asks _clientSecret
   let dat = ["client_id" := client, 
              "client_secret" := secret,
              "grant_type" := ("client_credentials" :: Text)]

@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Waziup.Utils where
 
@@ -8,8 +9,10 @@ import           Keycloak as KC
 import           Control.Monad.Except (throwError, runExceptT)
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
+import           Control.Lens
 import           Data.String.Conversions
 import           Data.Aeson
+import           Data.Maybe
 import qualified Data.ByteString.Lazy as BL
 import           Network.HTTP.Types.Status as HTS
 import           Network.HTTP.Client as HC
@@ -59,5 +62,10 @@ fromKCError (KC.HTTPError (HttpExceptionRequest _ (HC.ConnectionFailure a))) = e
 fromKCError (KC.HTTPError s) = err500 {errBody = encode $ show s} 
 fromKCError (KC.ParseError s) = err500 {errBody = encode s} 
 fromKCError KC.EmptyError = err500 {errBody = "EmptyError"}
+
+
+-- Lens setter for Maybe values
+(.~?) :: Setter s t b b -> Maybe b -> s -> t
+(.~?) x y =  x %~ (\v -> fromMaybe v y)
 
 

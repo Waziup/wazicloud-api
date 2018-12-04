@@ -3,24 +3,26 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Orion.Types where
 
-import Network.Wreq as W
-import Control.Lens hiding ((.=))
-import Data.Aeson as JSON
-import Data.Aeson.BetterErrors as AB
-import Data.Aeson.Casing
-import Data.Aeson.Types
-import Data.Text hiding (head, tail, find, map, filter)
-import Data.Text.Encoding
-import GHC.Generics (Generic)
-import Data.Maybe
-import Data.Monoid
-import Control.Monad.Reader
-import Data.Foldable as F
-import Network.HTTP.Client (HttpException)
-import Control.Monad.Except (ExceptT)
+import           Network.Wreq as W
+import           Control.Lens hiding ((.=))
+import           Data.Aeson as JSON
+import           Data.Aeson.BetterErrors as AB
+import           Data.Aeson.Casing
+import           Data.Aeson.Types
+import           Data.Text hiding (head, tail, find, map, filter)
+import           Data.Text.Encoding
+import           GHC.Generics (Generic)
+import           Data.Maybe
+import           Data.Monoid
+import           Control.Monad.Reader
+import           Control.Lens hiding ((.=))
+import           Data.Foldable as F
+import           Network.HTTP.Client (HttpException)
+import           Control.Monad.Except (ExceptT)
 import qualified Data.HashMap.Lazy as HML 
 
 
@@ -35,12 +37,12 @@ data OrionError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
 -- * Orion config
 
 data OrionConfig = OrionConfig {
-  orionUrl      :: Text,
-  fiwareService :: Text} deriving (Show, Eq)
+  _orionUrl      :: Text,
+  _fiwareService :: Text} deriving (Show, Eq)
 
 defaultOrionConfig = OrionConfig {
-  orionUrl      = "http://localhost:1026",
-  fiwareService = "waziup"}
+  _orionUrl      = "http://localhost:1026",
+  _fiwareService = "waziup"}
 
 -- * Entities
 
@@ -121,3 +123,5 @@ type Path = Text
 
 merge_aeson :: [Value] -> Value
 merge_aeson = Object . HML.unions . map (\(Object x) -> x)
+
+makeLenses ''OrionConfig

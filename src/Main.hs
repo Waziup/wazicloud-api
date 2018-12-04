@@ -4,40 +4,45 @@
 
 module Main where
 
-import Network.Wai.Handler.Warp
-import Network.Wai.Middleware.RequestLogger (logStdoutDev)
-import Waziup.Server
-import Waziup.Types 
-import Data.String.Conversions
-import Data.Aeson.BetterErrors as AB
+import           Network.Wai.Handler.Warp
+import           Network.Wai.Middleware.RequestLogger (logStdoutDev)
+import           Waziup.Server
+import           Waziup.Types 
+import           Waziup.Utils 
+import           Data.String.Conversions
+import           Data.Aeson.BetterErrors as AB
 import qualified Data.ByteString as BS
-import Data.Validation
-import Data.Foldable
-import System.Log.Logger
-import System.Log.Formatter
-import System.Log.Handler hiding (setLevel)
-import System.Log.Handler.Simple
-import System.Log.Handler.Log4jXML
-import System.IO
-import Mongo
-import Keycloak hiding (try)
-import Orion hiding (try)
-import Database.MongoDB as DB hiding (value)
-import Options.Applicative as Opts hiding (Success, Failure)
-import Control.Exception
-import Control.Monad.IO.Class
-import System.FilePath ((</>))
-import Paths_Waziup_Servant
-
+import           Data.Validation
+import           Data.Foldable
+import           Data.Maybe
+import           System.Log.Logger
+import           System.Log.Formatter
+import           System.Log.Handler hiding (setLevel)
+import           System.Log.Handler.Simple
+import           System.Log.Handler.Log4jXML
+import           System.IO
+import           Mongo
+import           Keycloak hiding (try)
+import           Orion hiding (try)
+import           Database.MongoDB as DB hiding (value)
+import           Options.Applicative as Opts hiding (Success, Failure)
+import           Control.Exception
+import           Control.Lens
+import           Control.Monad.IO.Class
+import           System.FilePath ((</>))
+import           System.Environment
+import           Paths_Waziup_Servant
 
 main :: IO ()
 main = do
   startLog "Waziup-log.xml"
-  --murl <- lookupEnv "KEYCLOAK_URL"
-  --let url = case murl of
-  --     Just bue -> bue
-  --     Nothing -> convertString $ baseUrl defaultKCConfig
-  conf <- execParser $ opts defaultServerConfig defaultMongoConfig defaultKCConfig defaultOrionConfig 
+  kcurl   <- lookupEnv "KEYCLOAK_URL"
+  orUrl   <- lookupEnv "ORION_URL"
+  mongUrl <- lookupEnv "MONGODB_URL"
+  let kcConfig    = defaultKCConfig    & baseUrl  .~? (convertString <$> kcurl)
+  let orionConfig = defaultOrionConfig & orionUrl .~? (convertString <$> orUrl)
+  let mongoConfig = defaultMongoConfig & mongoUrl .~? (convertString <$> mongUrl)
+  conf <- execParser $ opts defaultServerConfig defaultMongoConfig kcConfig orionConfig 
   (epipe :: Either SomeException Pipe) <- try $ DB.connect (host "127.0.0.1")
   let pipe = case epipe of
        Right pipe -> pipe
@@ -89,7 +94,7 @@ orionConfigParser (OrionConfig defUrl defServ) = do
 
 mongoConfigParser :: MongoConfig -> Parser MongoConfig
 mongoConfigParser def = do
-  url     <- strOption (long "mongoUrl" <> metavar "<url>" <> help "url of Mongo DB" <> (value $ mongoUrl def))
+  url     <- strOption (long "mongoUrl" <> metavar "<url>" <> help "url of Mongo DB" <> (value $ _mongoUrl def))
   return $ MongoConfig url
 
 startLog :: FilePath -> IO ()

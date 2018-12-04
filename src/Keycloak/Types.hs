@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Keycloak.Types where
 
@@ -17,6 +18,7 @@ import qualified Data.ByteString as BS
 import           Data.Word8 (isSpace, _colon, toLower)
 import           Control.Monad.Except (ExceptT)
 import           Control.Monad.Reader as R
+import           Control.Lens hiding ((.=))
 import           GHC.Generics (Generic)
 import           Web.HttpApiData (FromHttpApiData(..), ToHttpApiData(..))
 import           Network.HTTP.Client as HC hiding (responseBody)
@@ -28,25 +30,25 @@ data KCError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
              | EmptyError               -- ^ Empty error to serve as a zero element for Monoid.
 
 data KCConfig = KCConfig {
-  baseUrl       :: Text,
-  realm         :: Text,
-  clientId      :: Text,
-  clientSecret  :: Text,
-  adminLogin    :: Username,
-  adminPassword :: Password,
-  guestLogin    :: Username,
-  guestPassword :: Password} deriving (Eq, Show)
+  _baseUrl       :: Text,
+  _realm         :: Text,
+  _clientId      :: Text,
+  _clientSecret  :: Text,
+  _adminLogin    :: Username,
+  _adminPassword :: Password,
+  _guestLogin    :: Username,
+  _guestPassword :: Password} deriving (Eq, Show)
 
 defaultKCConfig :: KCConfig
 defaultKCConfig = KCConfig {
-  baseUrl       = "http://localhost:8080/auth",
-  realm         = "waziup",
-  clientId      = "api-server",
-  clientSecret  = "4e9dcb80-efcd-484c-b3d7-1e95a0096ac0",
-  adminLogin    = "cdupont",
-  adminPassword = "password",
-  guestLogin    = "guest",
-  guestPassword = "guest"}
+  _baseUrl       = "http://localhost:8080/auth",
+  _realm         = "waziup",
+  _clientId      = "api-server",
+  _clientSecret  = "4e9dcb80-efcd-484c-b3d7-1e95a0096ac0",
+  _adminLogin    = "cdupont",
+  _adminPassword = "password",
+  _guestLogin    = "guest",
+  _guestPassword = "guest"}
 
 type Path = Text
 
@@ -184,3 +186,5 @@ parseTokenDec = TokenDec <$>
     AB.key "given_name" asText <*>
     AB.key "family_name" asText <*>
     AB.key "email" asText
+
+makeLenses ''KCConfig

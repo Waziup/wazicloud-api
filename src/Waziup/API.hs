@@ -64,6 +64,7 @@ type MeasurementAPI = Flat (
     :<|> "sensor_kind"   :> ReqBody '[PlainText] SensorKindId   :> PutNoContent    '[JSON] NoContent
     :<|> "quantity_kind" :> ReqBody '[PlainText] QuantityKindId :> PutNoContent    '[JSON] NoContent
     :<|> "unit"          :> ReqBody '[PlainText] UnitId         :> PutNoContent    '[JSON] NoContent
+    :<|> "value"         :> ReqBody '[JSON] MeasurementValue    :> PutNoContent    '[JSON] NoContent
     ))
 
 -- * Projects

@@ -230,7 +230,8 @@ getAttFromMeas (Measurement (MeasId measId) name sd qk u lv) =
                      (catMaybes [getTextMetadata (MetadataId "name")           <$> name,
                                  getTextMetadata (MetadataId "quantity_kind")  <$> unQuantityKindId <$> qk,
                                  getTextMetadata (MetadataId "sensing_device") <$> unSensorKindId <$> sd,
-                                 getTextMetadata (MetadataId "unit")           <$> unUnitId <$> u]))
+                                 getTextMetadata (MetadataId "unit")           <$> unUnitId <$> u,
+                                 getTimeMetadata (MetadataId "timestamp")      <$> (join $ measTimestamp <$> lv)]))
 
 
 withKCId :: Text -> (ResourceId -> Waziup a) -> Waziup a

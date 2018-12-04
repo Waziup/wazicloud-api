@@ -96,6 +96,12 @@ putMeasUnit mtok sid@(SensorId sidt) mid u = do
   info $ "Put meas unit: " ++ (show u)
   updateMeasField mtok sid mid $ \meas -> do 
     runOrion $ O.postAttribute (EntityId sidt) $ getAttFromMeas (meas {measUnit = Just u})
+
+putMeasValue :: Maybe Token -> SensorId -> MeasId -> MeasurementValue -> Waziup NoContent
+putMeasValue mtok sid@(SensorId sidt) mid measVal = do
+  info $ "Put meas value: " ++ (show measVal)
+  updateMeasField mtok sid mid $ \meas -> do 
+    runOrion $ O.postAttribute (EntityId sidt) $ getAttFromMeas (meas {measLastValue = Just measVal})
   
 updateMeasField :: Maybe Token -> SensorId -> MeasId -> (Measurement -> Waziup ()) -> Waziup NoContent
 updateMeasField mtok (SensorId sid) mid w = do

@@ -20,6 +20,7 @@ import           Data.Time.ISO8601
 import           Data.Foldable as F
 import           Data.Scientific
 import           Data.Monoid
+import           Data.Time
 import qualified Data.HashMap.Strict as H
 import qualified Data.Vector as V
 import qualified Data.ByteString.Char8 as C8
@@ -60,7 +61,7 @@ deleteEntity (EntityId eid) = orionDelete ("/v2/entities/" <> eid)
 
 postAttribute :: EntityId -> Attribute -> Orion ()
 postAttribute (EntityId eid) att = do
-  debug $ "Post attributen: " <> (convertString $ JSON.encode att)
+  debug $ "Post attribute: " <> (convertString $ JSON.encode att)
   orionPost ("/v2/entities/" <> eid <> "/attrs") (toJSON att)
 
 postTextAttributeOrion :: EntityId -> AttributeId -> Text -> Orion ()
@@ -167,6 +168,9 @@ getSimpleAttr attId val = Attribute attId "String" (Just $ toJSON val) []
 
 getTextMetadata :: MetadataId -> Text -> Metadata
 getTextMetadata metId val = Metadata metId (Just "String") (Just $ toJSON val)
+
+getTimeMetadata :: MetadataId -> UTCTime -> Metadata
+getTimeMetadata metId val = Metadata metId (Just "DateTime") (Just $ toJSON $ formatISO8601 val)
 
 debug, warn, info, err :: (MonadIO m) => String -> m ()
 debug s = liftIO $ debugM   "Orion" s

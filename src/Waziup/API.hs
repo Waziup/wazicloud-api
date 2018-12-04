@@ -16,7 +16,11 @@ import Servant.Swagger.UI
 
 type API = ("api" :> "v1" :> WaziupAPI) :<|> WaziupDocs 
 
-type WaziupAPI = (AuthAPI :<|> SensorsAPI :<|> ProjectsAPI :<|> OntologiesAPI)
+type WaziupAPI = AuthAPI
+            :<|> SensorsAPI
+            :<|> MeasurementsAPI
+            :<|> ProjectsAPI
+            :<|> OntologiesAPI
 
 type WaziupDocs = SwaggerSchemaUI "swagger-ui" "swagger.json"
 
@@ -44,10 +48,10 @@ type SensorAPI = Flat (
     :<|> "location"   :> ReqBody '[JSON]      Location   :> PutNoContent    '[JSON] NoContent
     :<|> "gateway_id" :> ReqBody '[PlainText] GatewayId  :> PutNoContent    '[JSON] NoContent
     :<|> "visibility" :> ReqBody '[PlainText] Visibility :> PutNoContent    '[JSON] NoContent
-    :<|> MeasurementsAPI
     ))
 
 type MeasurementsAPI = Flat (
+  "sensors" :> Header "Authorization" Token :> Capture "sensor_id" SensorId :> 
   "measurements" :> (                   Get           '[JSON] [Measurement]
     :<|> ReqBody '[JSON] Measurement :> PostNoContent '[JSON] NoContent
     :<|> MeasurementAPI

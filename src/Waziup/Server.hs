@@ -28,7 +28,7 @@ server :: ServerT API Waziup
 server = serverWaziup :<|> serverDocs
 
 serverWaziup :: ServerT WaziupAPI Waziup
-serverWaziup = authServer :<|> sensorsServer :<|> projectsServer :<|> ontologiesServer
+serverWaziup = authServer :<|> sensorsServer :<|> measServer :<|> projectsServer :<|> ontologiesServer
 
 serverDocs :: ServerT WaziupDocs Waziup
 serverDocs = hoistDocs $ swaggerSchemaUIServer swaggerDoc
@@ -37,8 +37,10 @@ authServer :: ServerT AuthAPI Waziup
 authServer = getPerms :<|> postAuth
 
 sensorsServer :: ServerT SensorsAPI Waziup
-sensorsServer = getSensors :<|> postSensor :<|> getSensor :<|> deleteSensor :<|> putSensorName :<|> putSensorLocation :<|> putSensorGatewayId :<|> putSensorVisibility :<|>
-                getMeasurements :<|> postMeasurement :<|> getMeasurement :<|> deleteMeasurement :<|> putMeasName :<|> putMeasSensorKind :<|> putMeasQuantityKind :<|> putMeasUnit
+sensorsServer = getSensors :<|> postSensor :<|> getSensor :<|> deleteSensor :<|> putSensorName :<|> putSensorLocation :<|> putSensorGatewayId :<|> putSensorVisibility
+
+measServer :: ServerT MeasurementsAPI Waziup
+measServer = getMeasurements :<|> postMeasurement :<|> getMeasurement :<|> deleteMeasurement :<|> putMeasName :<|> putMeasSensorKind :<|> putMeasQuantityKind :<|> putMeasUnit
 
 projectsServer :: ServerT ProjectsAPI Waziup
 projectsServer = getProjects :<|> postProject :<|> getProject :<|> deleteProject :<|> putProjectDevices :<|> putProjectGateways
@@ -58,15 +60,17 @@ swaggerDoc = toSwagger (Proxy :: Proxy WaziupAPI)
   & S.info . S.description ?~ "This is the API of Waziup"
   & S.basePath ?~ "/api/v1"
   & S.applyTagsFor sensorsOps ["Sensors"]
+  & S.applyTagsFor measOps    ["Measurements"]
   & S.applyTagsFor authOps    ["Auth"]
   & S.applyTagsFor projectOps ["Projects"]
   & S.applyTagsFor ontoOps    ["Ontologies"]
   where
-    sensorsOps, authOps, projectOps, ontoOps :: Traversal' S.Swagger S.Operation
-    sensorsOps = subOperations (Proxy :: Proxy SensorsAPI)    (Proxy :: Proxy WaziupAPI)
-    authOps    = subOperations (Proxy :: Proxy AuthAPI)       (Proxy :: Proxy WaziupAPI)
-    projectOps = subOperations (Proxy :: Proxy ProjectsAPI)    (Proxy :: Proxy WaziupAPI)
-    ontoOps    = subOperations (Proxy :: Proxy OntologiesAPI) (Proxy :: Proxy WaziupAPI)
+    sensorsOps, measOps, authOps, projectOps, ontoOps :: Traversal' S.Swagger S.Operation
+    sensorsOps = subOperations (Proxy :: Proxy SensorsAPI)      (Proxy :: Proxy WaziupAPI)
+    measOps    = subOperations (Proxy :: Proxy MeasurementsAPI) (Proxy :: Proxy WaziupAPI)
+    authOps    = subOperations (Proxy :: Proxy AuthAPI)         (Proxy :: Proxy WaziupAPI)
+    projectOps = subOperations (Proxy :: Proxy ProjectsAPI)     (Proxy :: Proxy WaziupAPI)
+    ontoOps    = subOperations (Proxy :: Proxy OntologiesAPI)   (Proxy :: Proxy WaziupAPI)
 
 -- * helpers
 

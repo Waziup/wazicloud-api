@@ -36,21 +36,27 @@ import           Paths_Waziup_Servant
 main :: IO ()
 main = do
   startLog "Waziup-log.xml"
-  kcurl   <- lookupEnv "KEYCLOAK_URL"
-  orUrl   <- lookupEnv "ORION_URL"
-  mongUrl <- lookupEnv "MONGODB_URL"
-  let kcConfig    = defaultKCConfig    & baseUrl  .~? (convertString <$> kcurl)
-  let orionConfig = defaultOrionConfig & orionUrl .~? (convertString <$> orUrl)
-  let mongoConfig = defaultMongoConfig & mongoUrl .~? (convertString <$> mongUrl)
+  envUrl     <- lookupEnv "HTTP_URL"
+  envPort    <- lookupEnv "HTTP_PORT"
+  envKCUrl   <- lookupEnv "KEYCLOAK_URL"
+  envOrUrl   <- lookupEnv "ORION_URL"
+  envMongUrl <- lookupEnv "MONGODB_URL"
+  let kcConfig     = defaultKCConfig     & baseUrl    .~? (convertString <$> envKCUrl)
+  let orionConfig  = defaultOrionConfig  & orionUrl   .~? (convertString <$> envOrUrl)
+  let mongoConfig  = defaultMongoConfig  & mongoUrl   .~? (convertString <$> envMongUrl)
+  let serverConfig = defaultServerConfig & serverHost .~? (convertString <$> envUrl)
+                                         & serverPort .~? (read          <$> envPort)
   conf <- execParser $ opts defaultServerConfig defaultMongoConfig kcConfig orionConfig 
-  (epipe :: Either SomeException Pipe) <- try $ DB.connect (host "127.0.0.1")
+  epipe <- try $ DB.connect (host $ convertString $ conf ^. mongoConf.mongoUrl)
   let pipe = case epipe of
        Right pipe -> pipe
-       Left e -> error "Cannot connect to MongoDB"
+       Left (e :: SomeException) -> error "Cannot connect to MongoDB"
   ontologies <- loadOntologies
-  Main.info "API is running on http://localhost:8081/api/v1"
-  Main.info "Documentation is on http://localhost:8081/swagger-ui"
-  run 8081 $ logStdoutDev $ waziupServer $ WaziupInfo pipe conf ontologies
+  let host = conf ^. serverConf.serverHost
+  let port = conf ^. serverConf.serverPort
+  Main.info $ convertString $ "API is running on " <> host <> "/api/v1"
+  Main.info $ convertString $ "Documentation is on " <> host <> "/swagger-ui"
+  run port $ logStdoutDev $ waziupServer $ WaziupInfo pipe conf ontologies
 
 opts :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> ParserInfo WaziupConfig
 opts serv m kc o = Opts.info ((waziupConfigParser serv m kc o) <**> helper) parserInfo

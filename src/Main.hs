@@ -46,7 +46,7 @@ main = do
   let mongoConfig  = defaultMongoConfig  & mongoUrl   .~? (convertString <$> envMongUrl)
   let serverConfig = defaultServerConfig & serverHost .~? (convertString <$> envUrl)
                                          & serverPort .~? (read          <$> envPort)
-  conf <- execParser $ opts defaultServerConfig defaultMongoConfig kcConfig orionConfig 
+  conf <- execParser $ opts serverConfig mongoConfig kcConfig orionConfig 
   epipe <- try $ DB.connect (host $ convertString $ conf ^. mongoConf.mongoUrl)
   let pipe = case epipe of
        Right pipe -> pipe

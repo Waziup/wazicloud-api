@@ -19,6 +19,7 @@ type API = ("api" :> "v1" :> WaziupAPI) :<|> WaziupDocs
 type WaziupAPI = AuthAPI
             :<|> SensorsAPI
             :<|> MeasurementsAPI
+            :<|> SensorDataAPI
             :<|> ProjectsAPI
             :<|> OntologiesAPI
 
@@ -64,8 +65,14 @@ type MeasurementAPI = Flat (
     :<|> "sensor_kind"   :> ReqBody '[PlainText] SensorKindId   :> PutNoContent    '[JSON] NoContent
     :<|> "quantity_kind" :> ReqBody '[PlainText] QuantityKindId :> PutNoContent    '[JSON] NoContent
     :<|> "unit"          :> ReqBody '[PlainText] UnitId         :> PutNoContent    '[JSON] NoContent
-    :<|> "value"         :> ReqBody '[JSON] MeasurementValue    :> PutNoContent    '[JSON] NoContent
+    :<|> "value"         :> ReqBody '[JSON] MeasurementValue    :> PostNoContent   '[JSON] NoContent
     ))
+
+type SensorDataAPI = Flat (
+  Header "Authorization" Token :> "sensors"      :> Capture "sensor_id" SensorId :> 
+                                  "measurements" :> Capture "meas_id" MeasId :> 
+        Get '[JSON] [Datapoint])
+    
 
 -- * Projects
 

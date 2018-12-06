@@ -9,6 +9,7 @@ import           Waziup.Sensors
 import           Waziup.Ontologies
 import           Waziup.Projects
 import           Waziup.Measurements
+import           Waziup.SensorData
 import qualified Keycloak.Types as KC
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
@@ -32,6 +33,7 @@ serverWaziup :: ServerT WaziupAPI Waziup
 serverWaziup = authServer
           :<|> sensorsServer
           :<|> measServer
+          :<|> sensorDataServer
           :<|> projectsServer
           :<|> ontologiesServer
 
@@ -63,6 +65,9 @@ measServer = getMeasurements
         :<|> putMeasUnit
         :<|> putMeasValue
 
+sensorDataServer :: ServerT SensorDataAPI Waziup
+sensorDataServer = getDatapoints
+
 projectsServer :: ServerT ProjectsAPI Waziup
 projectsServer = getProjects
             :<|> postProject
@@ -85,17 +90,21 @@ swaggerDoc :: S.Swagger
 swaggerDoc = toSwagger (Proxy :: Proxy WaziupAPI)
   & S.info . S.title       .~ "Waziup API"
   & S.info . S.version     .~ "v2.0.0"
-  & S.info . S.description ?~ "This is the API of Waziup"
+  & S.info . S.description ?~ "This API allows you to access all Waziup services.\n\
+                              \In order to access protected services, first get a token with POST /auth/token.\n\
+                              \Then insert this token in the authorization key, specifying “Bearer” in front. For example \"Bearer eyJhbGc…\"."
   & S.basePath ?~ "/api/v1"
   & S.applyTagsFor sensorsOps ["Sensors"]
   & S.applyTagsFor measOps    ["Measurements"]
+  & S.applyTagsFor dataOps    ["Sensor Data"]
   & S.applyTagsFor authOps    ["Auth"]
   & S.applyTagsFor projectOps ["Projects"]
   & S.applyTagsFor ontoOps    ["Ontologies"]
   where
-    sensorsOps, measOps, authOps, projectOps, ontoOps :: Traversal' S.Swagger S.Operation
+    sensorsOps, measOps, dataOps, authOps, projectOps, ontoOps :: Traversal' S.Swagger S.Operation
     sensorsOps = subOperations (Proxy :: Proxy SensorsAPI)      (Proxy :: Proxy WaziupAPI)
     measOps    = subOperations (Proxy :: Proxy MeasurementsAPI) (Proxy :: Proxy WaziupAPI)
+    dataOps    = subOperations (Proxy :: Proxy SensorDataAPI)   (Proxy :: Proxy WaziupAPI)
     authOps    = subOperations (Proxy :: Proxy AuthAPI)         (Proxy :: Proxy WaziupAPI)
     projectOps = subOperations (Proxy :: Proxy ProjectsAPI)     (Proxy :: Proxy WaziupAPI)
     ontoOps    = subOperations (Proxy :: Proxy OntologiesAPI)   (Proxy :: Proxy WaziupAPI)

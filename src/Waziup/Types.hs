@@ -3,6 +3,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 
 module Waziup.Types where
 
@@ -46,29 +48,29 @@ import qualified Mongo.Types as M
 type Waziup = ReaderT WaziupInfo Servant.Handler
 
 data WaziupInfo = WaziupInfo {
-  dbPipe :: DB.Pipe,
-  waziupConfig :: WaziupConfig,
-  ontologies   :: Ontologies
+  _dbPipe :: DB.Pipe,
+  _waziupConfig :: WaziupConfig,
+  _ontologies   :: Ontologies
   }
 
 -- * Config
 data WaziupConfig = WaziupConfig {
-  serverConf   :: ServerConfig,
-  mongoConf    :: M.MongoConfig,
-  keycloakConf :: KCConfig,
-  orionConf    :: O.OrionConfig
+  _serverConf   :: ServerConfig,
+  _mongoConf    :: M.MongoConfig,
+  _keycloakConf :: KCConfig,
+  _orionConf    :: O.OrionConfig
   } deriving (Eq, Show)
 
 -- | Server or client configuration, specifying the host and port to query or serve on.
 data ServerConfig = ServerConfig
-  { configHost :: String   -- ^ Hostname to serve on, e.g. "127.0.0.1"
-  , configPort :: Int      -- ^ Port to serve on, e.g. 8080
+  { _serverHost :: String   -- ^ Hostname to serve on, e.g. "127.0.0.1"
+  , _serverPort :: Int      -- ^ Port to serve on, e.g. 8080
   } deriving (Eq, Show)
 
 defaultServerConfig :: ServerConfig
 defaultServerConfig = ServerConfig {
-  configHost = "http://localhost:3000",
-  configPort = 3000
+  _serverHost = "http://localhost:3000",
+  _serverPort = 3000
   }
 
 data Ontologies = Ontologies {
@@ -506,12 +508,20 @@ data Project = Project
     pGateways :: [GatewayId] 
   } deriving (Show, Eq, Generic)
 
+defaultProject = Project
+  { pId       = Nothing,
+    pName     = "MyProject",
+    pDevices  = [],
+    pGateways = [] 
+  }
+
 instance ToJSON Project where
    toJSON (Project pId pName pDev pGate) = 
-     object $ ["id"       .= pId,
-               "name"     .= pName,
-               "devices"  .= pDev,
-               "gateways" .= pGate]
+     object $ (maybe [] (\id -> [("id", toJSON id)]) pId) ++
+               ["name"     .= pName,
+                "devices"  .= pDev,
+                "gateways" .= pGate] 
+
 instance FromJSON Project where
   parseJSON (Object v) = Project <$> v .:? "_id" 
                                  <*> v .:  "name"
@@ -519,7 +529,9 @@ instance FromJSON Project where
                                  <*> v .:  "gateways"
   parseJSON _          = mzero 
 
-instance ToSchema Project
+instance ToSchema Project where
+  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON defaultProject 
 
 
 -- * Ontologies
@@ -665,3 +677,7 @@ removeFieldLabelPrefix forParsing prefix =
       if forParsing
         then flip T.replace
         else T.replace
+
+makeLenses ''ServerConfig
+makeLenses ''WaziupConfig
+makeLenses ''WaziupInfo

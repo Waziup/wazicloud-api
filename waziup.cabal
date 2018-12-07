@@ -16,7 +16,7 @@ Executable waziup-servant
   other-modules:       Waziup.API
                      , Waziup.Ontologies
                      , Waziup.Projects
-                     , Waziup.Sensors
+                     , Waziup.Devices
                      , Waziup.Server
                      , Waziup.Types
                      , Waziup.Utils

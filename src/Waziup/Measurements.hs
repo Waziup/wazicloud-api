@@ -5,7 +5,7 @@ module Waziup.Measurements where
 
 import           Waziup.Types
 import           Waziup.Utils
-import           Waziup.Sensors hiding (info, warn, debug, err)
+import           Waziup.Devices hiding (info, warn, debug, err)
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
 import           Control.Monad.Catch as C
@@ -21,105 +21,105 @@ import           System.Log.Logger
 import           Paths_Waziup_Servant
 
 
-getMeasurements :: Maybe Token -> SensorId -> Waziup [Measurement]
-getMeasurements tok (SensorId sid) = do
+getMeasurements :: Maybe Token -> DeviceId -> Waziup [Measurement]
+getMeasurements tok (DeviceId did) = do
   info "Get measurements"
-  sensor <- getSensorFromEntity <$> runOrion (O.getEntity $ EntityId sid)
-  case (senKeycloakId sensor) of
+  device <- getDeviceFromEntity <$> runOrion (O.getEntity $ EntityId did)
+  case (devKeycloakId device) of
     Just keyId -> do
       debug "Check permissions"
-      runKeycloak $ checkPermission keyId (pack $ show SensorsView) tok
+      runKeycloak $ checkPermission keyId (pack $ show DevicesView) tok
       debug "Permission granted, returning measurements"
-      return $ senMeasurements sensor
+      return $ devMeasurements device
     Nothing -> do
-      err "Error, sensor does not have a Keycloak ID"
+      err "Error, device does not have a Keycloak ID"
       throwError err500 {errBody = "Not authorized"}
 
-postMeasurement :: Maybe Token -> SensorId -> Measurement -> Waziup NoContent
-postMeasurement tok (SensorId sid) meas = do
+postMeasurement :: Maybe Token -> DeviceId -> Measurement -> Waziup NoContent
+postMeasurement tok did meas = do
   info $ "Post measurement: " ++ (show meas)
-  withKCId sid $ \keyId -> do
+  withKCId did $ \keyId -> do
     debug "Check permissions"
-    runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) tok
+    runKeycloak $ checkPermission keyId (pack $ show DevicesUpdate) tok
     debug "Permission granted, creating measurement"
     let att = getAttFromMeas meas
-    runOrion $ O.postAttribute (EntityId sid) att 
+    runOrion $ O.postAttribute (toEntityId did) att 
   return NoContent
  
-getMeasurement :: Maybe Token -> SensorId -> MeasId -> Waziup Measurement
-getMeasurement tok (SensorId sid) mid = do
+getMeasurement :: Maybe Token -> DeviceId -> MeasId -> Waziup Measurement
+getMeasurement tok (DeviceId did) mid = do
   info "Get measurement"
-  sensor <- getSensorFromEntity <$> runOrion (O.getEntity $ EntityId sid)
-  case (senKeycloakId sensor) of
+  device <- getDeviceFromEntity <$> runOrion (O.getEntity $ EntityId did)
+  case (devKeycloakId device) of
     Just keyId -> do
       debug "Check permissions"
-      runKeycloak $ checkPermission keyId (pack $ show SensorsView) tok
+      runKeycloak $ checkPermission keyId (pack $ show DevicesView) tok
       debug "Permission granted, returning measurement"
-      case L.find (\m -> measId m == mid) (senMeasurements sensor) of
+      case L.find (\m -> measId m == mid) (devMeasurements device) of
         Just meas -> return meas
         Nothing -> do 
           warn "Measurement not found"
           throwError err404 {errBody = "Measurement not found"}
     Nothing -> do
-      err "Error, sensor does not have a Keycloak ID"
+      err "Error, device does not have a Keycloak ID"
       throwError err500 {errBody = "Not authorized"}
 
-deleteMeasurement :: Maybe Token -> SensorId -> MeasId -> Waziup NoContent
-deleteMeasurement tok (SensorId sid) (MeasId mid) = do
+deleteMeasurement :: Maybe Token -> DeviceId -> MeasId -> Waziup NoContent
+deleteMeasurement tok did (MeasId mid) = do
   info "Delete measurement"
-  withKCId sid $ \keyId -> do
+  withKCId did $ \keyId -> do
     debug "Check permissions"
-    runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) tok
+    runKeycloak $ checkPermission keyId (pack $ show DevicesUpdate) tok
     debug "Permission granted, deleting measurement"
-    runOrion $ O.deleteAttribute (EntityId sid) (AttributeId mid)
+    runOrion $ O.deleteAttribute (toEntityId did) (AttributeId mid)
   return NoContent
 
-putMeasName :: Maybe Token -> SensorId -> MeasId -> MeasName -> Waziup NoContent
-putMeasName mtok sid@(SensorId sidt) mid name = do
+putMeasName :: Maybe Token -> DeviceId -> MeasId -> MeasName -> Waziup NoContent
+putMeasName mtok did mid name = do
   info $ "Put meas name: " ++ (show name)
-  updateMeasField mtok sid mid $ \meas -> do 
-    runOrion $ O.postAttribute (EntityId sidt) $ getAttFromMeas (meas {measName = Just name})
+  updateMeasField mtok did mid $ \meas -> do 
+    runOrion $ O.postAttribute (toEntityId did) $ getAttFromMeas (meas {measName = Just name})
 
-putMeasSensorKind :: Maybe Token -> SensorId -> MeasId -> SensorKindId -> Waziup NoContent
-putMeasSensorKind mtok sid@(SensorId sidt) mid sk = do
+putMeasSensorKind :: Maybe Token -> DeviceId -> MeasId -> SensorKindId -> Waziup NoContent
+putMeasSensorKind mtok did@(DeviceId didt) mid sk = do
   info $ "Put meas sensor kind: " ++ (show sk)
-  updateMeasField mtok sid mid $ \meas -> do 
-    runOrion $ O.postAttribute (EntityId sidt) $ getAttFromMeas (meas {measSensorKind = Just sk})
+  updateMeasField mtok did mid $ \meas -> do 
+    runOrion $ O.postAttribute (EntityId didt) $ getAttFromMeas (meas {measSensorKind = Just sk})
 
-putMeasQuantityKind :: Maybe Token -> SensorId -> MeasId -> QuantityKindId -> Waziup NoContent
-putMeasQuantityKind mtok sid@(SensorId sidt) mid qk = do
+putMeasQuantityKind :: Maybe Token -> DeviceId -> MeasId -> QuantityKindId -> Waziup NoContent
+putMeasQuantityKind mtok did mid qk = do
   info $ "Put meas quantity kind: " ++ (show qk)
-  updateMeasField mtok sid mid $ \meas -> do 
-    runOrion $ O.postAttribute (EntityId sidt) $ getAttFromMeas (meas {measQuantityKind = Just qk})
+  updateMeasField mtok did mid $ \meas -> do 
+    runOrion $ O.postAttribute (toEntityId did) $ getAttFromMeas (meas {measQuantityKind = Just qk})
 
-putMeasUnit :: Maybe Token -> SensorId -> MeasId -> UnitId -> Waziup NoContent
-putMeasUnit mtok sid@(SensorId sidt) mid u = do
+putMeasUnit :: Maybe Token -> DeviceId -> MeasId -> UnitId -> Waziup NoContent
+putMeasUnit mtok did mid u = do
   info $ "Put meas unit: " ++ (show u)
-  updateMeasField mtok sid mid $ \meas -> do 
-    runOrion $ O.postAttribute (EntityId sidt) $ getAttFromMeas (meas {measUnit = Just u})
+  updateMeasField mtok did mid $ \meas -> do 
+    runOrion $ O.postAttribute (toEntityId did) $ getAttFromMeas (meas {measUnit = Just u})
 
-putMeasValue :: Maybe Token -> SensorId -> MeasId -> MeasurementValue -> Waziup NoContent
-putMeasValue mtok sid@(SensorId sidt) mid measVal = do
+putMeasValue :: Maybe Token -> DeviceId -> MeasId -> MeasurementValue -> Waziup NoContent
+putMeasValue mtok did mid measVal = do
   info $ "Put meas value: " ++ (show measVal)
-  updateMeasField mtok sid mid $ \meas -> do 
-    runOrion $ O.postAttribute (EntityId sidt) $ getAttFromMeas (meas {measLastValue = Just measVal})
-    runMongo $ M.postDatapoint $ Datapoint sid mid measVal
+  updateMeasField mtok did mid $ \meas -> do 
+    runOrion $ O.postAttribute (toEntityId did) $ getAttFromMeas (meas {measLastValue = Just measVal})
+    runMongo $ M.postDatapoint $ Datapoint did mid measVal
   
-updateMeasField :: Maybe Token -> SensorId -> MeasId -> (Measurement -> Waziup ()) -> Waziup NoContent
-updateMeasField mtok (SensorId sid) mid w = do
-  sensor <- getSensorFromEntity <$> runOrion (O.getEntity $ EntityId sid)
-  case (senKeycloakId sensor) of
+updateMeasField :: Maybe Token -> DeviceId -> MeasId -> (Measurement -> Waziup ()) -> Waziup NoContent
+updateMeasField mtok did mid w = do
+  device <- getDeviceFromEntity <$> runOrion (O.getEntity $ toEntityId did)
+  case (devKeycloakId device) of
     Just keyId -> do
       debug "Check permissions"
-      runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
+      runKeycloak $ checkPermission keyId (pack $ show DevicesUpdate) mtok
       debug "Permission granted, updating measurement"
-      case L.find (\m -> (measId m) == mid) (senMeasurements sensor) of
+      case L.find (\m -> (measId m) == mid) (devMeasurements device) of
         Just meas -> w meas
         Nothing -> do 
           warn "Measurement not found"
           throwError err404 {errBody = "Measurement not found"}
     Nothing -> do
-      err "Error, sensor does not have a Keycloak ID"
+      err "Error, device does not have a Keycloak ID"
       throwError err500 {errBody = "Not authorized"}
   return NoContent
 

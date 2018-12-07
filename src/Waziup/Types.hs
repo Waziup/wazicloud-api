@@ -108,12 +108,12 @@ instance ToJSON Perm where
   toJSON = genericToJSON (removeFieldLabelPrefix False "perm")
 instance ToSchema Perm
 
-data Scope = SensorsCreate
-           | SensorsUpdate
-           | SensorsView
-           | SensorsDelete
-           | SensorsDataCreate
-           | SensorsDataView
+data Scope = DevicesCreate
+           | DevicesUpdate
+           | DevicesView
+           | DevicesDelete
+           | DevicesDataCreate
+           | DevicesDataView
    deriving (Generic, Eq)
 
 instance ToJSON Scope where
@@ -122,44 +122,44 @@ instance FromJSON Scope
 instance ToSchema Scope
 
 readScope :: Text -> Maybe Scope
-readScope "sensors:create"      = Just SensorsCreate    
-readScope "sensors:update"      = Just SensorsUpdate    
-readScope "sensors:view"        = Just SensorsView      
-readScope "sensors:delete"      = Just SensorsDelete    
-readScope "sensors-data:create" = Just SensorsDataCreate
-readScope "sensors-data:view"   = Just SensorsDataView  
+readScope "devices:create"      = Just DevicesCreate    
+readScope "devices:update"      = Just DevicesUpdate    
+readScope "devices:view"        = Just DevicesView      
+readScope "devices:delete"      = Just DevicesDelete    
+readScope "devices-data:create" = Just DevicesDataCreate
+readScope "devices-data:view"   = Just DevicesDataView  
 readScope _                     = Nothing
 
 instance Show Scope where
-  show SensorsCreate     = "sensors:create"       
-  show SensorsUpdate     = "sensors:update"       
-  show SensorsView       = "sensors:view"         
-  show SensorsDelete     = "sensors:delete"       
-  show SensorsDataCreate = "sensors-data:create"  
-  show SensorsDataView   = "sensors-data:view"    
+  show DevicesCreate     = "devices:create"       
+  show DevicesUpdate     = "devices:update"       
+  show DevicesView       = "devices:view"         
+  show DevicesDelete     = "devices:delete"       
+  show DevicesDataCreate = "devices-data:create"  
+  show DevicesDataView   = "devices-data:view"    
 
--- * Sensors
+-- * Devices
 
--- Id of a sensor
-newtype SensorId = SensorId {unSensorId :: Text} deriving (Show, Eq, Generic)
+-- Id of a device
+newtype DeviceId = DeviceId {unDeviceId :: Text} deriving (Show, Eq, Generic)
 
-instance ToSchema SensorId where
+instance ToSchema DeviceId where
   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
-        & mapped.schema.example ?~ toJSON ("MySensor" :: Text)
+        & mapped.schema.example ?~ toJSON ("MyDevice" :: Text)
 
-instance ToParamSchema SensorId
+instance ToParamSchema DeviceId
 
-instance ToJSON SensorId where
+instance ToJSON DeviceId where
   toJSON = genericToJSON (defaultOptions {AT.unwrapUnaryRecords = True})
 
-instance FromJSON SensorId where
+instance FromJSON DeviceId where
   parseJSON = genericParseJSON (defaultOptions {AT.unwrapUnaryRecords = True})
 
-instance FromHttpApiData SensorId where
-  parseUrlPiece a = Right $ SensorId a 
+instance FromHttpApiData DeviceId where
+  parseUrlPiece a = Right $ DeviceId a 
 
-instance ToHttpApiData SensorId where
-  toUrlPiece (SensorId a) = a
+instance ToHttpApiData DeviceId where
+  toUrlPiece (DeviceId a) = a
 
 -- Id of a gateway
 newtype GatewayId = GatewayId {unGatewayId :: Text} deriving (Show, Eq, Generic)
@@ -185,52 +185,52 @@ instance FromHttpApiData GatewayId where
 instance ToHttpApiData GatewayId where
   toUrlPiece (GatewayId a) = a
 
-type SensorName    = Text
+type DeviceName    = Text
 type Domain        = Text
-type SensorsQuery  = Text
-type SensorsLimit  = Int
-type SensorsOffset = Int
+type DevicesQuery  = Text
+type DevicesLimit  = Int
+type DevicesOffset = Int
 
 instance ToSchema ResourceId
 
--- | one sensor 
-data Sensor = Sensor
-  { senId           :: SensorId   -- ^ Unique ID of the sensor node
-  , senGatewayId    :: Maybe GatewayId  -- ^ Unique ID of the gateway
-  , senName         :: Maybe SensorName -- ^ name of the sensor node
-  , senLocation     :: Maybe Location
-  , senDomain       :: Maybe Domain     -- ^ the domain of this sensor.
-  , senVisibility   :: Maybe Visibility
-  , senMeasurements :: [Measurement]
-  , senOwner        :: Maybe Username   -- ^ owner of the sensor node (output only)
-  , senDateCreated  :: Maybe UTCTime    -- ^ creation date of the sensor node (output only)
-  , senDateModified :: Maybe UTCTime    -- ^ last update date of the sensor nodei (output only)
-  , senKeycloakId   :: Maybe ResourceId -- ^ The is of the resource in Keycloak
+-- | one device 
+data Device = Device
+  { devId           :: DeviceId   -- ^ Unique ID of the device node
+  , devGatewayId    :: Maybe GatewayId  -- ^ Unique ID of the gateway
+  , devName         :: Maybe DeviceName -- ^ name of the device node
+  , devLocation     :: Maybe Location
+  , devDomain       :: Maybe Domain     -- ^ the domain of this device.
+  , devVisibility   :: Maybe Visibility
+  , devMeasurements :: [Measurement]
+  , devOwner        :: Maybe Username   -- ^ owner of the device node (output only)
+  , devDateCreated  :: Maybe UTCTime    -- ^ creation date of the device (output only)
+  , devDateModified :: Maybe UTCTime    -- ^ last update date of the device node (output only)
+  , devKeycloakId   :: Maybe ResourceId -- ^ The is of the resource in Keycloak
   } deriving (Show, Eq, Generic)
 
-defaultSensor = Sensor
-  { senId           = SensorId "MyDevice"
-  , senGatewayId    = Just $ GatewayId "ea0541de1ab7132a1d45b85f9b2139f5" 
-  , senName         = Just "My weather station" 
-  , senLocation     = Just defaultLocation 
-  , senDomain       = Just "waziup" 
-  , senVisibility   = Just Public
-  , senMeasurements = [defaultMeasurement]
-  , senOwner        = Nothing
-  , senDateCreated  = Nothing
-  , senDateModified = Nothing
-  , senKeycloakId   = Nothing 
+defaultDevice = Device
+  { devId           = DeviceId "MyDevice"
+  , devGatewayId    = Just $ GatewayId "ea0541de1ab7132a1d45b85f9b2139f5" 
+  , devName         = Just "My weather station" 
+  , devLocation     = Just defaultLocation 
+  , devDomain       = Just "waziup" 
+  , devVisibility   = Just Public
+  , devMeasurements = [defaultMeasurement]
+  , devOwner        = Nothing
+  , devDateCreated  = Nothing
+  , devDateModified = Nothing
+  , devKeycloakId   = Nothing 
   }
 
-instance ToJSON Sensor where
+instance ToJSON Device where
   toJSON = genericToJSON (aesonDrop 3 snakeCase) {omitNothingFields = True}
 
-instance FromJSON Sensor where
+instance FromJSON Device where
   parseJSON = genericParseJSON $ aesonDrop 3 snakeCase
 
-instance ToSchema Sensor where
+instance ToSchema Device where
   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
-        & mapped.schema.example ?~ toJSON defaultSensor 
+        & mapped.schema.example ?~ toJSON defaultDevice 
 
 
 data Visibility = Public | Private
@@ -363,13 +363,13 @@ instance ToSchema Value where
 
 -- | one datapoint 
 data Datapoint = Datapoint
-  { dataSensorId :: SensorId               -- ^ ID of the sensor
+  { dataDeviceId :: DeviceId               -- ^ ID of the device
   , dataMeasId   :: MeasId                 -- ^ ID of the measurement
   , dataValue    :: MeasurementValue -- ^ last value received by the platform
   } deriving (Show, Eq, Generic)
 
 defaultDatapoint = Datapoint 
-  { dataSensorId = SensorId "MyDevice90"   -- ^ ID of the sensor
+  { dataDeviceId = DeviceId "MyDevice90"   -- ^ ID of the device
   , dataMeasId   = MeasId "TC1"            -- ^ ID of the measurement
   , dataValue    = defaultMeasurementValue -- ^ last value received by the platform
   }
@@ -417,7 +417,7 @@ instance ToSchema NotificationCondition
 
 -- | notification subject
 data NotificationSubject = NotificationSubject
-  { notificationSubjectEntityNames :: [SensorId]          -- ^ Ids of the sensors to watch
+  { notificationSubjectEntityNames :: [DeviceId]          -- ^ Ids of the devices to watch
   , notificationSubjectCondition :: NotificationCondition -- ^ Condition of the notification
   } deriving (Show, Eq, Generic)
 
@@ -484,21 +484,32 @@ instance ToJSON User where
   toJSON = genericToJSON (removeFieldLabelPrefix False "user")
 instance ToSchema User
 
-data HistoricalValue = HistoricalValue
-  { historicalValueId            :: Text -- ^ UUID of the sensor
-  , historicalValueAttribute'Underscoreid :: Text -- ^ UUID of the measurement
-  , historicalValueDatapoint :: MeasurementValue -- ^ 
-  } deriving (Show, Eq, Generic)
-
-instance FromJSON HistoricalValue where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "historicalValue")
-instance ToJSON HistoricalValue where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "historicalValue")
-instance ToSchema HistoricalValue
 
 -- * Projects
-type DeviceId = Text
-type ProjectId = Text
+
+--Project Id are used in bodies (JSON and PlainText) and URL piece
+newtype ProjectId = ProjectId {unProjectId :: Text} deriving (Show, Eq, Generic)
+
+instance ToJSON ProjectId where
+  toJSON = genericToJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+instance FromJSON ProjectId where
+  parseJSON = genericParseJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+-- ProjectId is used in URL piece
+instance FromHttpApiData ProjectId where
+  parseUrlPiece a = Right $ ProjectId a 
+
+-- ProjectId is used as plain text body
+instance MimeRender PlainText ProjectId where
+  mimeRender proxy (ProjectId p) = convertString p 
+
+instance ToSchema ProjectId where
+  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON (ProjectId "MyProject") 
+
+instance ToParamSchema ProjectId
+
 
 -- * A project
 data Project = Project

@@ -66,7 +66,7 @@ postAttribute (EntityId eid) att = do
 
 postTextAttributeOrion :: EntityId -> AttributeId -> Text -> Orion ()
 postTextAttributeOrion (EntityId eid) attId val = do
-  debug $ convertString $ "put Sensor attribute in Orion: " <> val
+  debug $ convertString $ "put attribute in Orion: " <> val
   orionPost ("/v2/entities/" <> eid <> "/attrs") (toJSON $ getSimpleAttr attId val)
 
 deleteAttribute :: EntityId -> AttributeId -> Orion ()

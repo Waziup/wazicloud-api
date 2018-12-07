@@ -27,8 +27,8 @@ postDatapoint d = do
   res <- insert "waziup_history" (bsonify ob)
   return ()
 
-getDatapointsMongo :: SensorId -> MeasId -> Action IO [Datapoint]
-getDatapointsMongo sid mid = do
+getDatapointsMongo :: DeviceId -> MeasId -> Action IO [Datapoint]
+getDatapointsMongo did mid = do
   docs <- rest =<< find (select [] "waziup_history")
   let res = sequence $ map (fromJSON . Object . aesonify) docs
   case res of
@@ -52,17 +52,17 @@ postProjectMongo p = do
        JSON.Object o -> o
        _ -> error "Wrong object format"
   res <- insert "projects" (bsonify ob)
-  return $ convertString $ show res
+  return $ ProjectId $ convertString $ show res
 
 getProjectMongo :: ProjectId -> Action IO (Maybe Project)
-getProjectMongo pid = do
+getProjectMongo (ProjectId pid) = do
   mdoc <- findOne (select ["_id" =: (ObjId $ read $ convertString pid)] "projects")
   case (fromJSON . Object . aesonify <$> mdoc) of
      Just (JSON.Success a) -> return $ Just a
      _ -> return Nothing
 
 deleteProjectMongo :: ProjectId -> Action IO Bool 
-deleteProjectMongo pid = do
+deleteProjectMongo (ProjectId pid) = do
   let sel = ["_id" =: (ObjId $ read $ convertString pid)]
   mdoc <- findOne (select sel "projects")
   case mdoc of
@@ -72,7 +72,7 @@ deleteProjectMongo pid = do
      _ -> return False 
 
 putProjectGatewaysMongo :: ProjectId -> [GatewayId] -> Action IO Bool
-putProjectGatewaysMongo pid gids = do
+putProjectGatewaysMongo (ProjectId pid) gids = do
   let sel = ["_id" =: (ObjId $ read $ convertString pid)]
   mdoc <- findOne (select sel "projects")
   case mdoc of
@@ -82,12 +82,12 @@ putProjectGatewaysMongo pid gids = do
      _ -> return False 
 
 putProjectDevicesMongo :: ProjectId -> [DeviceId] -> Action IO Bool
-putProjectDevicesMongo pid ids = do
-  let sel = ["_id" =: (ObjId $ read $ convertString pid)]
+putProjectDevicesMongo (ProjectId pid) ids = do
+  let sel = ["_id" =: (ObjId $ read $ convertString $ pid)]
   mdoc <- findOne (select sel "projects")
   case mdoc of
      Just _ -> do
-       modify (select sel "projects") ["devices" := (val ids)]
+       modify (select sel "projects") ["devices" := (val $ map unDeviceId ids)]
        return True
      _ -> return False 
 

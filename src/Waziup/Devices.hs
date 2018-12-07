@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Waziup.Sensors where
+module Waziup.Devices where
 
 import           Waziup.Types
 import           Waziup.Utils
@@ -27,11 +27,11 @@ import           Paths_Waziup_Servant
 getPerms :: Maybe Token -> Waziup [Perm]
 getPerms tok = do
   info "Get Permissions"
-  let allScopes = [SensorsUpdate,
-                   SensorsView,
-                   SensorsDelete,
-                   SensorsDataCreate,
-                   SensorsDataView]
+  let allScopes = [DevicesUpdate,
+                   DevicesView,
+                   DevicesDelete,
+                   DevicesDataCreate,
+                   DevicesDataView]
   ps <- runKeycloak $ getAllPermissions (map (convertString.show) allScopes) tok
   let getP :: KC.Permission -> Perm
       getP (KC.Permission rsname _ scopes) = Perm rsname (mapMaybe readScope scopes)
@@ -43,136 +43,136 @@ postAuth (AuthBody username password) = do
   tok <- runKeycloak (getUserAuthToken username password)
   return tok
 
-getSensors :: Maybe Token -> Maybe SensorsQuery -> Maybe SensorsLimit -> Maybe SensorsOffset -> Waziup [Sensor]
-getSensors tok mq mlimit moffset = do
-  info "Get sensors"
+getDevices :: Maybe Token -> Maybe DevicesQuery -> Maybe DevicesLimit -> Maybe DevicesOffset -> Waziup [Device]
+getDevices tok mq mlimit moffset = do
+  info "Get devices"
   entities <- runOrion $ O.getEntities mq
-  let sensors = map getSensorFromEntity entities
+  let devices = map getDeviceFromEntity entities
   ps <- getPerms tok
-  let sensors2 = filter (checkPermSensor SensorsView ps) sensors -- TODO limits
-  return sensors2
+  let devices2 = filter (checkPermDevice DevicesView ps) devices -- TODO limits
+  return devices2
 
-checkPermSensor :: Scope -> [Perm] -> Sensor -> Bool
-checkPermSensor scope perms sen = any (\p -> (permResource p) == (unSensorId $ senId sen) && scope `elem` (permScopes p)) perms
+checkPermDevice :: Scope -> [Perm] -> Device -> Bool
+checkPermDevice scope perms dev = any (\p -> (permResource p) == (unDeviceId $ devId dev) && scope `elem` (permScopes p)) perms
 
-getSensor :: Maybe Token -> SensorId -> Waziup Sensor
-getSensor tok (SensorId sid) = do
-  info "Get sensor"
-  sensor <- getSensorFromEntity <$> runOrion (O.getEntity $ EntityId sid)
-  case (senKeycloakId sensor) of
+getDevice :: Maybe Token -> DeviceId -> Waziup Device
+getDevice tok (DeviceId did) = do
+  info "Get device"
+  device <- getDeviceFromEntity <$> runOrion (O.getEntity $ EntityId did)
+  case (devKeycloakId device) of
     Just keyId -> do
       debug "Check permissions"
-      runKeycloak $ checkPermission keyId (pack $ show SensorsView) tok
-      debug "Permission granted, returning sensor"
-      return sensor
+      runKeycloak $ checkPermission keyId (pack $ show DevicesView) tok
+      debug "Permission granted, returning device"
+      return device
     Nothing -> do
-      err "Error, sensor does not have a Keycloak ID"
+      err "Error, device does not have a Keycloak ID"
       throwError err500 {errBody = "Not authorized"}
 
-postSensor :: Maybe Token -> Sensor -> Waziup NoContent
-postSensor tok s@(Sensor (SensorId sid) _ _ _ _ vis _ _ _ _ _) = do
-  info $ "Post sensor: " ++ (show s)
+postDevice :: Maybe Token -> Device -> Waziup NoContent
+postDevice tok s@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _) = do
+  info $ "Post device: " ++ (show s)
   debug "Check permissions"
-  runKeycloak $ checkPermission (ResourceId "Sensors") (pack $ show SensorsCreate) tok
+  runKeycloak $ checkPermission (ResourceId "Devices") (pack $ show DevicesCreate) tok
   debug "Create entity"
   let username = case tok of
        Just t -> getUsername t
        Nothing -> Just "guest"
   debug $ "Onwer: " <> (show username)
-  let entity = getEntityFromSensor (s {senOwner = username})
+  let entity = getEntityFromDevice (s {devOwner = username})
   res2 <- C.try $ runOrion $ O.postEntity entity 
   case res2 of
     Right _ -> do 
       let res = KC.Resource {
          resId      = Nothing,
-         resName    = sid,
+         resName    = did,
          resType    = Nothing,
          resUris    = [],
-         resScopes  = map (pack.show) [SensorsView, SensorsUpdate, SensorsDelete, SensorsDataCreate, SensorsDataView],
+         resScopes  = map (pack.show) [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView],
          resOwner   = Owner Nothing "cdupont",
          resOwnerManagedAccess = True,
          resAttributes = if (isJust vis) then [KC.Attribute "visibility" [pack $ show $ fromJust vis]] else []}
       keyRes <- C.try $ runKeycloak $ createResource res tok
       case keyRes of
         Right (ResourceId resId) -> do
-          runOrion $ O.postTextAttributeOrion (EntityId sid) (AttributeId "keycloak_id") resId
+          runOrion $ O.postTextAttributeOrion (EntityId did) (AttributeId "keycloak_id") resId
           return NoContent
         Left err -> do
-          error $ "Keycloak error: " ++ (show err) ++ " deleting sensor"
-          (_ :: Either ServantErr ()) <- C.try $ runOrion $ O.deleteEntity (EntityId sid)
+          error $ "Keycloak error: " ++ (show err) ++ " deleting device"
+          (_ :: Either ServantErr ()) <- C.try $ runOrion $ O.deleteEntity (EntityId did)
           throwError err
     Left (err :: ServantErr)  -> do
       warn "Orion error"
       throwError err 
  
-deleteSensor :: Maybe Token -> SensorId -> Waziup NoContent
-deleteSensor tok (SensorId sid) = do
-  info "Delete sensor"
-  withKCId sid $ \keyId -> do
+deleteDevice :: Maybe Token -> DeviceId -> Waziup NoContent
+deleteDevice tok did = do
+  info "Delete device"
+  withKCId did $ \keyId -> do
     debug "Check permissions"
-    runKeycloak $ checkPermission keyId (pack $ show SensorsDelete) tok
+    runKeycloak $ checkPermission keyId (pack $ show DevicesDelete) tok
     debug "Delete Keycloak resource"
     runKeycloak $ deleteResource keyId tok
     debug "Delete Orion resource"
-    runOrion $ O.deleteEntity (EntityId sid)
+    runOrion $ O.deleteEntity (toEntityId did)
   return NoContent
 
-putSensorLocation :: Maybe Token -> SensorId -> Location -> Waziup NoContent
-putSensorLocation mtok (SensorId sid) loc = do
-  info $ "Put sensor location: " ++ (show loc)
-  withKCId sid $ \keyId -> do
+putDeviceLocation :: Maybe Token -> DeviceId -> Location -> Waziup NoContent
+putDeviceLocation mtok did loc = do
+  info $ "Put device location: " ++ (show loc)
+  withKCId did $ \keyId -> do
     debug "Check permissions"
-    runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
+    runKeycloak $ checkPermission keyId (pack $ show DevicesUpdate) mtok
     debug "Update Orion resource"
     let att = getLocationAttr loc
-    runOrion $ O.postAttribute (EntityId sid) att 
+    runOrion $ O.postAttribute (toEntityId did) att 
   return NoContent
 
-putSensorName :: Maybe Token -> SensorId -> SensorName -> Waziup NoContent
-putSensorName mtok (SensorId sid) name = do
-  info $ "Put sensor name: " ++ (show name)
-  withKCId sid $ \keyId -> do
+putDeviceName :: Maybe Token -> DeviceId -> DeviceName -> Waziup NoContent
+putDeviceName mtok did name = do
+  info $ "Put device name: " ++ (show name)
+  withKCId did $ \keyId -> do
     debug "Check permissions"
-    runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
+    runKeycloak $ checkPermission keyId (pack $ show DevicesUpdate) mtok
     debug "Update Orion resource"
-    runOrion $ O.postTextAttributeOrion (EntityId sid) (AttributeId "name") name
+    runOrion $ O.postTextAttributeOrion (toEntityId did) (AttributeId "name") name
   return NoContent
 
-putSensorGatewayId :: Maybe Token -> SensorId -> GatewayId -> Waziup NoContent
-putSensorGatewayId mtok (SensorId sid) (GatewayId gid) = do
-  info $ "Put sensor gateway ID: " ++ (show gid)
-  withKCId sid $ \keyId -> do
+putDeviceGatewayId :: Maybe Token -> DeviceId -> GatewayId -> Waziup NoContent
+putDeviceGatewayId mtok did (GatewayId gid) = do
+  info $ "Put device gateway ID: " ++ (show gid)
+  withKCId did $ \keyId -> do
     debug "Check permissions"
-    runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
+    runKeycloak $ checkPermission keyId (pack $ show DevicesUpdate) mtok
     debug "Update Orion resource"
-    runOrion $ O.postTextAttributeOrion (EntityId sid) (AttributeId "gateway_id") gid
+    runOrion $ O.postTextAttributeOrion (toEntityId did) (AttributeId "gateway_id") gid
   return NoContent
 
-putSensorVisibility :: Maybe Token -> SensorId -> Visibility -> Waziup NoContent
-putSensorVisibility mtok (SensorId sid) vis = do
-  info $ "Put sensor visibility: " ++ (show vis)
-  withKCId sid $ \keyId -> do
+putDeviceVisibility :: Maybe Token -> DeviceId -> Visibility -> Waziup NoContent
+putDeviceVisibility mtok did vis = do
+  info $ "Put device visibility: " ++ (show vis)
+  withKCId did $ \keyId -> do
     debug "Check permissions"
-    runKeycloak $ checkPermission keyId (pack $ show SensorsUpdate) mtok
+    runKeycloak $ checkPermission keyId (pack $ show DevicesUpdate) mtok
     debug "Update Orion resource"
-    runOrion $ O.postTextAttributeOrion (EntityId sid) (AttributeId "visibility") (convertString $ show vis)
+    runOrion $ O.postTextAttributeOrion (toEntityId did) (AttributeId "visibility") (convertString $ show vis)
   return NoContent
 
 -- * From Orion to Waziup types
 
-getSensorFromEntity :: O.Entity -> Sensor
-getSensorFromEntity (O.Entity (EntityId eId) etype attrs) = 
-  Sensor { senId           = SensorId eId,
-           senGatewayId    = GatewayId <$> O.fromSimpleAttribute (AttributeId "gateway_id") attrs,
-           senName         = fromSimpleAttribute (AttributeId "name") attrs,
-           senOwner        = fromSimpleAttribute (AttributeId "owner") attrs,
-           senLocation     = getLocation attrs,
-           senDomain       = fromSimpleAttribute (AttributeId "domain") attrs,
-           senVisibility   = fromSimpleAttribute (AttributeId "visibility") attrs >>= readVisibility,
-           senDateCreated  = fromSimpleAttribute (AttributeId "dateCreated") attrs >>= parseISO8601.unpack,
-           senDateModified = fromSimpleAttribute (AttributeId "dateModified") attrs >>= parseISO8601.unpack,
-           senMeasurements = mapMaybe getMeasurementFromAttribute attrs,
-           senKeycloakId   = ResourceId <$> O.fromSimpleAttribute (AttributeId "keycloak_id") attrs}
+getDeviceFromEntity :: O.Entity -> Device
+getDeviceFromEntity (O.Entity (EntityId eId) etype attrs) = 
+  Device { devId           = DeviceId eId,
+           devGatewayId    = GatewayId <$> O.fromSimpleAttribute (AttributeId "gateway_id") attrs,
+           devName         = fromSimpleAttribute (AttributeId "name") attrs,
+           devOwner        = fromSimpleAttribute (AttributeId "owner") attrs,
+           devLocation     = getLocation attrs,
+           devDomain       = fromSimpleAttribute (AttributeId "domain") attrs,
+           devVisibility   = fromSimpleAttribute (AttributeId "visibility") attrs >>= readVisibility,
+           devDateCreated  = fromSimpleAttribute (AttributeId "dateCreated") attrs >>= parseISO8601.unpack,
+           devDateModified = fromSimpleAttribute (AttributeId "dateModified") attrs >>= parseISO8601.unpack,
+           devMeasurements = mapMaybe getMeasurementFromAttribute attrs,
+           devKeycloakId   = ResourceId <$> O.fromSimpleAttribute (AttributeId "keycloak_id") attrs}
 
 getLocation :: [O.Attribute] -> Maybe Location
 getLocation attrs = do 
@@ -209,8 +209,8 @@ isNull _    = False
 
 -- * From Waziup to Orion types
 
-getEntityFromSensor :: Sensor -> O.Entity
-getEntityFromSensor (Sensor (SensorId sid) sgid sname sloc sdom svis meas sown _ _ skey) = 
+getEntityFromDevice :: Device -> O.Entity
+getEntityFromDevice (Device (DeviceId sid) sgid sname sloc sdom svis meas sown _ _ skey) = 
   O.Entity (EntityId sid) "SensingDevice" $ catMaybes [getSimpleAttr (AttributeId "name")        <$> sname,
                                                        getSimpleAttr (AttributeId "gateway_id")  <$> (unGatewayId <$> sgid),
                                                        getSimpleAttr (AttributeId "owner")       <$> sown,
@@ -234,20 +234,22 @@ getAttFromMeas (Measurement (MeasId measId) name sd qk u lv) =
                                  getTimeMetadata (MetadataId "timestamp")      <$> (join $ measTimestamp <$> lv)]))
 
 
-withKCId :: Text -> (ResourceId -> Waziup a) -> Waziup a
-withKCId sid f = do
-  sensor <- getSensorFromEntity <$> runOrion (O.getEntity $ EntityId sid)
-  case (senKeycloakId sensor) of
+withKCId :: DeviceId -> (ResourceId -> Waziup a) -> Waziup a
+withKCId (DeviceId did) f = do
+  device <- getDeviceFromEntity <$> runOrion (O.getEntity $ EntityId did)
+  case (devKeycloakId device) of
     Just keyId -> f keyId 
     Nothing -> do
-      error "Cannot delete sensor: KC Id not present"
-      throwError err500 {errBody = "Cannot delete sensor: KC Id not present"}
+      error "Cannot delete device: KC Id not present"
+      throwError err500 {errBody = "Cannot delete device: KC Id not present"}
 
+toEntityId :: DeviceId -> EntityId
+toEntityId (DeviceId did) = EntityId did
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()
-debug s = liftIO $ debugM   "Sensors" s
-info  s = liftIO $ infoM    "Sensors" s
-warn  s = liftIO $ warningM "Sensors" s
-err   s = liftIO $ errorM   "Sensors" s
+debug s = liftIO $ debugM   "Devices" s
+info  s = liftIO $ infoM    "Devices" s
+warn  s = liftIO $ warningM "Devices" s
+err   s = liftIO $ errorM   "Devices" s
 

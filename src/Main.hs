@@ -36,6 +36,7 @@ import           Paths_Waziup_Servant
 main :: IO ()
 main = do
   startLog "Waziup-log.xml"
+  Main.info $ "API server starting..."
   envUrl     <- lookupEnv "HTTP_URL"
   envPort    <- lookupEnv "HTTP_PORT"
   envKCUrl   <- lookupEnv "KEYCLOAK_URL"

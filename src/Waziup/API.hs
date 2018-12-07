@@ -14,11 +14,12 @@ import Servant.Swagger.UI
 
 -- | Waziup type-level API
 
-type API = ("api" :> "v1" :> WaziupAPI) :<|> WaziupDocs 
+type API = "api" :> "v2" :> WaziupAPI
+      :<|> WaziupDocs 
 
 type WaziupAPI = AuthAPI
             :<|> DevicesAPI
-            :<|> MeasurementsAPI
+            :<|> SensorsAPI
             :<|> SensorDataAPI
             :<|> ProjectsAPI
             :<|> OntologiesAPI
@@ -51,26 +52,26 @@ type DeviceAPI = Flat (
     :<|> "visibility" :> ReqBody '[PlainText] Visibility :> PutNoContent    '[JSON] NoContent
     ))
 
-type MeasurementsAPI = Flat (
+type SensorsAPI = Flat (
   "devices" :> Header "Authorization" Token :> Capture "device_id" DeviceId :> 
-  "measurements" :> (                   Get           '[JSON] [Measurement]
-    :<|> ReqBody '[JSON] Measurement :> PostNoContent '[JSON] NoContent
-    :<|> MeasurementAPI
+  "snesors" :> (                        Get           '[JSON] [Sensor]
+    :<|> ReqBody '[JSON] Sensor      :> PostNoContent '[JSON] NoContent
+    :<|> SensorAPI
     ))
 
-type MeasurementAPI = Flat (
-  Capture "meas_id" MeasId :> (                                    Get             '[JSON] Measurement
+type SensorAPI = Flat (
+  Capture "sensor_id" SensorId :> (                                Get             '[JSON] Sensor
     :<|>                                                           DeleteNoContent '[JSON] NoContent
-    :<|> "name"          :> ReqBody '[PlainText] MeasName       :> PutNoContent    '[JSON] NoContent
+    :<|> "name"          :> ReqBody '[PlainText] SensorName     :> PutNoContent    '[JSON] NoContent
     :<|> "sensor_kind"   :> ReqBody '[PlainText] SensorKindId   :> PutNoContent    '[JSON] NoContent
     :<|> "quantity_kind" :> ReqBody '[PlainText] QuantityKindId :> PutNoContent    '[JSON] NoContent
     :<|> "unit"          :> ReqBody '[PlainText] UnitId         :> PutNoContent    '[JSON] NoContent
-    :<|> "value"         :> ReqBody '[JSON] MeasurementValue    :> PostNoContent   '[JSON] NoContent
+    :<|> "value"         :> ReqBody '[JSON] SensorValue         :> PostNoContent   '[JSON] NoContent
     ))
 
 type SensorDataAPI = Flat (
-  Header "Authorization" Token :> "devices"      :> Capture "device_id" DeviceId :> 
-                                  "measurements" :> Capture "meas_id" MeasId :> 
+  Header "Authorization" Token :> "devices" :> Capture "device_id" DeviceId :> 
+                                  "sensors" :> Capture "sensor_id" SensorId :> 
         Get '[JSON] [Datapoint])
     
 

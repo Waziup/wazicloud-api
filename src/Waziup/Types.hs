@@ -44,7 +44,8 @@ import qualified Orion.Types as O
 import qualified Mongo.Types as M
 
 
--- Waziup Monad
+-- * Waziup Monad
+
 type Waziup = ReaderT WaziupInfo Servant.Handler
 
 data WaziupInfo = WaziupInfo {
@@ -54,6 +55,7 @@ data WaziupInfo = WaziupInfo {
   }
 
 -- * Config
+
 data WaziupConfig = WaziupConfig {
   _serverConf   :: ServerConfig,
   _mongoConf    :: M.MongoConfig,
@@ -72,12 +74,6 @@ defaultServerConfig = ServerConfig {
   _serverHost = "http://localhost:3000",
   _serverPort = 3000
   }
-
-data Ontologies = Ontologies {
-  sensingDevices :: [SensorKind],
-  quantityKinds  :: [QuantityKind],
-  units          :: [Unit]
-  } deriving (Eq, Show)
 
 -- * Authentication & authorization
 
@@ -138,28 +134,30 @@ instance Show Scope where
   show DevicesDataCreate = "devices-data:create"  
   show DevicesDataView   = "devices-data:view"    
 
+
+
 -- * Devices
 
 -- Id of a device
 newtype DeviceId = DeviceId {unDeviceId :: Text} deriving (Show, Eq, Generic)
 
-instance ToSchema DeviceId where
-  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
-        & mapped.schema.example ?~ toJSON ("MyDevice" :: Text)
-
-instance ToParamSchema DeviceId
-
+-- JSON instances
 instance ToJSON DeviceId where
   toJSON = genericToJSON (defaultOptions {AT.unwrapUnaryRecords = True})
 
 instance FromJSON DeviceId where
   parseJSON = genericParseJSON (defaultOptions {AT.unwrapUnaryRecords = True})
 
+-- DeviceId is used in Url pieces
 instance FromHttpApiData DeviceId where
   parseUrlPiece a = Right $ DeviceId a 
 
-instance ToHttpApiData DeviceId where
-  toUrlPiece (DeviceId a) = a
+-- Rendering in Swagger
+instance ToSchema DeviceId where
+  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON (DeviceId "MyDevice")
+
+instance ToParamSchema DeviceId
 
 -- Id of a gateway
 newtype GatewayId = GatewayId {unGatewayId :: Text} deriving (Show, Eq, Generic)
@@ -201,7 +199,7 @@ data Device = Device
   , devLocation     :: Maybe Location
   , devDomain       :: Maybe Domain     -- ^ the domain of this device.
   , devVisibility   :: Maybe Visibility
-  , devMeasurements :: [Measurement]
+  , devSensors      :: [Sensor]
   , devOwner        :: Maybe Username   -- ^ owner of the device node (output only)
   , devDateCreated  :: Maybe UTCTime    -- ^ creation date of the device (output only)
   , devDateModified :: Maybe UTCTime    -- ^ last update date of the device node (output only)
@@ -215,7 +213,7 @@ defaultDevice = Device
   , devLocation     = Just defaultLocation 
   , devDomain       = Just "waziup" 
   , devVisibility   = Just Public
-  , devMeasurements = [defaultMeasurement]
+  , devSensors      = [defaultSensor]
   , devOwner        = Nothing
   , devDateCreated  = Nothing
   , devDateModified = Nothing
@@ -280,81 +278,88 @@ instance ToSchema Location where
         & mapped.schema.example ?~ toJSON defaultLocation 
 
 
--- * Measurements
+-- * Sensors
 
--- Id of a measurement
-newtype MeasId = MeasId {unMeasId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
+-- Id of a sensor
+newtype SensorId = SensorId {unSensorId :: Text} deriving (Show, Eq, Generic)
 
-instance ToSchema MeasId where
+-- JSON instances
+instance ToJSON SensorId where
+  toJSON = genericToJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+instance FromJSON SensorId where
+  parseJSON = genericParseJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+instance ToSchema SensorId where
   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
-        & mapped.schema.example ?~ toJSON ("TC" :: Text) 
+        & mapped.schema.example ?~ toJSON (SensorId "TC") 
 
-instance ToParamSchema MeasId
+instance ToParamSchema SensorId
 
-instance MimeRender PlainText MeasId
+instance MimeRender PlainText SensorId
 
-instance MimeUnrender PlainText MeasId
+instance MimeUnrender PlainText SensorId
 
-instance FromHttpApiData MeasId where
-  parseUrlPiece a = Right $ MeasId a 
+instance FromHttpApiData SensorId where
+  parseUrlPiece a = Right $ SensorId a 
 
-instance ToHttpApiData MeasId where
-  toUrlPiece (MeasId a) = a
+instance ToHttpApiData SensorId where
+  toUrlPiece (SensorId a) = a
 
 
-type MeasName      = Text
+type SensorName = Text
 
 -- | one measurement 
-data Measurement = Measurement
-  { measId            :: MeasId                 -- ^ ID of the measurement
-  , measName          :: Maybe MeasName         -- ^ name of the measurement
-  , measSensorKind    :: Maybe SensorKindId     -- ^ sensing platform used for the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/SensingDevices.js
-  , measQuantityKind  :: Maybe QuantityKindId   -- ^ quantity measured, from https://github.com/Waziup/waziup-js/blob/master/src/model/QuantityKinds.js
-  , measUnit          :: Maybe UnitId           -- ^ unit of the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/Units.js
-  , measLastValue     :: Maybe MeasurementValue -- ^ last value received by the platform
+data Sensor = Sensor
+  { senId            :: SensorId               -- ^ ID of the sensor
+  , senName          :: Maybe SensorName       -- ^ name of the sensor
+  , senSensorKind    :: Maybe SensorKindId     -- ^ sensing platform used for the sensor, from https://github.com/Waziup/waziup-js/blob/master/src/model/SensingDevices.js
+  , senQuantityKind  :: Maybe QuantityKindId   -- ^ quantity measured, from https://github.com/Waziup/waziup-js/blob/master/src/model/QuantityKinds.js
+  , senUnit          :: Maybe UnitId           -- ^ unit of the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/Units.js
+  , senLastValue     :: Maybe SensorValue      -- ^ last value received by the platform
   } deriving (Show, Eq, Generic)
 
-defaultMeasurement = Measurement 
-  { measId            = MeasId "TC1" 
-  , measName          = Just "My garden temperature" 
-  , measSensorKind    = Just $ SensorKindId "Thermometer" 
-  , measQuantityKind  = Just $ QuantityKindId "AirTemperature" 
-  , measUnit          = Just $ UnitId "DegreeCelsius"
-  , measLastValue     = Nothing
+defaultSensor = Sensor
+  { senId            = SensorId "TC1" 
+  , senName          = Just "My garden temperature" 
+  , senSensorKind    = Just $ SensorKindId "Thermometer" 
+  , senQuantityKind  = Just $ QuantityKindId "AirTemperature" 
+  , senUnit          = Just $ UnitId "DegreeCelsius"
+  , senLastValue     = Nothing
   } 
 
-instance FromJSON Measurement where
+instance FromJSON Sensor where
   parseJSON = genericParseJSON $ aesonDrop 4 snakeCase 
 
-instance ToJSON Measurement where
+instance ToJSON Sensor where
   toJSON = genericToJSON (aesonDrop 4 snakeCase) {omitNothingFields = True}
 
-instance ToSchema Measurement where
+instance ToSchema Sensor where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
-        & mapped.schema.example ?~ toJSON defaultMeasurement 
+        & mapped.schema.example ?~ toJSON defaultSensor 
 
--- | measurement value 
-data MeasurementValue = MeasurementValue
-  { measValue        :: Value          -- ^ value of the measurement
-  , measTimestamp    :: Maybe UTCTime  -- ^ time of the measurement
-  , measDateReceived :: Maybe UTCTime  -- ^ time at which the measurement has been received on the Cloud
+-- | sensor value 
+data SensorValue = SensorValue
+  { senValValue        :: Value          -- ^ value of the measurement
+  , senValTimestamp    :: Maybe UTCTime  -- ^ time of the measurement
+  , senValDateReceived :: Maybe UTCTime  -- ^ time at which the measurement has been received on the Cloud
   } deriving (Show, Eq, Generic)
 
-defaultMeasurementValue = MeasurementValue 
-  { measValue        = Number 25
-  , measTimestamp    = parseISO8601 "2016-06-08T18:20:27.873Z"
-  , measDateReceived = Nothing
+defaultSensorValue = SensorValue 
+  { senValValue        = Number 25
+  , senValTimestamp    = parseISO8601 "2016-06-08T18:20:27.873Z"
+  , senValDateReceived = Nothing
   }
 
-instance FromJSON MeasurementValue where
+instance FromJSON SensorValue where
   parseJSON = genericParseJSON $ aesonDrop 4 snakeCase
 
-instance ToJSON MeasurementValue where
+instance ToJSON SensorValue where
   toJSON = genericToJSON (aesonDrop 4 snakeCase) {omitNothingFields = True}
 
-instance ToSchema MeasurementValue where
+instance ToSchema SensorValue where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
-        & mapped.schema.example ?~ toJSON defaultMeasurementValue 
+        & mapped.schema.example ?~ toJSON defaultSensorValue 
 
 instance ToSchema Value where
   declareNamedSchema _ = pure (NamedSchema (Just "Value") (mempty & type_ .~ SwaggerObject))
@@ -363,15 +368,15 @@ instance ToSchema Value where
 
 -- | one datapoint 
 data Datapoint = Datapoint
-  { dataDeviceId :: DeviceId               -- ^ ID of the device
-  , dataMeasId   :: MeasId                 -- ^ ID of the measurement
-  , dataValue    :: MeasurementValue -- ^ last value received by the platform
+  { dataDeviceId :: DeviceId     -- ^ ID of the device
+  , dataSenId    :: SensorId     -- ^ ID of the sensor
+  , dataValue    :: SensorValue  -- ^ last value received by the platform
   } deriving (Show, Eq, Generic)
 
 defaultDatapoint = Datapoint 
   { dataDeviceId = DeviceId "MyDevice90"   -- ^ ID of the device
-  , dataMeasId   = MeasId "TC1"            -- ^ ID of the measurement
-  , dataValue    = defaultMeasurementValue -- ^ last value received by the platform
+  , dataSenId    = SensorId "TC1"          -- ^ ID of the sensor
+  , dataValue    = defaultSensorValue -- ^ last value received by the platform
   }
 
 instance FromJSON Datapoint where
@@ -390,11 +395,11 @@ type NotifId  = Text
 
 -- | one notification
 data Notification = Notification
-  { notifId           :: NotifId -- ^ id of the notification (attributed by the server)
-  , notifDescription  :: Text    -- ^ Description of the notification
+  { notifId           :: NotifId             -- ^ id of the notification (attributed by the server)
+  , notifDescription  :: Text                -- ^ Description of the notification
   , notifSubject      :: NotificationSubject -- ^ 
-  , notifNotification :: SocialMessageBatch -- ^ 
-  , notifThrottling   :: Double -- ^ minimum interval between two messages in seconds
+  , notifNotification :: SocialMessageBatch  -- ^ 
+  , notifThrottling   :: Double              -- ^ minimum interval between two messages in seconds
   } deriving (Show, Eq, Generic)
 
 instance FromJSON Notification where
@@ -405,8 +410,8 @@ instance ToSchema Notification
 
 -- | notification condition
 data NotificationCondition = NotificationCondition
-  { notifCondAttrs      :: [MeasId] -- ^ Ids of the measurements to watch 
-  , notifCondExpression :: Text     -- ^ Expression for the condition, such as TC>40
+  { notifCondAttrs      :: [SensorId]   -- ^ Ids of the sensors to watch 
+  , notifCondExpression :: Text         -- ^ Expression for the condition, such as TC>40
   } deriving (Show, Eq, Generic)
 
 instance FromJSON NotificationCondition where
@@ -566,6 +571,13 @@ instance ToSchema UnitId
 instance MimeRender PlainText UnitId
 instance MimeUnrender PlainText UnitId where
   mimeUnrender proxy bs = Right $ UnitId $ convertString bs 
+
+-- All ontologies
+data Ontologies = Ontologies {
+  sensingDevices :: [SensorKind],
+  quantityKinds  :: [QuantityKind],
+  units          :: [Unit]
+  } deriving (Eq, Show)
 
 data SensorKind = SensorKind {
   sdId    :: SensorKindId,

@@ -27,7 +27,7 @@ postDatapoint d = do
   res <- insert "waziup_history" (bsonify ob)
   return ()
 
-getDatapointsMongo :: DeviceId -> MeasId -> Action IO [Datapoint]
+getDatapointsMongo :: DeviceId -> SensorId -> Action IO [Datapoint]
 getDatapointsMongo did mid = do
   docs <- rest =<< find (select [] "waziup_history")
   let res = sequence $ map (fromJSON . Object . aesonify) docs

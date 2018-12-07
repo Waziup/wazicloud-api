@@ -8,7 +8,7 @@ import           Waziup.API
 import           Waziup.Devices
 import           Waziup.Ontologies
 import           Waziup.Projects
-import           Waziup.Measurements
+import           Waziup.Sensors
 import           Waziup.SensorData
 import qualified Keycloak.Types as KC
 import           Control.Monad.IO.Class
@@ -32,7 +32,7 @@ server = serverWaziup
 serverWaziup :: ServerT WaziupAPI Waziup
 serverWaziup = authServer
           :<|> devicesServer
-          :<|> measServer
+          :<|> sensorsServer
           :<|> sensorDataServer
           :<|> projectsServer
           :<|> ontologiesServer
@@ -54,16 +54,16 @@ devicesServer = getDevices
            :<|> putDeviceGatewayId
            :<|> putDeviceVisibility
 
-measServer :: ServerT MeasurementsAPI Waziup
-measServer = getMeasurements
-        :<|> postMeasurement
-        :<|> getMeasurement
-        :<|> deleteMeasurement
-        :<|> putMeasName
-        :<|> putMeasSensorKind
-        :<|> putMeasQuantityKind
-        :<|> putMeasUnit
-        :<|> putMeasValue
+sensorsServer :: ServerT SensorsAPI Waziup
+sensorsServer = getSensors
+           :<|> postSensor
+           :<|> getSensor
+           :<|> deleteSensor
+           :<|> putSensorName
+           :<|> putSensorSensorKind
+           :<|> putSensorQuantityKind
+           :<|> putSensorUnit
+           :<|> putSensorValue
 
 sensorDataServer :: ServerT SensorDataAPI Waziup
 sensorDataServer = getDatapoints
@@ -93,21 +93,21 @@ swaggerDoc = toSwagger (Proxy :: Proxy WaziupAPI)
   & S.info . S.description ?~ "This API allows you to access all Waziup services.\n\
                               \In order to access protected services, first get a token with POST /auth/token.\n\
                               \Then insert this token in the authorization key, specifying “Bearer” in front. For example \"Bearer eyJhbGc…\"."
-  & S.basePath ?~ "/api/v1"
+  & S.basePath ?~ "/api/v2"
   & S.applyTagsFor devicesOps ["Devices"]
-  & S.applyTagsFor measOps    ["Measurements"]
+  & S.applyTagsFor sensorOps  ["Sensors"]
   & S.applyTagsFor dataOps    ["Sensor Data"]
   & S.applyTagsFor authOps    ["Auth"]
   & S.applyTagsFor projectOps ["Projects"]
   & S.applyTagsFor ontoOps    ["Ontologies"]
   where
-    devicesOps, measOps, dataOps, authOps, projectOps, ontoOps :: Traversal' S.Swagger S.Operation
-    devicesOps = subOperations (Proxy :: Proxy DevicesAPI)      (Proxy :: Proxy WaziupAPI)
-    measOps    = subOperations (Proxy :: Proxy MeasurementsAPI) (Proxy :: Proxy WaziupAPI)
-    dataOps    = subOperations (Proxy :: Proxy SensorDataAPI)   (Proxy :: Proxy WaziupAPI)
-    authOps    = subOperations (Proxy :: Proxy AuthAPI)         (Proxy :: Proxy WaziupAPI)
-    projectOps = subOperations (Proxy :: Proxy ProjectsAPI)     (Proxy :: Proxy WaziupAPI)
-    ontoOps    = subOperations (Proxy :: Proxy OntologiesAPI)   (Proxy :: Proxy WaziupAPI)
+    devicesOps, sensorOps, dataOps, authOps, projectOps, ontoOps :: Traversal' S.Swagger S.Operation
+    devicesOps = subOperations (Proxy :: Proxy DevicesAPI)    (Proxy :: Proxy WaziupAPI)
+    sensorOps  = subOperations (Proxy :: Proxy SensorsAPI)    (Proxy :: Proxy WaziupAPI)
+    dataOps    = subOperations (Proxy :: Proxy SensorDataAPI) (Proxy :: Proxy WaziupAPI)
+    authOps    = subOperations (Proxy :: Proxy AuthAPI)       (Proxy :: Proxy WaziupAPI)
+    projectOps = subOperations (Proxy :: Proxy ProjectsAPI)   (Proxy :: Proxy WaziupAPI)
+    ontoOps    = subOperations (Proxy :: Proxy OntologiesAPI) (Proxy :: Proxy WaziupAPI)
 
 -- * helpers
 

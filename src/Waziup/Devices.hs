@@ -47,7 +47,7 @@ getDevices :: Maybe Token -> Maybe DevicesQuery -> Maybe DevicesLimit -> Maybe D
 getDevices tok mq mlimit moffset = do
   info "Get devices"
   entities <- runOrion $ O.getEntities mq
-  let devices = map getDeviceFromEntity entities
+  let devices = catMaybes $ map getDeviceFromEntity entities
   ps <- getPerms tok
   let devices2 = filter (checkPermDevice DevicesView ps) devices -- TODO limits
   return devices2
@@ -56,18 +56,13 @@ checkPermDevice :: Scope -> [Perm] -> Device -> Bool
 checkPermDevice scope perms dev = any (\p -> (permResource p) == (unDeviceId $ devId dev) && scope `elem` (permScopes p)) perms
 
 getDevice :: Maybe Token -> DeviceId -> Waziup Device
-getDevice tok (DeviceId did) = do
+getDevice tok did = do
   info "Get device"
-  device <- getDeviceFromEntity <$> runOrion (O.getEntity $ EntityId did)
-  case (devKeycloakId device) of
-    Just keyId -> do
-      debug "Check permissions"
-      runKeycloak $ checkPermission keyId (pack $ show DevicesView) tok
-      debug "Permission granted, returning device"
-      return device
-    Nothing -> do
-      err "Error, device does not have a Keycloak ID"
-      throwError err500 {errBody = "Not authorized"}
+  withKCId did $ \(keyId, device) -> do
+    debug "Check permissions"
+    runKeycloak $ checkPermission keyId (pack $ show DevicesView) tok
+    debug "Permission granted, returning device"
+    return device
 
 postDevice :: Maybe Token -> Device -> Waziup NoContent
 postDevice tok s@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _) = do
@@ -108,19 +103,19 @@ postDevice tok s@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _) = do
 deleteDevice :: Maybe Token -> DeviceId -> Waziup NoContent
 deleteDevice tok did = do
   info "Delete device"
-  withKCId did $ \keyId -> do
+  withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show DevicesDelete) tok
     debug "Delete Keycloak resource"
     runKeycloak $ deleteResource keyId tok
     debug "Delete Orion resource"
     runOrion $ O.deleteEntity (toEntityId did)
-  return NoContent
+    return NoContent
 
 putDeviceLocation :: Maybe Token -> DeviceId -> Location -> Waziup NoContent
 putDeviceLocation mtok did loc = do
   info $ "Put device location: " ++ (show loc)
-  withKCId did $ \keyId -> do
+  withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show DevicesUpdate) mtok
     debug "Update Orion resource"
@@ -131,7 +126,7 @@ putDeviceLocation mtok did loc = do
 putDeviceName :: Maybe Token -> DeviceId -> DeviceName -> Waziup NoContent
 putDeviceName mtok did name = do
   info $ "Put device name: " ++ (show name)
-  withKCId did $ \keyId -> do
+  withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show DevicesUpdate) mtok
     debug "Update Orion resource"
@@ -141,7 +136,7 @@ putDeviceName mtok did name = do
 putDeviceGatewayId :: Maybe Token -> DeviceId -> GatewayId -> Waziup NoContent
 putDeviceGatewayId mtok did (GatewayId gid) = do
   info $ "Put device gateway ID: " ++ (show gid)
-  withKCId did $ \keyId -> do
+  withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show DevicesUpdate) mtok
     debug "Update Orion resource"
@@ -151,7 +146,7 @@ putDeviceGatewayId mtok did (GatewayId gid) = do
 putDeviceVisibility :: Maybe Token -> DeviceId -> Visibility -> Waziup NoContent
 putDeviceVisibility mtok did vis = do
   info $ "Put device visibility: " ++ (show vis)
-  withKCId did $ \keyId -> do
+  withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show DevicesUpdate) mtok
     debug "Update Orion resource"
@@ -160,19 +155,21 @@ putDeviceVisibility mtok did vis = do
 
 -- * From Orion to Waziup types
 
-getDeviceFromEntity :: O.Entity -> Device
-getDeviceFromEntity (O.Entity (EntityId eId) etype attrs) = 
-  Device { devId           = DeviceId eId,
-           devGatewayId    = GatewayId <$> O.fromSimpleAttribute (AttributeId "gateway_id") attrs,
-           devName         = fromSimpleAttribute (AttributeId "name") attrs,
-           devOwner        = fromSimpleAttribute (AttributeId "owner") attrs,
-           devLocation     = getLocation attrs,
-           devDomain       = fromSimpleAttribute (AttributeId "domain") attrs,
-           devVisibility   = fromSimpleAttribute (AttributeId "visibility") attrs >>= readVisibility,
-           devDateCreated  = fromSimpleAttribute (AttributeId "dateCreated") attrs >>= parseISO8601.unpack,
-           devDateModified = fromSimpleAttribute (AttributeId "dateModified") attrs >>= parseISO8601.unpack,
-           devMeasurements = mapMaybe getMeasurementFromAttribute attrs,
-           devKeycloakId   = ResourceId <$> O.fromSimpleAttribute (AttributeId "keycloak_id") attrs}
+getDeviceFromEntity :: O.Entity -> Maybe Device
+getDeviceFromEntity (O.Entity (EntityId eId) eType attrs) = 
+  if (eType == "Device") 
+  then Just $ Device { devId           = DeviceId eId,
+                       devGatewayId    = GatewayId <$> O.fromSimpleAttribute (AttributeId "gateway_id") attrs,
+                       devName         = fromSimpleAttribute (AttributeId "name") attrs,
+                       devOwner        = fromSimpleAttribute (AttributeId "owner") attrs,
+                       devLocation     = getLocation attrs,
+                       devDomain       = fromSimpleAttribute (AttributeId "domain") attrs,
+                       devVisibility   = fromSimpleAttribute (AttributeId "visibility") attrs >>= readVisibility,
+                       devDateCreated  = fromSimpleAttribute (AttributeId "dateCreated") attrs >>= parseISO8601.unpack,
+                       devDateModified = fromSimpleAttribute (AttributeId "dateModified") attrs >>= parseISO8601.unpack,
+                       devSensors      = mapMaybe getSensorFromAttribute attrs,
+                       devKeycloakId   = ResourceId <$> O.fromSimpleAttribute (AttributeId "keycloak_id") attrs}
+  else Nothing
 
 getLocation :: [O.Attribute] -> Maybe Location
 getLocation attrs = do 
@@ -182,24 +179,24 @@ getLocation attrs = do
     let [Number lon, Number lat] = V.toList a
     return $ Location (Latitude $ toRealFloat lat) (Longitude $ toRealFloat lon)
 
-getMeasurementFromAttribute :: O.Attribute -> Maybe Measurement
-getMeasurementFromAttribute (O.Attribute (AttributeId name) aType val mets) =
-  if (aType == "Measurement") 
-    then Just $ Measurement { measId            = MeasId name,
-                              measName          = fromSimpleMetadata (MetadataId "name") mets,
-                              measQuantityKind  = QuantityKindId <$> fromSimpleMetadata (MetadataId "quantity_kind") mets,
-                              measSensorKind    = SensorKindId <$> fromSimpleMetadata (MetadataId "sensing_device") mets,
-                              measUnit          = UnitId <$> fromSimpleMetadata (MetadataId "unit") mets,
-                              measLastValue     = getMeasLastValue val mets}
+getSensorFromAttribute :: O.Attribute -> Maybe Sensor
+getSensorFromAttribute (O.Attribute (AttributeId name) aType val mets) =
+  if (aType == "Sensor") 
+    then Just $ Sensor { senId            = SensorId name,
+                         senName          = fromSimpleMetadata (MetadataId "name") mets,
+                         senQuantityKind  = QuantityKindId <$> fromSimpleMetadata (MetadataId "quantity_kind") mets,
+                         senSensorKind    = SensorKindId <$> fromSimpleMetadata (MetadataId "sensing_device") mets,
+                         senUnit          = UnitId <$> fromSimpleMetadata (MetadataId "unit") mets,
+                         senLastValue     = getSensorLastValue val mets}
     else Nothing
 
-getMeasLastValue :: Maybe Value -> [O.Metadata] -> Maybe MeasurementValue
-getMeasLastValue mval mets = do
+getSensorLastValue :: Maybe Value -> [O.Metadata] -> Maybe SensorValue
+getSensorLastValue mval mets = do
    value <- mval
    guard $ not $ isNull value
-   return $ MeasurementValue value 
-                             (O.fromSimpleMetadata (MetadataId "timestamp")    mets >>= parseISO8601.unpack)
-                             (O.fromSimpleMetadata (MetadataId "dateModified") mets >>= parseISO8601.unpack)
+   return $ SensorValue value 
+                        (O.fromSimpleMetadata (MetadataId "timestamp")    mets >>= parseISO8601.unpack)
+                        (O.fromSimpleMetadata (MetadataId "dateModified") mets >>= parseISO8601.unpack)
 
 
 isNull :: Value -> Bool
@@ -210,38 +207,41 @@ isNull _    = False
 -- * From Waziup to Orion types
 
 getEntityFromDevice :: Device -> O.Entity
-getEntityFromDevice (Device (DeviceId sid) sgid sname sloc sdom svis meas sown _ _ skey) = 
-  O.Entity (EntityId sid) "SensingDevice" $ catMaybes [getSimpleAttr (AttributeId "name")        <$> sname,
-                                                       getSimpleAttr (AttributeId "gateway_id")  <$> (unGatewayId <$> sgid),
-                                                       getSimpleAttr (AttributeId "owner")       <$> sown,
-                                                       getSimpleAttr (AttributeId "domain")      <$> sdom,
-                                                       getSimpleAttr (AttributeId "keycloak_id") <$> (unResId <$> skey),
-                                                       getSimpleAttr (AttributeId "visibility")  <$> ((pack.show) <$> svis),
-                                                       getLocationAttr               <$> sloc] <>
-                                                       map getAttFromMeas meas
+getEntityFromDevice (Device (DeviceId sid) sgid sname sloc sdom svis sensor sown _ _ skey) = 
+  O.Entity (EntityId sid) "Device" $ catMaybes [getSimpleAttr (AttributeId "name")        <$> sname,
+                                                getSimpleAttr (AttributeId "gateway_id")  <$> (unGatewayId <$> sgid),
+                                                getSimpleAttr (AttributeId "owner")       <$> sown,
+                                                getSimpleAttr (AttributeId "domain")      <$> sdom,
+                                                getSimpleAttr (AttributeId "keycloak_id") <$> (unResId <$> skey),
+                                                getSimpleAttr (AttributeId "visibility")  <$> ((pack.show) <$> svis),
+                                                getLocationAttr               <$> sloc] <>
+                                                map getAttFromSensor sensor
 
 getLocationAttr :: Location -> O.Attribute
 getLocationAttr (Location (Latitude lat) (Longitude lon)) = O.Attribute (AttributeId "location") "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) []
 
-getAttFromMeas :: Measurement -> O.Attribute
-getAttFromMeas (Measurement (MeasId measId) name sd qk u lv) = 
-  (O.Attribute (AttributeId measId) "Measurement"
-                     (measValue <$> lv)
+getAttFromSensor :: Sensor -> O.Attribute
+getAttFromSensor (Sensor (SensorId senId) name sd qk u lv) = 
+  (O.Attribute (AttributeId senId) "Sensor"
+                     (senValValue <$> lv)
                      (catMaybes [getTextMetadata (MetadataId "name")           <$> name,
                                  getTextMetadata (MetadataId "quantity_kind")  <$> unQuantityKindId <$> qk,
                                  getTextMetadata (MetadataId "sensing_device") <$> unSensorKindId <$> sd,
                                  getTextMetadata (MetadataId "unit")           <$> unUnitId <$> u,
-                                 getTimeMetadata (MetadataId "timestamp")      <$> (join $ measTimestamp <$> lv)]))
+                                 getTimeMetadata (MetadataId "timestamp")      <$> (join $ senValTimestamp <$> lv)]))
 
 
-withKCId :: DeviceId -> (ResourceId -> Waziup a) -> Waziup a
+withKCId :: DeviceId -> ((ResourceId, Device) -> Waziup a) -> Waziup a
 withKCId (DeviceId did) f = do
-  device <- getDeviceFromEntity <$> runOrion (O.getEntity $ EntityId did)
-  case (devKeycloakId device) of
-    Just keyId -> f keyId 
-    Nothing -> do
-      error "Cannot delete device: KC Id not present"
-      throwError err500 {errBody = "Cannot delete device: KC Id not present"}
+  mdevice <- getDeviceFromEntity <$> runOrion (O.getEntity $ EntityId did)
+  case mdevice of
+    Just device -> do
+      case (devKeycloakId device) of
+        Just keyId -> f (keyId, device) 
+        Nothing -> do
+          error "Device: KC Id not present"
+          throwError err500 {errBody = "Device: KC Id not present"}
+    Nothing -> throwError err500 {errBody = "Device: wrong entity type"}
 
 toEntityId :: DeviceId -> EntityId
 toEntityId (DeviceId did) = EntityId did

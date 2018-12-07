@@ -43,8 +43,9 @@ import qualified Database.MongoDB as DB
 import qualified Orion.Types as O
 import qualified Mongo.Types as M
 
-
--- * Waziup Monad
+--------------------
+-- * Waziup Monad --
+--------------------
 
 type Waziup = ReaderT WaziupInfo Servant.Handler
 
@@ -54,7 +55,9 @@ data WaziupInfo = WaziupInfo {
   _ontologies   :: Ontologies
   }
 
--- * Config
+--------------
+-- * Config --
+--------------
 
 data WaziupConfig = WaziupConfig {
   _serverConf   :: ServerConfig,
@@ -75,7 +78,9 @@ defaultServerConfig = ServerConfig {
   _serverPort = 3000
   }
 
--- * Authentication & authorization
+--------------------------------------
+-- * Authentication & authorization --
+--------------------------------------
 
 data AuthBody = AuthBody
   { authBodyUsername :: Username
@@ -135,8 +140,15 @@ instance Show Scope where
   show DevicesDataView   = "devices-data:view"    
 
 
+---------------
+-- * Devices --
+---------------
 
--- * Devices
+type DeviceName    = Text
+type Domain        = Text
+type DevicesQuery  = Text
+type DevicesLimit  = Int
+type DevicesOffset = Int
 
 -- Id of a device
 newtype DeviceId = DeviceId {unDeviceId :: Text} deriving (Show, Eq, Generic)
@@ -159,38 +171,6 @@ instance ToSchema DeviceId where
 
 instance ToParamSchema DeviceId
 
--- Id of a gateway
-newtype GatewayId = GatewayId {unGatewayId :: Text} deriving (Show, Eq, Generic)
-
-instance ToSchema GatewayId where
-  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
-        & mapped.schema.example ?~ toJSON ("MyGatewayId" :: Text) 
-
-instance ToParamSchema GatewayId
-
-instance MimeUnrender PlainText GatewayId where
-  mimeUnrender proxy bs = Right $ GatewayId $ convertString bs 
-
-instance ToJSON GatewayId where
-  toJSON = genericToJSON (defaultOptions {AT.unwrapUnaryRecords = True})
-
-instance FromJSON GatewayId where
-  parseJSON = genericParseJSON (defaultOptions {AT.unwrapUnaryRecords = True})
-
-instance FromHttpApiData GatewayId where
-  parseUrlPiece a = Right $ GatewayId a 
-
-instance ToHttpApiData GatewayId where
-  toUrlPiece (GatewayId a) = a
-
-type DeviceName    = Text
-type Domain        = Text
-type DevicesQuery  = Text
-type DevicesLimit  = Int
-type DevicesOffset = Int
-
-instance ToSchema ResourceId
-
 -- | one device 
 data Device = Device
   { devId           :: DeviceId   -- ^ Unique ID of the device node
@@ -208,7 +188,7 @@ data Device = Device
 
 defaultDevice = Device
   { devId           = DeviceId "MyDevice"
-  , devGatewayId    = Just $ GatewayId "ea0541de1ab7132a1d45b85f9b2139f5" 
+  , devGatewayId    = Just $ GatewayId "MyGW" 
   , devName         = Just "My weather station" 
   , devLocation     = Just defaultLocation 
   , devDomain       = Just "waziup" 
@@ -231,18 +211,26 @@ instance ToSchema Device where
         & mapped.schema.example ?~ toJSON defaultDevice 
 
 
+-- * Visibility
+
 data Visibility = Public | Private
   deriving (Eq, Generic)
 
+--JSON instances
 instance ToJSON Visibility where
   toJSON Public  = "public" 
   toJSON Private = "private" 
+
 instance FromJSON Visibility where
   parseJSON = Aeson.withText "String" (\x -> return $ fromJust $ readVisibility x)
-instance ToParamSchema Visibility
-instance ToSchema Visibility
-instance MimeRender PlainText Visibility
+
+-- Visibility is use as plain text body
 instance MimeUnrender PlainText Visibility
+
+--Swagger instances
+instance ToParamSchema Visibility
+
+instance ToSchema Visibility
 
 instance Show Visibility where
   show Public = "public"
@@ -253,11 +241,15 @@ readVisibility "public" = Just Public
 readVisibility "private" = Just Private
 readVisibility _ = Nothing
 
+
 -- * Location
 
-newtype Latitude  = Latitude  Double deriving (Show, Eq, Generic, ToJSON, FromJSON)
-newtype Longitude = Longitude Double deriving (Show, Eq, Generic, ToJSON, FromJSON)
+newtype Latitude  = Latitude Double deriving (Show, Eq, Generic, ToJSON, FromJSON)
+
 instance ToSchema Longitude
+
+newtype Longitude = Longitude Double deriving (Show, Eq, Generic, ToJSON, FromJSON)
+
 instance ToSchema Latitude
 
 -- | location is a pair [latitude, longitude] with the coordinates on earth in decimal notation (e.g. [40.418889, 35.89389]).
@@ -269,16 +261,24 @@ data Location = Location
 defaultLocation :: Location
 defaultLocation = Location (Latitude 5.36) (Longitude 4.0083)
 
+--JSON instances
 instance FromJSON Location where
   parseJSON = genericParseJSON defaultOptions
+
 instance ToJSON Location where
   toJSON = genericToJSON defaultOptions
+
+--Swagger instance
 instance ToSchema Location where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON defaultLocation 
 
 
--- * Sensors
+---------------
+-- * Sensors --
+---------------
+
+type SensorName = Text
 
 -- Id of a sensor
 newtype SensorId = SensorId {unSensorId :: Text} deriving (Show, Eq, Generic)
@@ -290,24 +290,17 @@ instance ToJSON SensorId where
 instance FromJSON SensorId where
   parseJSON = genericParseJSON (defaultOptions {AT.unwrapUnaryRecords = True})
 
+-- SensorId is used in Url pieces
+instance FromHttpApiData SensorId where
+  parseUrlPiece a = Right $ SensorId a 
+
+--Swagger instances
 instance ToSchema SensorId where
   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON (SensorId "TC") 
 
 instance ToParamSchema SensorId
 
-instance MimeRender PlainText SensorId
-
-instance MimeUnrender PlainText SensorId
-
-instance FromHttpApiData SensorId where
-  parseUrlPiece a = Right $ SensorId a 
-
-instance ToHttpApiData SensorId where
-  toUrlPiece (SensorId a) = a
-
-
-type SensorName = Text
 
 -- | one measurement 
 data Sensor = Sensor
@@ -329,16 +322,17 @@ defaultSensor = Sensor
   } 
 
 instance FromJSON Sensor where
-  parseJSON = genericParseJSON $ aesonDrop 4 snakeCase 
+  parseJSON = genericParseJSON $ aesonDrop 3 snakeCase 
 
 instance ToJSON Sensor where
-  toJSON = genericToJSON (aesonDrop 4 snakeCase) {omitNothingFields = True}
+  toJSON = genericToJSON (aesonDrop 3 snakeCase) {omitNothingFields = True}
 
 instance ToSchema Sensor where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON defaultSensor 
 
--- | sensor value 
+-- * sensor value 
+
 data SensorValue = SensorValue
   { senValValue        :: Value          -- ^ value of the measurement
   , senValTimestamp    :: Maybe UTCTime  -- ^ time of the measurement
@@ -351,20 +345,26 @@ defaultSensorValue = SensorValue
   , senValDateReceived = Nothing
   }
 
+--JSON instances
 instance FromJSON SensorValue where
-  parseJSON = genericParseJSON $ aesonDrop 4 snakeCase
+  parseJSON = genericParseJSON $ aesonDrop 3 snakeCase
 
 instance ToJSON SensorValue where
-  toJSON = genericToJSON (aesonDrop 4 snakeCase) {omitNothingFields = True}
+  toJSON = genericToJSON (aesonDrop 3 snakeCase) {omitNothingFields = True}
 
+--Swagger instance
 instance ToSchema SensorValue where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON defaultSensorValue 
 
+--Swagger instance for any JSON value
 instance ToSchema Value where
   declareNamedSchema _ = pure (NamedSchema (Just "Value") (mempty & type_ .~ SwaggerObject))
 
--- * Data points
+
+-------------------
+-- * Data points --
+-------------------
 
 -- | one datapoint 
 data Datapoint = Datapoint
@@ -379,17 +379,52 @@ defaultDatapoint = Datapoint
   , dataValue    = defaultSensorValue -- ^ last value received by the platform
   }
 
+-- JSON instances
 instance FromJSON Datapoint where
   parseJSON = genericParseJSON $ aesonDrop 4 snakeCase
 
 instance ToJSON Datapoint where
   toJSON = genericToJSON (aesonDrop 4 snakeCase) {omitNothingFields = True}
 
+-- Swagger instance
 instance ToSchema Datapoint where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON defaultDatapoint 
 
--- * Notifications
+
+----------------
+-- * Gateways --
+----------------
+
+-- Id of a gateway
+newtype GatewayId = GatewayId {unGatewayId :: Text} deriving (Show, Eq, Generic)
+
+--JSON instances
+instance ToJSON GatewayId where
+  toJSON = genericToJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+instance FromJSON GatewayId where
+  parseJSON = genericParseJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+-- GatewayId is used in Url pieces
+instance FromHttpApiData GatewayId where
+  parseUrlPiece a = Right $ GatewayId a 
+
+--GatewayId is used as plain text body
+instance MimeUnrender PlainText GatewayId where
+  mimeUnrender proxy bs = Right $ GatewayId $ convertString bs 
+
+-- Rendering in Swagger
+instance ToSchema GatewayId where
+  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON (GatewayId "MyGatewayId") 
+
+instance ToParamSchema GatewayId
+
+
+---------------------
+-- * Notifications --
+---------------------
 
 type NotifId  = Text
 
@@ -402,10 +437,14 @@ data Notification = Notification
   , notifThrottling   :: Double              -- ^ minimum interval between two messages in seconds
   } deriving (Show, Eq, Generic)
 
+--JSON instances
 instance FromJSON Notification where
   parseJSON = genericParseJSON $ aesonDrop 5 snakeCase
+
 instance ToJSON Notification where
   toJSON = genericToJSON $ aesonDrop 5 snakeCase
+
+--Swagger instance
 instance ToSchema Notification
 
 -- | notification condition
@@ -414,29 +453,41 @@ data NotificationCondition = NotificationCondition
   , notifCondExpression :: Text         -- ^ Expression for the condition, such as TC>40
   } deriving (Show, Eq, Generic)
 
+--JSON instances
 instance FromJSON NotificationCondition where
   parseJSON = genericParseJSON $ aesonDrop 5 snakeCase
+
 instance ToJSON NotificationCondition where
   toJSON = genericToJSON (removeFieldLabelPrefix False "notificationCondition")
+
+--Swagger instance
 instance ToSchema NotificationCondition
 
 -- | notification subject
 data NotificationSubject = NotificationSubject
-  { notificationSubjectEntityNames :: [DeviceId]          -- ^ Ids of the devices to watch
-  , notificationSubjectCondition :: NotificationCondition -- ^ Condition of the notification
+  { notifSubjectEntityNames :: [DeviceId]          -- ^ Ids of the devices to watch
+  , notifSubjectCondition :: NotificationCondition -- ^ Condition of the notification
   } deriving (Show, Eq, Generic)
 
+-- JSON instances
 instance FromJSON NotificationSubject where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "notificationSubject")
+
 instance ToJSON NotificationSubject where
   toJSON = genericToJSON (removeFieldLabelPrefix False "notificationSubject")
+
+--Swagger instance
 instance ToSchema NotificationSubject
 
 
--- * Socials
+---------------
+-- * Socials --
+---------------
 
-data Channel = Twitter | SMS | Voice deriving (Show, Eq, Generic)
 type SocialMessageText = Text
+
+-- channel where the message is sent
+data Channel = Twitter | SMS | Voice deriving (Show, Eq, Generic)
 
 instance ToJSON Channel
 instance FromJSON Channel
@@ -449,10 +500,14 @@ data SocialMessage = SocialMessage
   , socialMessageText     :: SocialMessageText -- ^ Text of the message
   } deriving (Show, Eq, Generic)
 
+--JSON instances
 instance FromJSON SocialMessage where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "socialMessage")
+
 instance ToJSON SocialMessage where
   toJSON = genericToJSON (removeFieldLabelPrefix False "socialMessage")
+
+--Swagger instances
 instance ToSchema SocialMessage
 
 -- | A message to be sent to several users and socials
@@ -462,10 +517,14 @@ data SocialMessageBatch = SocialMessageBatch
   , socialMessageBatchMessage :: SocialMessageText -- ^ Text of the message 
   } deriving (Show, Eq, Generic)
 
+--JSON instances
 instance FromJSON SocialMessageBatch where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "socialMessageBatch")
+
 instance ToJSON SocialMessageBatch where
   toJSON = genericToJSON (removeFieldLabelPrefix False "socialMessageBatch")
+
+--Swagger instances
 instance ToSchema SocialMessageBatch
 
 -- | User 
@@ -485,12 +544,16 @@ data User = User
 
 instance FromJSON User where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "user")
+
 instance ToJSON User where
   toJSON = genericToJSON (removeFieldLabelPrefix False "user")
+
 instance ToSchema User
 
 
--- * Projects
+----------------
+-- * Projects --
+----------------
 
 --Project Id are used in bodies (JSON and PlainText) and URL piece
 newtype ProjectId = ProjectId {unProjectId :: Text} deriving (Show, Eq, Generic)
@@ -550,7 +613,9 @@ instance ToSchema Project where
         & mapped.schema.example ?~ toJSON defaultProject 
 
 
--- * Ontologies
+------------------
+-- * Ontologies --
+------------------
 
 newtype SensorKindId = SensorKindId {unSensorKindId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
@@ -650,6 +715,7 @@ unCapitalize :: String -> String
 unCapitalize (c:cs) = toLower c : cs
 unCapitalize [] = []
 
+instance ToSchema ResourceId
 
 -- Remove a field label prefix during JSON parsing.
 -- Also perform any replacements for special characters.

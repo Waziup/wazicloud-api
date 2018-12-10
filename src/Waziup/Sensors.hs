@@ -13,12 +13,14 @@ import           Data.Maybe
 import           Data.Text hiding (map, filter, foldl, any)
 import           Data.String.Conversions
 import qualified Data.List as L
+import           Data.Aeson as JSON
+import           Data.AesonBson
 import           Servant
 import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
 import           Orion as O hiding (info, warn, debug, err)
-import           Mongo as M hiding (info, warn, debug, err)
 import           System.Log.Logger
 import           Paths_Waziup_Servant
+import           Database.MongoDB as DB hiding (value)
 
 
 getSensors :: Maybe Token -> DeviceId -> Waziup [Sensor]
@@ -93,8 +95,17 @@ putSensorValue mtok did sid senVal = do
   info $ "Put meas value: " ++ (show senVal)
   updateSensorField mtok did sid $ \sensor -> do 
     runOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senLastValue = Just senVal})
-    runMongo $ M.postDatapoint $ Datapoint did sid senVal
+    runMongo $ postDatapoint $ Datapoint did sid senVal
   
+postDatapoint :: Datapoint -> Action IO ()
+postDatapoint d = do
+  debug "Post datapoint to Mongo"
+  let ob = case toJSON d of
+       JSON.Object o -> o
+       _ -> error "Wrong object format"
+  res <- insert "waziup_history" (bsonify ob)
+  return ()
+
 updateSensorField :: Maybe Token -> DeviceId -> SensorId -> (Sensor -> Waziup ()) -> Waziup NoContent
 updateSensorField mtok did sid w = do
   withKCId did $ \(keyId, device) -> do

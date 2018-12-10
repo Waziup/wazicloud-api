@@ -21,7 +21,6 @@ import           System.Log.Handler hiding (setLevel)
 import           System.Log.Handler.Simple
 import           System.Log.Handler.Log4jXML
 import           System.IO
-import           Mongo
 import           Keycloak hiding (try)
 import           Orion hiding (try)
 import           Database.MongoDB as DB hiding (value)
@@ -135,7 +134,7 @@ loadOntologies = do
          mapM_ Main.err errs
          return False
   if sdOK && qkOK 
-    then return $ Ontologies sds qks us
+    then return $ Ontologies sds [] qks us
     else error "Sensing devices ontology is not correct"
  
 loadSensingDevices :: IO [SensorKind]

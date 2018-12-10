@@ -17,6 +17,8 @@ Executable waziup-servant
                      , Waziup.Ontologies
                      , Waziup.Projects
                      , Waziup.Devices
+                     , Waziup.Sensors
+                     , Waziup.SensorData
                      , Waziup.Server
                      , Waziup.Types
                      , Waziup.Utils
@@ -26,9 +28,6 @@ Executable waziup-servant
                      , Orion
                      , Orion.Client
                      , Orion.Types
-                     , Mongo
-                     , Mongo.Client
-                     , Mongo.Types
                      , Paths_Waziup_Servant
   data-dir: data
   data-files: ontologies/*.json

@@ -17,6 +17,7 @@ import           Control.Lens hiding ((.=))
 import           Data.Proxy (Proxy(..))
 import qualified Data.Swagger as S
 import qualified Data.ByteString.Lazy as BL
+import           Data.Set
 import           Servant
 import           Servant.Server
 import           Servant.Swagger
@@ -33,7 +34,9 @@ serverWaziup :: ServerT WaziupAPI Waziup
 serverWaziup = authServer
           :<|> devicesServer
           :<|> sensorsServer
+          :<|> actuatorsServer
           :<|> sensorDataServer
+          :<|> gatewaysServer
           :<|> projectsServer
           :<|> ontologiesServer
 
@@ -68,6 +71,12 @@ sensorsServer = getSensors
 sensorDataServer :: ServerT SensorDataAPI Waziup
 sensorDataServer = getDatapoints
 
+gatewaysServer :: ServerT GatewaysAPI Waziup
+gatewaysServer = error "Not yet implemented"
+
+actuatorsServer :: ServerT ActuatorsAPI Waziup
+actuatorsServer = error "Not yet implemented"
+
 projectsServer :: ServerT ProjectsAPI Waziup
 projectsServer = getProjects
             :<|> postProject
@@ -77,7 +86,8 @@ projectsServer = getProjects
             :<|> putProjectGateways
 
 ontologiesServer :: ServerT OntologiesAPI Waziup
-ontologiesServer = getSensingDevices
+ontologiesServer = getSensorKinds
+              :<|> getActuatorKinds
               :<|> getQuantityKinds
               :<|> getUnits
 
@@ -96,18 +106,23 @@ swaggerDoc = toSwagger (Proxy :: Proxy WaziupAPI)
   & S.basePath ?~ "/api/v2"
   & S.applyTagsFor devicesOps ["Devices"]
   & S.applyTagsFor sensorOps  ["Sensors"]
+  & S.applyTagsFor actuatOps  ["Actuators"]
   & S.applyTagsFor dataOps    ["Sensor Data"]
   & S.applyTagsFor authOps    ["Auth"]
   & S.applyTagsFor projectOps ["Projects"]
   & S.applyTagsFor ontoOps    ["Ontologies"]
+  & S.applyTagsFor gwsOps     ["Gateways"]
+  & S.tags .~ (fromList [])
   where
-    devicesOps, sensorOps, dataOps, authOps, projectOps, ontoOps :: Traversal' S.Swagger S.Operation
+    devicesOps, sensorOps, actuatOps, dataOps, authOps, projectOps, ontoOps, gwsOps :: Traversal' S.Swagger S.Operation
     devicesOps = subOperations (Proxy :: Proxy DevicesAPI)    (Proxy :: Proxy WaziupAPI)
     sensorOps  = subOperations (Proxy :: Proxy SensorsAPI)    (Proxy :: Proxy WaziupAPI)
+    actuatOps  = subOperations (Proxy :: Proxy ActuatorsAPI)  (Proxy :: Proxy WaziupAPI)
     dataOps    = subOperations (Proxy :: Proxy SensorDataAPI) (Proxy :: Proxy WaziupAPI)
     authOps    = subOperations (Proxy :: Proxy AuthAPI)       (Proxy :: Proxy WaziupAPI)
     projectOps = subOperations (Proxy :: Proxy ProjectsAPI)   (Proxy :: Proxy WaziupAPI)
     ontoOps    = subOperations (Proxy :: Proxy OntologiesAPI) (Proxy :: Proxy WaziupAPI)
+    gwsOps     = subOperations (Proxy :: Proxy GatewaysAPI)   (Proxy :: Proxy WaziupAPI)
 
 -- * helpers
 

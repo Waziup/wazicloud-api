@@ -41,7 +41,6 @@ import           Keycloak as KC hiding (info, warn, debug, Scope)
 import           GHC.Generics (Generic)
 import qualified Database.MongoDB as DB
 import qualified Orion.Types as O
-import qualified Mongo.Types as M
 
 --------------------
 -- * Waziup Monad --
@@ -61,7 +60,7 @@ data WaziupInfo = WaziupInfo {
 
 data WaziupConfig = WaziupConfig {
   _serverConf   :: ServerConfig,
-  _mongoConf    :: M.MongoConfig,
+  _mongoConf    :: MongoConfig,
   _keycloakConf :: KCConfig,
   _orionConf    :: O.OrionConfig
   } deriving (Eq, Show)
@@ -77,6 +76,13 @@ defaultServerConfig = ServerConfig {
   _serverHost = "http://localhost:3000",
   _serverPort = 3000
   }
+
+data MongoConfig = MongoConfig {
+  _mongoUrl :: Text } deriving (Show, Eq)
+
+defaultMongoConfig = MongoConfig {
+  _mongoUrl = "127.0.0.1"}
+
 
 --------------------------------------
 -- * Authentication & authorization --
@@ -392,9 +398,67 @@ instance ToSchema Datapoint where
         & mapped.schema.example ?~ toJSON defaultDatapoint 
 
 
+-----------------
+-- * Actuators --
+-----------------
+
+type ActuatorName = Text
+
+-- Id of an actuator
+newtype ActuatorId = ActuatorId {unActuatorId :: Text} deriving (Show, Eq, Generic)
+
+-- JSON instances
+instance ToJSON ActuatorId where
+  toJSON = genericToJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+instance FromJSON ActuatorId where
+  parseJSON = genericParseJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+-- SensorId is used in Url pieces
+instance FromHttpApiData ActuatorId where
+  parseUrlPiece a = Right $ ActuatorId a 
+
+--Swagger instances
+instance ToSchema ActuatorId where
+  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON (SensorId "Act1") 
+
+instance ToParamSchema ActuatorId
+
+
+-- | one actuator 
+data Actuator = Actuator
+  { actId                 :: ActuatorId         -- ^ ID of the actuator
+  , actName               :: Maybe ActuatorName -- ^ name of the actuator
+  , actActuatorKind       :: Maybe ActuatorKindId
+  , actActuatorValueType  :: Maybe ActuatorValueType
+  , actValue              :: Maybe Value
+  } deriving (Show, Eq, Generic)
+
+defaultActuator = Actuator
+  { actId                = ActuatorId "Act1" 
+  , actName              = Just "My buzzer" 
+  , actActuatorKind      = Just $ ActuatorKindId "Buzzer"
+  , actActuatorValueType = Just ActBool
+  , actValue             = Just $ toJSON True
+  } 
+
+instance FromJSON Actuator where
+  parseJSON = genericParseJSON $ aesonDrop 3 snakeCase 
+
+instance ToJSON Actuator where
+  toJSON = genericToJSON (aesonDrop 3 snakeCase) {omitNothingFields = True}
+
+instance ToSchema Actuator where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON defaultActuator
+
+
 ----------------
 -- * Gateways --
 ----------------
+
+type GatewayName = Text
 
 -- Id of a gateway
 newtype GatewayId = GatewayId {unGatewayId :: Text} deriving (Show, Eq, Generic)
@@ -410,7 +474,10 @@ instance FromJSON GatewayId where
 instance FromHttpApiData GatewayId where
   parseUrlPiece a = Right $ GatewayId a 
 
---GatewayId is used as plain text body
+-- GatewayId is used as plain text body
+instance MimeRender PlainText GatewayId where
+  mimeRender proxy (GatewayId p) = convertString p 
+
 instance MimeUnrender PlainText GatewayId where
   mimeUnrender proxy bs = Right $ GatewayId $ convertString bs 
 
@@ -421,6 +488,47 @@ instance ToSchema GatewayId where
 
 instance ToParamSchema GatewayId
 
+-- | one gateway 
+data Gateway = Gateway
+  { gwId     :: GatewayId           -- ^ ID of the gateway
+  , gwName   :: Maybe GatewayName   -- ^ name of the gateway
+  , gwTunnel :: Maybe GatewayTunnel -- ^ gateway tunnel with platform 
+  } deriving (Show, Eq, Generic)
+
+defaultGateway = Gateway 
+  { gwId      = GatewayId "MyGW"
+  , gwName    = Just "My gateway"
+  , gwTunnel  = Nothing
+  }
+
+--JSON instances
+instance FromJSON Gateway where
+  parseJSON = genericParseJSON $ aesonDrop 2 snakeCase 
+
+instance ToJSON Gateway where
+  toJSON = genericToJSON (aesonDrop 2 snakeCase) {omitNothingFields = True}
+
+instance ToSchema Gateway where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON defaultGateway 
+
+
+data GatewayTunnel = GatewayTunnel
+  { gwTunnelPort   :: Int
+  } deriving (Show, Eq, Generic)
+
+--JSON instances
+instance FromJSON GatewayTunnel where
+  parseJSON = genericParseJSON $ aesonDrop 2 snakeCase 
+
+instance ToJSON GatewayTunnel where
+  toJSON = genericToJSON (aesonDrop 2 snakeCase) {omitNothingFields = True}
+
+instance ToSchema GatewayTunnel where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON (GatewayTunnel 9999) 
+
+instance MimeUnrender PlainText Int
 
 ---------------------
 -- * Notifications --
@@ -617,32 +725,15 @@ instance ToSchema Project where
 -- * Ontologies --
 ------------------
 
+-- * Sensor kinds
+
+--Sensor Kind is a kind of sensor, such as Thermometer, Soil moisture sensor...
 newtype SensorKindId = SensorKindId {unSensorKindId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
-instance ToSchema SensorKindId
-instance MimeRender PlainText SensorKindId
 instance MimeUnrender PlainText SensorKindId where
   mimeUnrender proxy bs = Right $ SensorKindId $ convertString bs 
 
-
-newtype QuantityKindId = QuantityKindId {unQuantityKindId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
-instance ToSchema QuantityKindId
-instance MimeRender PlainText QuantityKindId
-instance MimeUnrender PlainText QuantityKindId where
-  mimeUnrender proxy bs = Right $ QuantityKindId $ convertString bs 
-
-newtype UnitId = UnitId {unUnitId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
-instance ToSchema UnitId
-instance MimeRender PlainText UnitId
-instance MimeUnrender PlainText UnitId where
-  mimeUnrender proxy bs = Right $ UnitId $ convertString bs 
-
--- All ontologies
-data Ontologies = Ontologies {
-  sensingDevices :: [SensorKind],
-  quantityKinds  :: [QuantityKind],
-  units          :: [Unit]
-  } deriving (Eq, Show)
+instance ToSchema SensorKindId
 
 data SensorKind = SensorKind {
   sdId    :: SensorKindId,
@@ -662,6 +753,60 @@ instance ToJSON SensorKind where
 
 instance ToSchema SensorKind
 
+
+-- * Actuator kinds
+
+newtype ActuatorKindId = ActuatorKindId {unActuatorKindId :: Text} deriving (Show, Eq, Generic)
+
+-- JSON instances
+instance ToJSON ActuatorKindId where
+  toJSON = genericToJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+instance FromJSON ActuatorKindId where
+  parseJSON = genericParseJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+instance MimeUnrender PlainText ActuatorKindId where
+  mimeUnrender proxy bs = Right $ ActuatorKindId $ convertString bs 
+
+instance ToSchema ActuatorKindId
+
+data ActuatorKind = ActuatorKind {
+  akId        :: ActuatorKindId,
+  akLabel     :: Text,
+  akValueType :: [ActuatorValueType]
+  } deriving (Show, Eq, Generic)
+
+instance ToJSON ActuatorKind where
+  toJSON = genericToJSON (removeFieldLabelPrefix False "ak")
+
+instance FromJSON ActuatorKind where
+  parseJSON = genericParseJSON (removeFieldLabelPrefix True "ak")
+
+instance ToSchema ActuatorKind
+
+-- Actuator value type denote the kind of data needed to control the actuator
+data ActuatorValueType =  ActString | ActNumber | ActBool | ActNull | ActObject | ActArray deriving (Show, Eq, Generic)
+
+instance ToJSON ActuatorValueType where
+  toJSON = genericToJSON $ (removeFieldLabelPrefix False "Act") {AT.allNullaryToStringTag = True}
+
+instance FromJSON ActuatorValueType where
+  parseJSON = genericParseJSON (removeFieldLabelPrefix True "Act") {AT.allNullaryToStringTag = True}
+
+instance MimeUnrender PlainText ActuatorValueType
+
+instance ToSchema ActuatorValueType
+
+
+-- * Quantity kinds
+
+newtype QuantityKindId = QuantityKindId {unQuantityKindId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
+
+instance MimeUnrender PlainText QuantityKindId where
+  mimeUnrender proxy bs = Right $ QuantityKindId $ convertString bs 
+
+instance ToSchema QuantityKindId
+
 data QuantityKind = QuantityKind {
   qkId    :: QuantityKindId,
   qkLabel :: Text,
@@ -680,6 +825,16 @@ instance ToJSON QuantityKind where
 
 instance ToSchema QuantityKind
 
+
+-- * Units
+
+newtype UnitId = UnitId {unUnitId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
+
+instance MimeUnrender PlainText UnitId where
+  mimeUnrender proxy bs = Right $ UnitId $ convertString bs 
+
+instance ToSchema UnitId
+
 data Unit = Unit {
   uId    :: UnitId,
   uLabel :: Text
@@ -696,6 +851,16 @@ instance ToJSON Unit where
 
 instance ToSchema Unit
 
+
+-- All ontologies
+data Ontologies = Ontologies {
+  sensingDevices   :: [SensorKind],
+  actuatingDevices :: [ActuatorKind],
+  quantityKinds    :: [QuantityKind],
+  units            :: [Unit]
+  } deriving (Eq, Show)
+
+
 -- | Error message 
 data Error = Error
   { errorError :: Text -- ^ 
@@ -704,6 +869,7 @@ data Error = Error
 
 instance FromJSON Error where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "error")
+
 instance ToJSON Error where
   toJSON = genericToJSON (removeFieldLabelPrefix False "error")
 
@@ -770,3 +936,4 @@ removeFieldLabelPrefix forParsing prefix =
 makeLenses ''ServerConfig
 makeLenses ''WaziupConfig
 makeLenses ''WaziupInfo
+makeLenses ''MongoConfig

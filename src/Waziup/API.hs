@@ -8,11 +8,14 @@ import Servant
 import Servant.API.Flatten
 import Waziup.Types
 import Data.Text
+import Data.Aeson
 import Data.Swagger hiding (Header)
 import Keycloak
 import Servant.Swagger.UI
 
--- | Waziup type-level API
+-----------------------------
+-- | Waziup type-level API --
+-----------------------------
 
 type API = "api" :> "v2" :> WaziupAPI
       :<|> WaziupDocs 
@@ -20,13 +23,17 @@ type API = "api" :> "v2" :> WaziupAPI
 type WaziupAPI = AuthAPI
             :<|> DevicesAPI
             :<|> SensorsAPI
+            :<|> ActuatorsAPI
             :<|> SensorDataAPI
+            :<|> GatewaysAPI
             :<|> ProjectsAPI
             :<|> OntologiesAPI
 
 type WaziupDocs = SwaggerSchemaUI "swagger-ui" "swagger.json"
 
--- * Authentication
+----------------------
+-- * Authentication --
+----------------------
 
 type AuthAPI = 
   "auth" :>  (
@@ -34,7 +41,10 @@ type AuthAPI =
     :<|> "token"       :> ReqBody '[JSON] AuthBody     :> Post '[PlainText] Token
     )
 
--- * Devices
+
+---------------
+-- * Devices --
+---------------
 
 type DevicesAPI = Flat ( 
   "devices" :> Header "Authorization" Token :> ( 
@@ -52,9 +62,14 @@ type DeviceAPI = Flat (
     :<|> "visibility" :> ReqBody '[PlainText] Visibility :> PutNoContent    '[JSON] NoContent
     ))
 
+
+---------------
+-- * Sensors --
+---------------
+
 type SensorsAPI = Flat (
   "devices" :> Header "Authorization" Token :> Capture "device_id" DeviceId :> 
-  "snesors" :> (                        Get           '[JSON] [Sensor]
+  "sensors" :> (                        Get           '[JSON] [Sensor]
     :<|> ReqBody '[JSON] Sensor      :> PostNoContent '[JSON] NoContent
     :<|> SensorAPI
     ))
@@ -69,13 +84,60 @@ type SensorAPI = Flat (
     :<|> "value"         :> ReqBody '[JSON] SensorValue         :> PostNoContent   '[JSON] NoContent
     ))
 
+
+--------------------
+-- * Sensors data --
+--------------------
+
 type SensorDataAPI = Flat (
   Header "Authorization" Token :> "devices" :> Capture "device_id" DeviceId :> 
                                   "sensors" :> Capture "sensor_id" SensorId :> 
         Get '[JSON] [Datapoint])
-    
 
--- * Projects
+-----------------
+-- * Actuators --
+-----------------
+
+type ActuatorsAPI = Flat (
+  "devices" :> Header "Authorization" Token :> Capture "device_id" DeviceId :> 
+  "actuators" :> (                    Get           '[JSON] [Actuator]
+    :<|> ReqBody '[JSON] Actuator  :> PostNoContent '[JSON] NoContent
+    :<|> ActuatorAPI
+    ))
+
+type ActuatorAPI = Flat (
+  Capture "actuator_id" ActuatorId :> (                                     Get             '[JSON] Actuator 
+    :<|>                                                                    DeleteNoContent '[JSON] NoContent
+    :<|> "name"                :> ReqBody '[PlainText] ActuatorName      :> PutNoContent    '[JSON] NoContent
+    :<|> "actuator_kind"       :> ReqBody '[PlainText] ActuatorKindId    :> PutNoContent    '[JSON] NoContent
+    :<|> "value_type"          :> ReqBody '[PlainText] ActuatorValueType :> PutNoContent    '[JSON] NoContent
+    :<|> "value"               :> ReqBody '[JSON] Value                  :> PutNoContent    '[JSON] NoContent
+    ))
+
+
+----------------
+-- * Gateways --
+----------------
+
+type GatewaysAPI = Flat ( 
+  "gateways" :> 
+    Header "Authorization" Token :> (
+                                     Get  '[JSON]      [Gateway]
+    :<|>  ReqBody '[JSON] Gateway :> Post '[PlainText] GatewayId
+    :<|>  GatewayAPI
+    ))
+
+type GatewayAPI = (
+  Capture "gw_id" GatewayId :> (                 Get             '[JSON] Gateway
+    :<|>                                         DeleteNoContent '[JSON] NoContent
+    :<|> "tunnel" :> ReqBody '[PlainText] Int :> PutNoContent    '[JSON] NoContent
+    :<|> "tunnel"                             :> DeleteNoContent '[JSON] NoContent
+    ))
+
+
+----------------
+-- * Projects --
+----------------
 
 type ProjectsAPI = Flat ( 
   "projects" :> 
@@ -91,11 +153,17 @@ type ProjectAPI = (
     :<|> "devices"  :> ReqBody '[JSON] [DeviceId]  :> PutNoContent    '[JSON] NoContent
     :<|> "gateways" :> ReqBody '[JSON] [GatewayId] :> PutNoContent    '[JSON] NoContent))
 
--- * Ontologies
 
-type OntologiesAPI = "ontologies" :> ( "sensing_devices" :> Get '[JSON] [SensorKind] :<|>
-                                       "quantity_kinds"  :> Get '[JSON] [QuantityKind] :<|>
-                                       "units"           :> Get '[JSON] [Unit])
+------------------
+-- * Ontologies --
+------------------
+
+type OntologiesAPI = 
+  "ontologies" :> (
+         "sensor_kinds"   :> Get '[JSON] [SensorKind]
+    :<|> "actuator_kinds" :> Get '[JSON] [ActuatorKind]
+    :<|> "quantity_kinds" :> Get '[JSON] [QuantityKind]
+    :<|> "units"          :> Get '[JSON] [Unit])
 
 
 instance ToParamSchema Token where

@@ -8,6 +8,7 @@ import Servant
 import Servant.API.Flatten
 import Waziup.Types
 import Data.Text
+import Data.Time
 import Data.Aeson
 import Data.Swagger hiding (Header)
 import Keycloak
@@ -27,6 +28,7 @@ type WaziupAPI = AuthAPI
             :<|> SensorDataAPI
             :<|> GatewaysAPI
             :<|> ProjectsAPI
+            :<|> UsersAPI
             :<|> OntologiesAPI
 
 type WaziupDocs = SwaggerSchemaUI "swagger-ui" "swagger.json"
@@ -48,9 +50,13 @@ type AuthAPI =
 
 type DevicesAPI = Flat ( 
   "devices" :> Header "Authorization" Token :> ( 
-          QueryParam "q" DevicesQuery :> QueryParam "limit" DevicesLimit :> QueryParam "offset" DevicesOffset :> Get           '[JSON] [Device] 
-    :<|>  ReqBody '[JSON] Device                                                                              :> PostNoContent '[JSON] NoContent
-    :<|>  DeviceAPI
+          QueryParam "q"      DevicesQuery
+       :> QueryParam "limit"  DevicesLimit
+       :> QueryParam "offset" DevicesOffset
+       :> Get '[JSON] [Device] 
+  :<|> ReqBody '[JSON] Device
+       :> PostNoContent '[JSON] NoContent
+  :<|> DeviceAPI
     ))
 
 type DeviceAPI = Flat (
@@ -90,9 +96,15 @@ type SensorAPI = Flat (
 --------------------
 
 type SensorDataAPI = Flat (
-  Header "Authorization" Token :> "devices" :> Capture "device_id" DeviceId :> 
-                                  "sensors" :> Capture "sensor_id" SensorId :> 
-        Get '[JSON] [Datapoint])
+  "sensors_data" :> Header "Authorization" Token 
+  :> QueryParam "device_id" DeviceId
+  :> QueryParam "sensor_id" SensorId
+  :> QueryParam "lastN"     Int
+  :> QueryParam "limit"     Int
+  :> QueryParam "offset"    Int
+  :> QueryParam "dateFrom"  UTCTime
+  :> QueryParam "dataTo"    UTCTime
+  :> Get '[JSON] [Datapoint])
 
 -----------------
 -- * Actuators --
@@ -152,6 +164,16 @@ type ProjectAPI = (
     :<|>                                              DeleteNoContent '[JSON] NoContent
     :<|> "devices"  :> ReqBody '[JSON] [DeviceId]  :> PutNoContent    '[JSON] NoContent
     :<|> "gateways" :> ReqBody '[JSON] [GatewayId] :> PutNoContent    '[JSON] NoContent))
+
+
+-------------
+-- * Users --
+-------------
+
+type UsersAPI = Flat ( 
+  "users" :> Header "Authorization" Token :> (
+         Get  '[JSON]      [User]
+    :<|> Capture "user_id" ProjectId :> Get '[JSON] User))
 
 
 ------------------

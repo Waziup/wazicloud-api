@@ -15,6 +15,7 @@ import           Data.String.Conversions
 import qualified Data.List as L
 import           Data.Aeson as JSON
 import           Data.AesonBson
+import           Data.Time
 import           Servant
 import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
 import           Orion as O hiding (info, warn, debug, err)
@@ -22,17 +23,26 @@ import           System.Log.Logger
 import           Database.MongoDB as DB hiding (value)
 
 
-getDatapoints :: Maybe Token -> DeviceId -> SensorId -> Waziup [Datapoint]
-getDatapoints tok did sid = do
+getDatapoints :: Maybe Token
+              -> Maybe DeviceId
+              -> Maybe SensorId
+              -> Maybe Int
+              -> Maybe Int
+              -> Maybe Int
+              -> Maybe UTCTime
+              -> Maybe UTCTime
+              -> Waziup [Datapoint]
+getDatapoints tok did sid lastN limit offset dateFrom dateTo = do
   info "Get datapoints"
-  withKCId did $ \(keyId, _) -> do
-    debug "Check permissions"
-    runKeycloak $ checkPermission keyId (pack $ show DevicesDataView) tok
-    debug "Permission granted, returning datapoints"
-    runMongo $ getDatapointsMongo did sid
+  return []
+  --withKCId did $ \(keyId, _) -> do
+  --  debug "Check permissions"
+  --  runKeycloak $ checkPermission keyId (pack $ show DevicesDataView) tok
+  --  debug "Permission granted, returning datapoints"
+  --  runMongo $ getDatapointsMongo did sid
 
-getDatapointsMongo :: DeviceId -> SensorId -> Action IO [Datapoint]
-getDatapointsMongo did mid = do
+getDatapointsMongo :: Maybe DeviceId -> Maybe SensorId -> Action IO [Datapoint]
+getDatapointsMongo did sid = do
   docs <- rest =<< find (select [] "waziup_history")
   let res = sequence $ map (fromJSON . Object . aesonify) docs
   case res of

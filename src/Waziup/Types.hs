@@ -575,58 +575,88 @@ instance MimeUnrender PlainText Int
 -- * Notifications --
 ---------------------
 
-type NotifId  = Text
+-- Id of a gateway
+newtype NotifId = NotifId {unNotifId :: Text} deriving (Show, Eq, Generic)
+
+--JSON instances
+instance ToJSON NotifId where
+  toJSON = genericToJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+instance FromJSON NotifId where
+  parseJSON = genericParseJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+-- is used in Url pieces
+instance FromHttpApiData NotifId where
+  parseUrlPiece a = Right $ NotifId a 
+
+-- is used as plain text body
+instance MimeRender PlainText NotifId where
+  mimeRender proxy (NotifId p) = convertString p 
+
+-- Rendering in Swagger
+instance ToSchema NotifId
+instance ToParamSchema NotifId
 
 -- | one notification
-data Notification = Notification
-  { notifId           :: NotifId             -- ^ id of the notification (attributed by the server)
-  , notifDescription  :: Text                -- ^ Description of the notification
-  , notifSubject      :: NotificationSubject -- ^ 
-  , notifNotification :: SocialMessageBatch  -- ^ 
-  , notifThrottling   :: Double              -- ^ minimum interval between two messages in seconds
+data Notif = Notif
+  { notifId          :: Maybe NotifId       -- ^ id of the notification (attributed by the server)
+  , notifDescription :: Text                -- ^ Description of the notification
+  , notifSubject     :: NotifSubject        -- ^ 
+  , notifNotif       :: SocialMessageBatch  -- ^ 
+  , notifThrottling  :: Double              -- ^ minimum interval between two messages in seconds
   } deriving (Show, Eq, Generic)
 
+defaultNotif = Notif
+  { notifId          = Nothing 
+  , notifDescription = "Test"               
+  , notifSubject     = NotifSubject [DeviceId "MyDevice"] $ NotifCond [SensorId "TC"] "TC>40" 
+  , notifNotif       = defaultSocialMessageBatch 
+  , notifThrottling  = 3600            
+  }
+
 --JSON instances
-instance FromJSON Notification where
+instance FromJSON Notif where
   parseJSON = genericParseJSON $ aesonDrop 5 snakeCase
 
-instance ToJSON Notification where
-  toJSON = genericToJSON $ aesonDrop 5 snakeCase
+instance ToJSON Notif where
+  toJSON = genericToJSON (aesonDrop 5 snakeCase) {omitNothingFields = True}
 
---Swagger instance
-instance ToSchema Notification
+--Swagger instances
+instance ToSchema Notif where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON defaultNotif 
 
 -- | notification condition
-data NotificationCondition = NotificationCondition
-  { notifCondAttrs      :: [SensorId]   -- ^ Ids of the sensors to watch 
-  , notifCondExpression :: Text         -- ^ Expression for the condition, such as TC>40
+data NotifCond = NotifCond
+  { notifCondSensors :: [SensorId]   -- ^ Ids of the sensors to watch 
+  , notifCondExpr    :: Text         -- ^ Expression for the condition, such as TC>40
   } deriving (Show, Eq, Generic)
 
 --JSON instances
-instance FromJSON NotificationCondition where
+instance FromJSON NotifCond where
   parseJSON = genericParseJSON $ aesonDrop 5 snakeCase
 
-instance ToJSON NotificationCondition where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "notificationCondition")
+instance ToJSON NotifCond where
+  toJSON = genericToJSON (removeFieldLabelPrefix False "notifCond")
 
 --Swagger instance
-instance ToSchema NotificationCondition
+instance ToSchema NotifCond
 
 -- | notification subject
-data NotificationSubject = NotificationSubject
-  { notifSubjectEntityNames :: [DeviceId]          -- ^ Ids of the devices to watch
-  , notifSubjectCondition :: NotificationCondition -- ^ Condition of the notification
+data NotifSubject = NotifSubject
+  { notifSubjectDevices :: [DeviceId]   -- ^ Ids of the devices to watch
+  , notifSubjectCond    :: NotifCond    -- ^ Condition of the notification
   } deriving (Show, Eq, Generic)
 
 -- JSON instances
-instance FromJSON NotificationSubject where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "notificationSubject")
+instance FromJSON NotifSubject where
+  parseJSON = genericParseJSON (removeFieldLabelPrefix True "notifSubject")
 
-instance ToJSON NotificationSubject where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "notificationSubject")
+instance ToJSON NotifSubject where
+  toJSON = genericToJSON (removeFieldLabelPrefix False "notifSubject")
 
 --Swagger instance
-instance ToSchema NotificationSubject
+instance ToSchema NotifSubject
 
 
 ---------------

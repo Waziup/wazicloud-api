@@ -30,6 +30,7 @@ type WaziupAPI = AuthAPI
             :<|> ProjectsAPI
             :<|> UsersAPI
             :<|> SocialsAPI
+            :<|> NotifsAPI
             :<|> OntologiesAPI
 
 type WaziupDocs = SwaggerSchemaUI "swagger-ui" "swagger.json"
@@ -207,6 +208,7 @@ type UsersAPI = Flat ( Header "Authorization" Token :>
     :<|> Capture "user_id" ProjectId
       :> Get '[JSON] User))
 
+
 ---------------
 -- * Socials --
 ---------------
@@ -223,6 +225,22 @@ type SocialsAPI = Flat ( Header "Authorization" Token :>
            Get '[JSON] SocialMessage
       :<|> DeleteNoContent '[JSON] NoContent
     )))
+
+
+--------------------
+-- * Notification --
+--------------------
+
+type NotifsAPI = Flat ( Header "Authorization" Token :> 
+  "notifications" :> (
+          Get  '[JSON] [Notif]
+    :<|>  ReqBody '[JSON] Notif
+       :> Post '[PlainText] NotifId
+    :<|> Capture "notif_id" NotifId :> (
+           Get '[JSON] Notif
+      :<|> DeleteNoContent '[JSON] NoContent
+    )))
+
 
 ------------------
 -- * Ontologies --

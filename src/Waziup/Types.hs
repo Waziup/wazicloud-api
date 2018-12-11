@@ -699,15 +699,25 @@ data SocialMessageBatch = SocialMessageBatch
   , socBatchMessage   :: SocialMessageText -- ^ Text of the message 
   } deriving (Show, Eq, Generic)
 
+defaultSocialMessageBatch = SocialMessageBatch 
+  { socBatchUsernames = ["cdupont"]
+  , socBatchChannels  = [Twitter, SMS] 
+  , socBatchMessage   = "Text"
+  }
+
+
 --JSON instances
 instance FromJSON SocialMessageBatch where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "soc")
+  parseJSON = genericParseJSON (removeFieldLabelPrefix True "socBatch")
 
 instance ToJSON SocialMessageBatch where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "soc")
+  toJSON = genericToJSON (removeFieldLabelPrefix False "socBatch")
 
 --Swagger instances
-instance ToSchema SocialMessageBatch
+instance ToSchema SocialMessageBatch where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON defaultSocialMessageBatch 
+
 
 -------------
 -- * Users --

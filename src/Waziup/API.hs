@@ -29,6 +29,7 @@ type WaziupAPI = AuthAPI
             :<|> GatewaysAPI
             :<|> ProjectsAPI
             :<|> UsersAPI
+            :<|> SocialsAPI
             :<|> OntologiesAPI
 
 type WaziupDocs = SwaggerSchemaUI "swagger-ui" "swagger.json"
@@ -39,7 +40,7 @@ type WaziupDocs = SwaggerSchemaUI "swagger-ui" "swagger.json"
 
 type AuthAPI = 
   "auth" :>  (
-        "permissions"
+         "permissions"
           :> Header "Authorization" Token
           :> Get  '[JSON]      [Perm]
     :<|> "token"
@@ -206,6 +207,19 @@ type UsersAPI = Flat ( Header "Authorization" Token :>
     :<|> Capture "user_id" ProjectId
       :> Get '[JSON] User))
 
+---------------
+-- * Socials --
+---------------
+
+type SocialsAPI = Flat ( Header "Authorization" Token :> 
+  "socials" :> (
+          Get  '[JSON] [SocialMessage]
+    :<|>  ReqBody '[JSON] SocialMessage
+       :> Post '[PlainText] SocialMessageId
+    :<|> Capture "social_msg_id" SocialMessageId :> (
+           Get '[JSON] SocialMessage
+      :<|> DeleteNoContent '[JSON] NoContent
+    )))
 
 ------------------
 -- * Ontologies --

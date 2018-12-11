@@ -39,6 +39,7 @@ serverWaziup = authServer
           :<|> gatewaysServer
           :<|> projectsServer
           :<|> usersServer
+          :<|> socialsServer
           :<|> ontologiesServer
 
 serverDocs :: ServerT WaziupDocs Waziup
@@ -82,6 +83,9 @@ actuatorsServer = error "Not yet implemented"
 usersServer :: ServerT UsersAPI Waziup
 usersServer = error "Not yet implemented"
 
+socialsServer :: ServerT SocialsAPI Waziup
+socialsServer = error "Not yet implemented"
+
 projectsServer :: ServerT ProjectsAPI Waziup
 projectsServer = getProjects
             :<|> postProject
@@ -118,9 +122,10 @@ swaggerDoc = toSwagger (Proxy :: Proxy WaziupAPI)
   & S.applyTagsFor userOps    ["Users"]
   & S.applyTagsFor ontoOps    ["Ontologies"]
   & S.applyTagsFor gwsOps     ["Gateways"]
+  & S.applyTagsFor socialsOps ["Socials"]
   & S.tags .~ (fromList [])
   where
-    devicesOps, sensorOps, actuatOps, dataOps, authOps, projectOps, userOps, ontoOps, gwsOps :: Traversal' S.Swagger S.Operation
+    devicesOps, sensorOps, actuatOps, dataOps, authOps, projectOps, userOps, ontoOps, gwsOps, socialsOps :: Traversal' S.Swagger S.Operation
     devicesOps = subOperations (Proxy :: Proxy DevicesAPI)    (Proxy :: Proxy WaziupAPI)
     sensorOps  = subOperations (Proxy :: Proxy SensorsAPI)    (Proxy :: Proxy WaziupAPI)
     actuatOps  = subOperations (Proxy :: Proxy ActuatorsAPI)  (Proxy :: Proxy WaziupAPI)
@@ -130,6 +135,7 @@ swaggerDoc = toSwagger (Proxy :: Proxy WaziupAPI)
     userOps    = subOperations (Proxy :: Proxy UsersAPI)      (Proxy :: Proxy WaziupAPI)
     ontoOps    = subOperations (Proxy :: Proxy OntologiesAPI) (Proxy :: Proxy WaziupAPI)
     gwsOps     = subOperations (Proxy :: Proxy GatewaysAPI)   (Proxy :: Proxy WaziupAPI)
+    socialsOps = subOperations (Proxy :: Proxy SocialsAPI)    (Proxy :: Proxy WaziupAPI)
 
 -- * helpers
 

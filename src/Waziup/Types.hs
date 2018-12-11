@@ -635,6 +635,28 @@ instance ToSchema NotificationSubject
 
 type SocialMessageText = Text
 
+-- Id of a gateway
+newtype SocialMessageId = SocialMessageId {unSocialMessageId :: Text} deriving (Show, Eq, Generic)
+
+--JSON instances
+instance ToJSON SocialMessageId where
+  toJSON = genericToJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+instance FromJSON SocialMessageId where
+  parseJSON = genericParseJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+-- is used in Url pieces
+instance FromHttpApiData SocialMessageId where
+  parseUrlPiece a = Right $ SocialMessageId a 
+
+-- is used as plain text body
+instance MimeRender PlainText SocialMessageId where
+  mimeRender proxy (SocialMessageId p) = convertString p 
+
+-- Rendering in Swagger
+instance ToSchema SocialMessageId
+instance ToParamSchema SocialMessageId
+
 -- channel where the message is sent
 data Channel = Twitter | SMS | Voice deriving (Show, Eq, Generic)
 
@@ -644,37 +666,52 @@ instance ToSchema Channel
 
 -- | One social network message
 data SocialMessage = SocialMessage
-  { socialMessageUsername :: Username          -- ^ User name in Keycloak
-  , socialMessageChannel  :: Channel           -- ^ Channel for the notification 
-  , socialMessageText     :: SocialMessageText -- ^ Text of the message
+  { socId       :: Maybe SocialMessageId
+  , socUsername :: Username          -- ^ User name in Keycloak
+  , socChannel  :: Channel           -- ^ Channel for the notification 
+  , socText     :: SocialMessageText -- ^ Text of the message
   } deriving (Show, Eq, Generic)
+
+defaultSocialMessage = SocialMessage
+  { socId       = Nothing 
+  , socUsername = "cdupont" 
+  , socChannel  = Twitter
+  , socText     = "Test message"
+  }
 
 --JSON instances
 instance FromJSON SocialMessage where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "socialMessage")
+  parseJSON = genericParseJSON (removeFieldLabelPrefix True "soc")
 
 instance ToJSON SocialMessage where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "socialMessage")
+  toJSON = genericToJSON (removeFieldLabelPrefix False "soc") {omitNothingFields = True}
 
 --Swagger instances
-instance ToSchema SocialMessage
+instance ToSchema SocialMessage where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON defaultSocialMessage 
+
 
 -- | A message to be sent to several users and socials
 data SocialMessageBatch = SocialMessageBatch
-  { socialMessageBatchUsernames :: [Username]      -- ^ names of the destination users
-  , socialMessageBatchChannels :: [Channel]        -- ^ channels where to send the messages
-  , socialMessageBatchMessage :: SocialMessageText -- ^ Text of the message 
+  { socBatchUsernames :: [Username]      -- ^ names of the destination users
+  , socBatchChannels  :: [Channel]        -- ^ channels where to send the messages
+  , socBatchMessage   :: SocialMessageText -- ^ Text of the message 
   } deriving (Show, Eq, Generic)
 
 --JSON instances
 instance FromJSON SocialMessageBatch where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "socialMessageBatch")
+  parseJSON = genericParseJSON (removeFieldLabelPrefix True "soc")
 
 instance ToJSON SocialMessageBatch where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "socialMessageBatch")
+  toJSON = genericToJSON (removeFieldLabelPrefix False "soc")
 
 --Swagger instances
 instance ToSchema SocialMessageBatch
+
+-------------
+-- * Users --
+-------------
 
 -- | User 
 data User = User

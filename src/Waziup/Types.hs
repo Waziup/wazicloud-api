@@ -308,7 +308,7 @@ instance ToSchema SensorId where
 instance ToParamSchema SensorId
 
 
--- | one measurement 
+-- | one sensor 
 data Sensor = Sensor
   { senId            :: SensorId               -- ^ ID of the sensor
   , senName          :: Maybe SensorName       -- ^ name of the sensor
@@ -316,6 +316,7 @@ data Sensor = Sensor
   , senQuantityKind  :: Maybe QuantityKindId   -- ^ quantity measured, from https://github.com/Waziup/waziup-js/blob/master/src/model/QuantityKinds.js
   , senUnit          :: Maybe UnitId           -- ^ unit of the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/Units.js
   , senLastValue     :: Maybe SensorValue      -- ^ last value received by the platform
+  , senCalib         :: Maybe LinearCalib
   } deriving (Show, Eq, Generic)
 
 defaultSensor = Sensor
@@ -325,6 +326,7 @@ defaultSensor = Sensor
   , senQuantityKind  = Just $ QuantityKindId "AirTemperature" 
   , senUnit          = Just $ UnitId "DegreeCelsius"
   , senLastValue     = Nothing
+  , senCalib         = Nothing
   } 
 
 instance FromJSON Sensor where
@@ -367,6 +369,45 @@ instance ToSchema SensorValue where
 instance ToSchema Value where
   declareNamedSchema _ = pure (NamedSchema (Just "Value") (mempty & type_ .~ SwaggerObject))
 
+
+-- * Calibration
+
+data LinearCalib = LinearCalib 
+  { calValueMin :: CalibValue
+  , calValueMax :: CalibValue
+  } deriving (Show, Eq, Generic)
+
+defaultLinearCalib = LinearCalib 
+  { calValueMin = CalibValue (Number 900) (Number 100)
+  , calValueMax = CalibValue (Number 300) (Number 0)
+  }
+
+--JSON instances
+instance FromJSON LinearCalib where
+  parseJSON = genericParseJSON $ aesonDrop 3 snakeCase
+
+instance ToJSON LinearCalib where
+  toJSON = genericToJSON (aesonDrop 3 snakeCase)
+
+--Swagger instance
+instance ToSchema LinearCalib where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON defaultLinearCalib
+
+
+data CalibValue = CalibValue
+  { calSensorValue :: Value
+  , calRealValue   :: Value
+  } deriving (Show, Eq, Generic)
+
+--JSON instances
+instance FromJSON CalibValue where
+  parseJSON = genericParseJSON $ aesonDrop 3 snakeCase
+
+instance ToJSON CalibValue where
+  toJSON = genericToJSON (aesonDrop 3 snakeCase)
+
+instance ToSchema CalibValue
 
 -------------------
 -- * Data points --

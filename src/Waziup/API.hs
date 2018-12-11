@@ -87,6 +87,7 @@ type SensorAPI = Flat (
     :<|> "sensor_kind"   :> ReqBody '[PlainText] SensorKindId   :> PutNoContent    '[JSON] NoContent
     :<|> "quantity_kind" :> ReqBody '[PlainText] QuantityKindId :> PutNoContent    '[JSON] NoContent
     :<|> "unit"          :> ReqBody '[PlainText] UnitId         :> PutNoContent    '[JSON] NoContent
+    :<|> "calib"         :> ReqBody '[JSON] LinearCalib         :> PutNoContent    '[JSON] NoContent
     :<|> "value"         :> ReqBody '[JSON] SensorValue         :> PostNoContent   '[JSON] NoContent
     ))
 

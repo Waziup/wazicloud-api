@@ -25,7 +25,7 @@ import           Database.MongoDB as DB hiding (value)
 
 getSensors :: Maybe Token -> DeviceId -> Waziup [Sensor]
 getSensors tok did = do
-  info "Get measurements"
+  info "Get sensors"
   withKCId did $ \(keyId, device) -> do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show DevicesView) tok
@@ -49,7 +49,7 @@ getSensor tok did sid = do
   withKCId did $ \(keyId, device) -> do
      debug "Check permissions"
      runKeycloak $ checkPermission keyId (pack $ show DevicesView) tok
-     debug "Permission granted, returning measurement"
+     debug "Permission granted, returning sensor"
      case L.find (\s -> senId s == sid) (devSensors device) of
        Just sensor -> return sensor
        Nothing -> do 
@@ -58,44 +58,50 @@ getSensor tok did sid = do
 
 deleteSensor :: Maybe Token -> DeviceId -> SensorId -> Waziup NoContent
 deleteSensor tok did sid = do
-  info "Delete measurement"
+  info "Delete sensor"
   withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show DevicesUpdate) tok
-    debug "Permission granted, deleting measurement"
+    debug "Permission granted, deleting sensor"
     runOrion $ O.deleteAttribute (toEntityId did) (toAttributeId sid)
     return NoContent
 
 putSensorName :: Maybe Token -> DeviceId -> SensorId -> SensorName -> Waziup NoContent
 putSensorName mtok did sid name = do
-  info $ "Put meas name: " ++ (show name)
+  info $ "Put sensor name: " ++ (show name)
   updateSensorField mtok did sid $ \sensor -> do 
     runOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senName = Just name})
 
 putSensorSensorKind :: Maybe Token -> DeviceId -> SensorId -> SensorKindId -> Waziup NoContent
 putSensorSensorKind mtok did sid sk = do
-  info $ "Put meas sensor kind: " ++ (show sk)
+  info $ "Put sensor sensor kind: " ++ (show sk)
   updateSensorField mtok did sid $ \sensor -> do 
     runOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senSensorKind = Just sk})
 
 putSensorQuantityKind :: Maybe Token -> DeviceId -> SensorId -> QuantityKindId -> Waziup NoContent
 putSensorQuantityKind mtok did sid qk = do
-  info $ "Put meas quantity kind: " ++ (show qk)
+  info $ "Put sensor quantity kind: " ++ (show qk)
   updateSensorField mtok did sid $ \sensor -> do 
     runOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senQuantityKind = Just qk})
 
 putSensorUnit :: Maybe Token -> DeviceId -> SensorId -> UnitId -> Waziup NoContent
 putSensorUnit mtok did sid u = do
-  info $ "Put meas unit: " ++ (show u)
+  info $ "Put sensor unit: " ++ (show u)
   updateSensorField mtok did sid $ \sensor -> do 
     runOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senUnit = Just u})
 
 putSensorValue :: Maybe Token -> DeviceId -> SensorId -> SensorValue -> Waziup NoContent
 putSensorValue mtok did sid senVal = do
-  info $ "Put meas value: " ++ (show senVal)
+  info $ "Put sensor value: " ++ (show senVal)
   updateSensorField mtok did sid $ \sensor -> do 
     runOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senLastValue = Just senVal})
     runMongo $ postDatapoint $ Datapoint did sid senVal
+
+putSensorCalib :: Maybe Token -> DeviceId -> SensorId -> LinearCalib -> Waziup NoContent
+putSensorCalib mtok did sid cal = do
+  info $ "Put sensor cal: " ++ (show cal)
+  updateSensorField mtok did sid $ \sensor -> do 
+    runOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senCalib = Just cal})
   
 postDatapoint :: Datapoint -> Action IO ()
 postDatapoint d = do
@@ -111,14 +117,14 @@ updateSensorField mtok did sid w = do
   withKCId did $ \(keyId, device) -> do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show DevicesUpdate) mtok
-    debug "Permission granted, updating measurement"
+    debug "Permission granted, updating sensor"
     case L.find (\s -> (senId s) == sid) (devSensors device) of
       Just sensor -> do
         w sensor
         return NoContent
       Nothing -> do 
-        warn "Measurement not found"
-        throwError err404 {errBody = "Measurement not found"}
+        warn "sensor not found"
+        throwError err404 {errBody = "Sensor not found"}
 
 toAttributeId :: SensorId -> AttributeId
 toAttributeId (SensorId sid) = AttributeId sid

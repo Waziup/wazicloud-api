@@ -67,6 +67,7 @@ sensorsServer = getSensors
            :<|> putSensorSensorKind
            :<|> putSensorQuantityKind
            :<|> putSensorUnit
+           :<|> putSensorCalib
            :<|> putSensorValue
 
 sensorDataServer :: ServerT SensorDataAPI Waziup

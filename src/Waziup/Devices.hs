@@ -185,9 +185,10 @@ getSensorFromAttribute (O.Attribute (AttributeId name) aType val mets) =
     then Just $ Sensor { senId            = SensorId name,
                          senName          = fromSimpleMetadata (MetadataId "name") mets,
                          senQuantityKind  = QuantityKindId <$> fromSimpleMetadata (MetadataId "quantity_kind") mets,
-                         senSensorKind    = SensorKindId <$> fromSimpleMetadata (MetadataId "sensing_device") mets,
-                         senUnit          = UnitId <$> fromSimpleMetadata (MetadataId "unit") mets,
-                         senLastValue     = getSensorLastValue val mets}
+                         senSensorKind    = SensorKindId   <$> fromSimpleMetadata (MetadataId "sensing_device") mets,
+                         senUnit          = UnitId         <$> fromSimpleMetadata (MetadataId "unit") mets,
+                         senLastValue     = getSensorLastValue val mets,
+                         senCalib         = getSensorCalib mets}
     else Nothing
 
 getSensorLastValue :: Maybe Value -> [O.Metadata] -> Maybe SensorValue
@@ -198,6 +199,13 @@ getSensorLastValue mval mets = do
                         (O.fromSimpleMetadata (MetadataId "timestamp")    mets >>= parseISO8601.unpack)
                         (O.fromSimpleMetadata (MetadataId "dateModified") mets >>= parseISO8601.unpack)
 
+getSensorCalib :: [O.Metadata] -> Maybe LinearCalib
+getSensorCalib mets = do
+   (Metadata _ _ mval) <- L.find (\(Metadata mid' _ _) -> mid' == (MetadataId "calib") ) mets
+   val <- mval
+   case fromJSON val of
+     Success a -> Just a
+     JSON.Error _ -> Nothing
 
 isNull :: Value -> Bool
 isNull Null = True
@@ -221,14 +229,15 @@ getLocationAttr :: Location -> O.Attribute
 getLocationAttr (Location (Latitude lat) (Longitude lon)) = O.Attribute (AttributeId "location") "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) []
 
 getAttFromSensor :: Sensor -> O.Attribute
-getAttFromSensor (Sensor (SensorId senId) name sd qk u lv) = 
+getAttFromSensor (Sensor (SensorId senId) name sd qk u lv cal) = 
   (O.Attribute (AttributeId senId) "Sensor"
                      (senValValue <$> lv)
                      (catMaybes [getTextMetadata (MetadataId "name")           <$> name,
                                  getTextMetadata (MetadataId "quantity_kind")  <$> unQuantityKindId <$> qk,
                                  getTextMetadata (MetadataId "sensing_device") <$> unSensorKindId <$> sd,
                                  getTextMetadata (MetadataId "unit")           <$> unUnitId <$> u,
-                                 getTimeMetadata (MetadataId "timestamp")      <$> (join $ senValTimestamp <$> lv)]))
+                                 getTimeMetadata (MetadataId "timestamp")      <$> (join $ senValTimestamp <$> lv),
+                                 if (isJust cal) then Just $ Metadata (MetadataId "calib") (Just "Calib") (toJSON <$> cal) else Nothing]))
 
 
 withKCId :: DeviceId -> ((ResourceId, Device) -> Waziup a) -> Waziup a

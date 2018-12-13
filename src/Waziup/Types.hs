@@ -753,28 +753,60 @@ instance ToSchema SocialMessageBatch where
 -- * Users --
 -------------
 
+type UsersLimit   = Int
+type UserssOffset = Int
+
+-- Id of a user
+newtype UserId = UserId {unUserId :: Text} deriving (Show, Eq, Generic)
+
+--JSON instances
+instance ToJSON UserId where
+  toJSON = genericToJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+instance FromJSON UserId where
+  parseJSON = genericParseJSON (defaultOptions {AT.unwrapUnaryRecords = True})
+
+-- is used in Url pieces
+instance FromHttpApiData UserId where
+  parseUrlPiece a = Right $ UserId a 
+
+--Swagger instance
+instance ToSchema UserId
+
 -- | User 
 data User = User
-  { userId :: Text -- ^ 
-  , userUsername :: Username -- ^ 
-  , userFirstName :: Text -- ^ 
-  , userLastName :: Text -- ^ 
-  , userSubservice :: Text -- ^ 
-  , userEmail :: Text -- ^ 
-  , userPhone :: Text -- ^ 
-  , userAddress :: Text -- ^ 
-  , userFacebook :: Text -- ^ 
-  , userTwitter :: Text -- ^ 
-  , userRoles :: Text -- ^ 
+  { userId        :: Maybe UserId   -- ^ The unique user ID 
+  , userUsername  :: Username       -- ^ Username
+  , userFirstName :: Text           -- ^ First name
+  , userLastName  :: Text           -- ^ Last name
+  , userEmail     :: Text           -- ^ Email 
+  , userPhone     :: Text           -- ^ Phone with international code: +39... 
+  , userFacebook  :: Text           -- ^ Facebook account
+  , userTwitter   :: Text           -- ^ Twitter account, without the @ 
   } deriving (Show, Eq, Generic)
+
+defaultUser = User
+  { userId        = Nothing 
+  , userUsername  = "cdupont"
+  , userFirstName = "Corentin"
+  , userLastName  = "Dupont"
+  , userEmail     = ""
+  , userPhone     = "+39000"
+  , userFacebook  = "" 
+  , userTwitter   = ""
+  }
+
 
 instance FromJSON User where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "user")
 
 instance ToJSON User where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "user")
+  toJSON = genericToJSON (removeFieldLabelPrefix False "user") {omitNothingFields = True}
 
-instance ToSchema User
+--Swagger instances
+instance ToSchema User where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON defaultUser 
 
 
 ----------------

@@ -204,7 +204,9 @@ type ProjectsAPI = Flat ( Header "Authorization" Token :>
 
 type UsersAPI = Flat ( Header "Authorization" Token :> 
   "users" :> (
-         Get  '[JSON] [User]
+         QueryParam "limit"  DevicesLimit
+      :> QueryParam "offset" DevicesOffset
+      :> Get '[JSON] [User]
     :<|> Capture "user_id" ProjectId
       :> Get '[JSON] User))
 

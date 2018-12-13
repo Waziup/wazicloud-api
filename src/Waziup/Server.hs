@@ -10,6 +10,7 @@ import           Waziup.Ontologies
 import           Waziup.Projects
 import           Waziup.Sensors
 import           Waziup.SensorData
+import           Waziup.Actuators
 import qualified Keycloak.Types as KC
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
@@ -79,7 +80,14 @@ gatewaysServer :: ServerT GatewaysAPI Waziup
 gatewaysServer = error "Not yet implemented"
 
 actuatorsServer :: ServerT ActuatorsAPI Waziup
-actuatorsServer = error "Not yet implemented"
+actuatorsServer = getActuators
+             :<|> postActuator
+             :<|> getActuator
+             :<|> deleteActuator
+             :<|> putActuatorName
+             :<|> putActActuatorKind
+             :<|> putActuatorValueType
+             :<|> putActuatorValue
 
 usersServer :: ServerT UsersAPI Waziup
 usersServer = error "Not yet implemented"

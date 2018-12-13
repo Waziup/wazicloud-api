@@ -186,6 +186,7 @@ data Device = Device
   , devDomain       :: Maybe Domain     -- ^ the domain of this device.
   , devVisibility   :: Maybe Visibility
   , devSensors      :: [Sensor]
+  , devActuators    :: [Actuator]
   , devOwner        :: Maybe Username   -- ^ owner of the device node (output only)
   , devDateCreated  :: Maybe UTCTime    -- ^ creation date of the device (output only)
   , devDateModified :: Maybe UTCTime    -- ^ last update date of the device node (output only)
@@ -200,6 +201,7 @@ defaultDevice = Device
   , devDomain       = Just "waziup" 
   , devVisibility   = Just Public
   , devSensors      = [defaultSensor]
+  , devActuators    = [defaultActuator]
   , devOwner        = Nothing
   , devDateCreated  = Nothing
   , devDateModified = Nothing
@@ -472,7 +474,7 @@ data Actuator = Actuator
   { actId                 :: ActuatorId         -- ^ ID of the actuator
   , actName               :: Maybe ActuatorName -- ^ name of the actuator
   , actActuatorKind       :: Maybe ActuatorKindId
-  , actActuatorValueType  :: Maybe ActuatorValueType
+  , actActuatorValueType  :: Maybe ActuatorValueTypeId
   , actValue              :: Maybe Value
   } deriving (Show, Eq, Generic)
 
@@ -923,7 +925,7 @@ instance ToSchema ActuatorKindId
 data ActuatorKind = ActuatorKind {
   akId        :: ActuatorKindId,
   akLabel     :: Text,
-  akValueType :: [ActuatorValueType]
+  akValueType :: [ActuatorValueTypeId]
   } deriving (Show, Eq, Generic)
 
 instance ToJSON ActuatorKind where
@@ -935,17 +937,26 @@ instance FromJSON ActuatorKind where
 instance ToSchema ActuatorKind
 
 -- Actuator value type denote the kind of data needed to control the actuator
-data ActuatorValueType =  ActString | ActNumber | ActBool | ActNull | ActObject | ActArray deriving (Show, Eq, Generic)
+data ActuatorValueTypeId =  ActString | ActNumber | ActBool | ActNull | ActObject | ActArray deriving (Show, Eq, Generic)
 
-instance ToJSON ActuatorValueType where
+readValueType :: Text -> Maybe ActuatorValueTypeId
+readValueType "String" = Just ActString 
+readValueType "Number" = Just ActNumber 
+readValueType "Bool"   = Just ActBool 
+readValueType "Null"   = Just ActNull 
+readValueType "Object" = Just ActObject 
+readValueType "Array"  = Just ActArray 
+readValueType _        = Nothing
+
+instance ToJSON ActuatorValueTypeId where
   toJSON = genericToJSON $ (removeFieldLabelPrefix False "Act") {AT.allNullaryToStringTag = True}
 
-instance FromJSON ActuatorValueType where
+instance FromJSON ActuatorValueTypeId where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "Act") {AT.allNullaryToStringTag = True}
 
-instance MimeUnrender PlainText ActuatorValueType
+instance MimeUnrender PlainText ActuatorValueTypeId
 
-instance ToSchema ActuatorValueType
+instance ToSchema ActuatorValueTypeId
 
 
 -- * Quantity kinds

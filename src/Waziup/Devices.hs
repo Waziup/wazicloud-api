@@ -65,7 +65,7 @@ getDevice tok did = do
     return device
 
 postDevice :: Maybe Token -> Device -> Waziup NoContent
-postDevice tok s@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _) = do
+postDevice tok s@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
   info $ "Post device: " ++ (show s)
   debug "Check permissions"
   runKeycloak $ checkPermission (ResourceId "Devices") (pack $ show DevicesCreate) tok
@@ -168,6 +168,7 @@ getDeviceFromEntity (O.Entity (EntityId eId) eType attrs) =
                        devDateCreated  = fromSimpleAttribute (AttributeId "dateCreated") attrs >>= parseISO8601.unpack,
                        devDateModified = fromSimpleAttribute (AttributeId "dateModified") attrs >>= parseISO8601.unpack,
                        devSensors      = mapMaybe getSensorFromAttribute attrs,
+                       devActuators    = mapMaybe getActuatorFromAttribute attrs,
                        devKeycloakId   = ResourceId <$> O.fromSimpleAttribute (AttributeId "keycloak_id") attrs}
   else Nothing
 
@@ -189,6 +190,16 @@ getSensorFromAttribute (O.Attribute (AttributeId name) aType val mets) =
                          senUnit          = UnitId         <$> fromSimpleMetadata (MetadataId "unit") mets,
                          senLastValue     = getSensorLastValue val mets,
                          senCalib         = getSensorCalib mets}
+    else Nothing
+
+getActuatorFromAttribute :: O.Attribute -> Maybe Actuator
+getActuatorFromAttribute (O.Attribute (AttributeId name) aType val mets) =
+  if (aType == "Actuator") 
+    then Just $ Actuator { actId                = ActuatorId name,
+                           actName              = fromSimpleMetadata (MetadataId "name") mets,
+                           actActuatorKind      = ActuatorKindId <$> fromSimpleMetadata (MetadataId "actuator_kind") mets,
+                           actActuatorValueType = join $ readValueType  <$> fromSimpleMetadata (MetadataId "actuator_value_type") mets,
+                           actValue             = val}
     else Nothing
 
 getSensorLastValue :: Maybe Value -> [O.Metadata] -> Maybe SensorValue
@@ -215,7 +226,7 @@ isNull _    = False
 -- * From Waziup to Orion types
 
 getEntityFromDevice :: Device -> O.Entity
-getEntityFromDevice (Device (DeviceId sid) sgid sname sloc sdom svis sensor sown _ _ skey) = 
+getEntityFromDevice (Device (DeviceId sid) sgid sname sloc sdom svis sensors acts sown _ _ skey) = 
   O.Entity (EntityId sid) "Device" $ catMaybes [getSimpleAttr (AttributeId "name")        <$> sname,
                                                 getSimpleAttr (AttributeId "gateway_id")  <$> (unGatewayId <$> sgid),
                                                 getSimpleAttr (AttributeId "owner")       <$> sown,
@@ -223,7 +234,8 @@ getEntityFromDevice (Device (DeviceId sid) sgid sname sloc sdom svis sensor sown
                                                 getSimpleAttr (AttributeId "keycloak_id") <$> (unResId <$> skey),
                                                 getSimpleAttr (AttributeId "visibility")  <$> ((pack.show) <$> svis),
                                                 getLocationAttr               <$> sloc] <>
-                                                map getAttFromSensor sensor
+                                                map getAttFromSensor sensors <>
+                                                map getAttFromActuator acts
 
 getLocationAttr :: Location -> O.Attribute
 getLocationAttr (Location (Latitude lat) (Longitude lon)) = O.Attribute (AttributeId "location") "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) []
@@ -238,6 +250,14 @@ getAttFromSensor (Sensor (SensorId senId) name sd qk u lv cal) =
                                  getTextMetadata (MetadataId "unit")           <$> unUnitId <$> u,
                                  getTimeMetadata (MetadataId "timestamp")      <$> (join $ senValTimestamp <$> lv),
                                  if (isJust cal) then Just $ Metadata (MetadataId "calib") (Just "Calib") (toJSON <$> cal) else Nothing]))
+
+getAttFromActuator :: Actuator -> O.Attribute
+getAttFromActuator (Actuator (ActuatorId actId) name ak avt av) = 
+  (O.Attribute (AttributeId actId) "Actuator"
+                     av
+                     (catMaybes [getTextMetadata (MetadataId "name")           <$> name,
+                                 getTextMetadata (MetadataId "actuator_kind")  <$> unActuatorKindId <$> ak,
+                                 getTextMetadata (MetadataId "actuator_value_type") <$> convertString.show <$> avt]))
 
 
 withKCId :: DeviceId -> ((ResourceId, Device) -> Waziup a) -> Waziup a

@@ -149,7 +149,7 @@ type ActuatorsAPI = Flat ( Header "Authorization" Token :>
           :> ReqBody '[PlainText] ActuatorKindId
           :> PutNoContent '[JSON] NoContent
         :<|> "value_type"
-          :> ReqBody '[PlainText] ActuatorValueType
+          :> ReqBody '[PlainText] ActuatorValueTypeId
           :> PutNoContent '[JSON] NoContent
         :<|> "value"
           :> ReqBody '[JSON] Value

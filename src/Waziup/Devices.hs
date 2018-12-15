@@ -43,7 +43,7 @@ postAuth (AuthBody username password) = do
   tok <- runKeycloak (getUserAuthToken username password)
   return tok
 
-getDevices :: Maybe Token -> Maybe DevicesQuery -> Maybe DevicesLimit -> Maybe DevicesOffset -> Waziup [Device]
+getDevices :: Maybe Token -> Maybe DevicesQuery -> Maybe Limit -> Maybe Offset -> Waziup [Device]
 getDevices tok mq mlimit moffset = do
   info "Get devices"
   entities <- runOrion $ O.getEntities mq

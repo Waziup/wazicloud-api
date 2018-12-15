@@ -42,6 +42,10 @@ import           GHC.Generics (Generic)
 import qualified Database.MongoDB as DB
 import qualified Orion.Types as O
 
+type Limit  = Int
+type Offset = Int
+
+
 --------------------
 -- * Waziup Monad --
 --------------------
@@ -153,8 +157,6 @@ instance Show Scope where
 type DeviceName    = Text
 type Domain        = Text
 type DevicesQuery  = Text
-type DevicesLimit  = Int
-type DevicesOffset = Int
 
 -- Id of a device
 newtype DeviceId = DeviceId {unDeviceId :: Text} deriving (Show, Eq, Generic)
@@ -774,6 +776,7 @@ instance FromHttpApiData UserId where
 
 --Swagger instance
 instance ToSchema UserId
+instance ToParamSchema UserId
 
 -- | User 
 data User = User
@@ -935,6 +938,7 @@ instance FromJSON ActuatorKind where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "ak")
 
 instance ToSchema ActuatorKind
+
 
 -- Actuator value type denote the kind of data needed to control the actuator
 data ActuatorValueTypeId =  ActString | ActNumber | ActBool | ActNull | ActObject | ActArray deriving (Show, Eq, Generic)

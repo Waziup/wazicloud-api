@@ -57,8 +57,8 @@ type AuthAPI =
 type DevicesAPI = Flat (Header "Authorization" Token :> 
   "devices" :> ( 
          QueryParam "q"      DevicesQuery
-      :> QueryParam "limit"  DevicesLimit
-      :> QueryParam "offset" DevicesOffset
+      :> QueryParam "limit"  Limit
+      :> QueryParam "offset" Offset
       :> Get '[JSON] [Device] 
     :<|> ReqBody '[JSON] Device
       :> PostNoContent '[JSON] NoContent
@@ -204,10 +204,10 @@ type ProjectsAPI = Flat ( Header "Authorization" Token :>
 
 type UsersAPI = Flat ( Header "Authorization" Token :> 
   "users" :> (
-         QueryParam "limit"  DevicesLimit
-      :> QueryParam "offset" DevicesOffset
+         QueryParam "limit"  Limit
+      :> QueryParam "offset" Offset
       :> Get '[JSON] [User]
-    :<|> Capture "user_id" ProjectId
+    :<|> Capture "user_id" UserId
       :> Get '[JSON] User))
 
 

@@ -11,6 +11,7 @@ import           Waziup.Projects
 import           Waziup.Sensors
 import           Waziup.SensorData
 import           Waziup.Actuators
+import           Waziup.Users
 import qualified Keycloak.Types as KC
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
@@ -90,7 +91,8 @@ actuatorsServer = getActuators
              :<|> putActuatorValue
 
 usersServer :: ServerT UsersAPI Waziup
-usersServer = error "Not yet implemented"
+usersServer = getUsers
+         :<|> getUser
 
 socialsServer :: ServerT SocialsAPI Waziup
 socialsServer = error "Not yet implemented"

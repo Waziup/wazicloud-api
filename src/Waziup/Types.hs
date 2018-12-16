@@ -115,8 +115,10 @@ data Perm = Perm
 
 instance FromJSON Perm where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "perm")
+
 instance ToJSON Perm where
   toJSON = genericToJSON (removeFieldLabelPrefix False "perm")
+
 instance ToSchema Perm
 
 data Scope = DevicesCreate
@@ -756,9 +758,6 @@ instance ToSchema SocialMessageBatch where
 -------------
 -- * Users --
 -------------
-
-type UsersLimit   = Int
-type UserssOffset = Int
 
 -- Id of a user
 newtype UserId = UserId {unUserId :: Text} deriving (Show, Eq, Generic)

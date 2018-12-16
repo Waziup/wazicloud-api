@@ -6,7 +6,7 @@
 
 module Keycloak.Types where
 
-import           Data.Aeson as JSON
+import           Data.Aeson
 import           Data.Aeson.Types
 import           Data.Aeson.Casing
 import           Data.Text hiding (head, tail, map, toLower)
@@ -22,6 +22,11 @@ import           Control.Lens hiding ((.=))
 import           GHC.Generics (Generic)
 import           Web.HttpApiData (FromHttpApiData(..), ToHttpApiData(..))
 import           Network.HTTP.Client as HC hiding (responseBody)
+
+
+----------------------
+-- * Keycloak Monad --
+----------------------
 
 type Keycloak a = ReaderT KCConfig (ExceptT KCError IO) a
 
@@ -52,7 +57,17 @@ defaultKCConfig = KCConfig {
 
 type Path = Text
 
+
+-------------
+-- * Token --
+-------------
+
 newtype Token = Token {unToken :: BS.ByteString} deriving (Eq, Show, Generic)
+
+instance FromJSON Token where
+  parseJSON (Object v) = do
+    t <- v .: "access_token"
+    return $ Token $ encodeUtf8 t 
 
 instance FromHttpApiData Token where
   parseQueryParam = parseHeader . encodeUtf8
@@ -68,72 +83,7 @@ extractBearerAuth bs =
 
 instance ToHttpApiData Token where
   toQueryParam (Token token) = "Bearer " <> (decodeUtf8 token)
-
-newtype ResourceId = ResourceId {unResId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
-type ResourceName = Text
-type ScopeId = Text
-type ScopeName = Text
-type Scope = Text 
-
-data Permission = Permission 
-  { rsname :: ResourceName,
-    rsid   :: ResourceId,
-    scopes :: [Scope]
-  } deriving (Generic, Show)
-
-parsePermission :: Parse e Permission
-parsePermission = do
-    rsname  <- AB.key "rsname" asText
-    rsid    <- AB.key "rsid" asText
-    scopes  <- AB.keyMay "scopes" (eachInArray asText) 
-    return $ Permission rsname (ResourceId rsid) (if (isJust scopes) then (fromJust scopes) else [])
-
-type Username = Text
-type Password = Text
-
-data Owner = Owner {
-  ownId   :: Maybe Text,
-  ownName :: Username
-  } deriving (Generic, Show)
-
-instance FromJSON Owner where
-  parseJSON = genericParseJSON $ aesonDrop 3 snakeCase 
-instance ToJSON Owner where
-  toJSON = genericToJSON $ (aesonDrop 3 snakeCase) {omitNothingFields = True}
-
-data Resource = Resource {
-     resId      :: Maybe ResourceId,
-     resName    :: ResourceName,
-     resType    :: Maybe Text,
-     resUris    :: [Text],
-     resScopes  :: [Scope],
-     resOwner   :: Owner,
-     resOwnerManagedAccess :: Bool,
-     resAttributes :: [Attribute]
-  } deriving (Generic, Show)
-
-instance FromJSON Resource where
-  parseJSON = genericParseJSON $ aesonDrop 3 camelCase 
-instance ToJSON Resource where
-  toJSON (Resource id name typ uris scopes own uma attrs) =
-    object ["name" .= toJSON name,
-            "uris" .= toJSON uris,
-            "scopes" .= toJSON scopes,
-            "owner" .= toJSON own,
-            "ownerManagedAccess" .= toJSON uma,
-            "attributes" .= object (map (\(Attribute name vals) -> name .= toJSON vals) attrs)]
-
-data Attribute = Attribute {
-  attName   :: Text,
-  attValues :: [Text]
-  } deriving (Generic, Show)
-
-instance FromJSON Attribute where
-  parseJSON = genericParseJSON $ aesonDrop 3 camelCase 
-instance ToJSON Attribute where
-  toJSON (Attribute name vals) = object [name .= toJSON vals] 
-
-
+  
 data TokenDec = TokenDec {
   jti :: Text,
   exp :: Int,
@@ -186,5 +136,112 @@ parseTokenDec = TokenDec <$>
     AB.key "given_name" asText <*>
     AB.key "family_name" asText <*>
     AB.key "email" asText
+
+------------------
+-- * Permission --
+------------------
+
+type ScopeId = Text
+type ScopeName = Text
+type Scope = Text 
+
+data Permission = Permission 
+  { rsname :: ResourceName,
+    rsid   :: ResourceId,
+    scopes :: [Scope]
+  } deriving (Generic, Show)
+
+instance ToJSON Permission where
+  toJSON = genericToJSON defaultOptions {omitNothingFields = True}
+
+instance FromJSON Permission where
+  parseJSON = genericParseJSON defaultOptions
+
+--parsePermission :: Parse e Permission
+--parsePermission = do
+--    rsname  <- AB.key "rsname" asText
+--    rsid    <- AB.key "rsid" asText
+--    scopes  <- AB.keyMay "scopes" (eachInArray asText) 
+--    return $ Permission rsname (ResourceId rsid) (if (isJust scopes) then (fromJust scopes) else [])
+
+type Username = Text
+type Password = Text
+
+
+-------------
+-- * Owner --
+-------------
+
+data Owner = Owner {
+  ownId   :: Maybe Text,
+  ownName :: Username
+  } deriving (Generic, Show)
+
+instance FromJSON Owner where
+  parseJSON = genericParseJSON $ aesonDrop 3 snakeCase 
+
+instance ToJSON Owner where
+  toJSON = genericToJSON $ (aesonDrop 3 snakeCase) {omitNothingFields = True}
+
+
+----------------
+-- * Resource --
+----------------
+
+type ResourceName = Text
+
+newtype ResourceId = ResourceId {unResId :: Text} deriving (Show, Eq, Generic)
+
+-- JSON instances
+instance ToJSON ResourceId where
+  toJSON = genericToJSON (defaultOptions {unwrapUnaryRecords = True})
+
+instance FromJSON ResourceId where
+  parseJSON = genericParseJSON (defaultOptions {unwrapUnaryRecords = True})
+
+data Resource = Resource {
+     resId      :: Maybe ResourceId,
+     resName    :: ResourceName,
+     resType    :: Maybe Text,
+     resUris    :: [Text],
+     resScopes  :: [Scope],
+     resOwner   :: Owner,
+     resOwnerManagedAccess :: Bool,
+     resAttributes :: [Attribute]
+  } deriving (Generic, Show)
+
+instance FromJSON Resource where
+  parseJSON (Object v) = do
+    rId     <- v .:? "_id"
+    rName   <- v .: "name"
+    rType   <- v .:? "type"
+    rUris   <- v .: "uris"
+    rScopes <- v .: "scopes"
+    rOwn    <- v .: "owner"
+    rOMA    <- v .: "ownerManagedAccess"
+    rAtt    <- v .: "attributes"
+    return $ Resource rId rName rType rUris rScopes rOwn rOMA rAtt
+
+instance ToJSON Resource where
+  toJSON (Resource id name typ uris scopes own uma attrs) =
+    object ["name"               .= toJSON name,
+            "uris"               .= toJSON uris,
+            "scopes"             .= toJSON scopes,
+            "owner"              .= toJSON own,
+            "ownerManagedAccess" .= toJSON uma,
+            "attributes"         .= object (map (\(Attribute name vals) -> name .= toJSON vals) attrs)]
+
+data Attribute = Attribute {
+  attName   :: Text,
+  attValues :: [Text]
+  } deriving (Generic, Show)
+
+instance FromJSON Attribute where
+  parseJSON = genericParseJSON $ aesonDrop 3 camelCase 
+
+instance ToJSON Attribute where
+  toJSON (Attribute name vals) = object [name .= toJSON vals] 
+
+
 
 makeLenses ''KCConfig

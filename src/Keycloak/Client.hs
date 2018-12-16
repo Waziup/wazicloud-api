@@ -28,6 +28,7 @@ import           Network.Wreq.Types
 import           Network.HTTP.Types.Method 
 import           System.Log.Logger
 import           Debug.Trace
+import           System.IO.Unsafe
 
 checkPermission :: ResourceId -> Scope -> Maybe Token -> Keycloak ()
 checkPermission (ResourceId res) scope tok = do
@@ -36,7 +37,7 @@ checkPermission (ResourceId res) scope tok = do
   let dat = ["grant_type" := ("urn:ietf:params:oauth:grant-type:uma-ticket" :: Text),
              "audience" := client,
              "permission"  := res <> "#" <> scope]
-  keycloakPostDef "protocol/openid-connect/token" dat tok AB.asValue
+  keycloakPostDef "protocol/openid-connect/token" dat tok
   return ()
 
 isAuthorized :: ResourceId -> Scope -> Maybe Token -> Keycloak Bool
@@ -55,8 +56,19 @@ getAllPermissions scopes mtok = do
              "audience" := client,
              "response_mode" := ("permissions" :: Text)]
              <> map (\s -> "permission" := ("#" <> s)) scopes
-  keycloakPostDef "protocol/openid-connect/token" dat mtok (eachInArray parsePermission)
+  body <- keycloakPostDef "protocol/openid-connect/token" dat mtok
+  case eitherDecode body of
+    Right ret -> do
+      debug $ "Keycloak success: " ++ (show ret) 
+      return ret
+    Left (err2 :: String) -> do
+      debug $ "Keycloak parse error: " ++ (show err2) 
+      throwError $ ParseError $ pack (show err2)
 
+--decodeEither :: FromJSON a => BL.ByteString -> Either String a
+--decodeEither bs = unsafePerformIO
+--                $ either Left id
+--                <$> decodeHelper (JSON.decode bs)
   
 getUserAuthToken :: Text -> Text -> Keycloak Token
 getUserAuthToken username password = do 
@@ -68,7 +80,15 @@ getUserAuthToken username password = do
              "grant_type" := ("password" :: Text),
              "password" := password,
              "username" := username]
-  keycloakPost "protocol/openid-connect/token" dat Nothing (Token . encodeUtf8 <$> AB.key "access_token" asText) 
+  body <- keycloakPost "protocol/openid-connect/token" dat Nothing 
+  debug $ "Keycloak: " ++ (show body) 
+  case eitherDecode body of
+    Right ret -> do 
+      debug $ "Keycloak success: " ++ (show ret) 
+      return ret
+    Left err2 -> do
+      debug $ "Keycloak parse error: " ++ (show err2) 
+      throwError $ ParseError $ pack (show err2)
 
 getClientAuthToken :: Keycloak Token
 getClientAuthToken = do
@@ -78,12 +98,26 @@ getClientAuthToken = do
   let dat = ["client_id" := client, 
              "client_secret" := secret,
              "grant_type" := ("client_credentials" :: Text)]
-  keycloakPostDef "protocol/openid-connect/token" dat Nothing (Token . encodeUtf8 <$> AB.key "access_token" asText) 
+  body <- keycloakPostDef "protocol/openid-connect/token" dat Nothing
+  case eitherDecode body of
+    Right ret -> do
+      debug $ "Keycloak success: " ++ (show ret) 
+      return $ Token $ encodeUtf8 ret
+    Left err2 -> do
+      debug $ "Keycloak parse error: " ++ (show err2) 
+      throwError $ ParseError $ pack (show err2)
 
 createResource :: Resource -> Maybe Token -> Keycloak ResourceId
 createResource r mtok = do
   debug $ convertString $ "Creating resource: " <> (JSON.encode r)
-  keycloakPostDef "authz/protection/resource_set" (toJSON r) mtok (ResourceId <$> AB.key "_id" asText) 
+  body <- keycloakPostDef "authz/protection/resource_set" (toJSON r) mtok
+  case eitherDecode body of
+    Right ret -> do
+      debug $ "Keycloak success: " ++ (show ret) 
+      return $ fromJust $ resId ret
+    Left err2 -> do
+      debug $ "Keycloak parse error: " ++ (show err2) 
+      throwError $ ParseError $ pack (show err2)
 
 deleteResource :: ResourceId -> Maybe Token -> Keycloak ()
 deleteResource (ResourceId rid) mtok = do
@@ -92,17 +126,17 @@ deleteResource (ResourceId rid) mtok = do
 
 -- Perform post to Keycloak with token.
 -- If there is no token, retrieve a guest token
-keycloakPostDef :: (Postable dat, Show dat, Show b) => Path -> dat -> Maybe Token -> Parse Text b -> Keycloak b
-keycloakPostDef path dat mtok parser = do
+keycloakPostDef :: (Postable dat, Show dat) => Path -> dat -> Maybe Token -> Keycloak BL.ByteString
+keycloakPostDef path dat mtok = do
   (KCConfig baseUrl realm _ _ _ _ guestId guestPass) <- ask
   tok <- case mtok of
        Just tok -> return tok
        Nothing -> getUserAuthToken guestId guestPass
-  keycloakPost path dat (Just tok) parser
+  keycloakPost path dat (Just tok)
 
 -- Perform post to Keycloak.
-keycloakPost :: (Postable dat, Show dat, Show b) => Path -> dat -> Maybe Token -> Parse Text b -> Keycloak b
-keycloakPost path dat mtok parser = do 
+keycloakPost :: (Postable dat, Show dat) => Path -> dat -> Maybe Token -> Keycloak BL.ByteString
+keycloakPost path dat mtok = do 
   (KCConfig baseUrl realm _ _ _ _ _ _) <- ask
   let opts = case mtok of
        Just tok -> W.defaults & W.header "Authorization" .~ ["Bearer " <> (unToken tok)]
@@ -114,14 +148,7 @@ keycloakPost path dat mtok parser = do
   eRes <- C.try $ liftIO $ W.postWith opts url dat
   case eRes of 
     Right res -> do
-      let body = fromJust $ res ^? responseBody
-      case AB.parse parser body of
-        Right ret -> do
-          debug $ "Keycloak success: " ++ (show ret) 
-          return ret
-        Left err2 -> do
-          debug $ "Keycloak parse error: " ++ (show err2) 
-          throwError $ ParseError $ pack (show err2)
+      return $ fromJust $ res ^? responseBody
     Left err -> do
       warn $ "Keycloak HTTP error: " ++ (show err)
       throwError $ HTTPError err

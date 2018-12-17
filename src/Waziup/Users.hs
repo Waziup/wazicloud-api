@@ -17,9 +17,10 @@ getUsers tok ml mo = do
   return $ map toUser us
 
 getUser :: Maybe KC.Token -> UserId -> Waziup User
-getUser tok uid = do
+getUser tok (UserId uid) = do
   info "Get users"
-  undefined
+  u <- runKeycloak $ KC.getUser (KC.UserId uid)
+  return $ toUser u
 
 
 toUser :: KC.User -> User

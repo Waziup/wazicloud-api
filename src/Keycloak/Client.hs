@@ -235,3 +235,16 @@ getUsers ml mo = do
     Left (err2 :: String) -> do
       debug $ "Keycloak parse error: " ++ (show err2) 
       throwError $ ParseError $ pack (show err2)
+
+getUser :: UserId -> Keycloak User
+getUser (UserId id) = do
+  tok <- getUserAuthToken "admin" "admin"
+  body <- keycloakAdminGet ("users/" <> (convertString id)) (Just tok) 
+  debug $ "Keycloak success: " ++ (show body) 
+  case eitherDecode body of
+    Right ret -> do
+      debug $ "Keycloak success: " ++ (show ret) 
+      return ret
+    Left (err2 :: String) -> do
+      debug $ "Keycloak parse error: " ++ (show err2) 
+      throwError $ ParseError $ pack (show err2)

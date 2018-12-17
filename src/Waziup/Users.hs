@@ -7,19 +7,32 @@ import           Waziup.Types
 import           Waziup.Utils
 import           System.Log.Logger
 import           Control.Monad.IO.Class
-import           Keycloak as KC hiding (info, warn, debug, err, Scope, User, UserId) 
+--import           Keycloak as KC hiding (info, warn, debug, err, Scope, User, UserId) 
+import qualified Keycloak as KC
 
-getUsers :: Maybe Token -> Maybe Limit -> Maybe Offset -> Waziup [User]
+getUsers :: Maybe KC.Token -> Maybe Limit -> Maybe Offset -> Waziup [User]
 getUsers tok ml mo = do
   info "Get users"
-  runKeycloak $ KC.getUsers ml mo
-  undefined
+  us <- runKeycloak $ KC.getUsers ml mo
+  return $ map toUser us
 
-getUser :: Maybe Token -> UserId -> Waziup User
+getUser :: Maybe KC.Token -> UserId -> Waziup User
 getUser tok uid = do
   info "Get users"
   undefined
 
+
+toUser :: KC.User -> User
+toUser (KC.User id un fn ln mail) = 
+  User { userId        = maybe Nothing (Just . UserId . KC.unUserId) id 
+       , userUsername  = un
+       , userFirstName = fn
+       , userLastName  = ln 
+       , userEmail     = mail
+       , userPhone     = Nothing
+       , userFacebook  = Nothing
+       , userTwitter   = Nothing
+       }
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

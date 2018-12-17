@@ -781,23 +781,23 @@ instance ToParamSchema UserId
 data User = User
   { userId        :: Maybe UserId   -- ^ The unique user ID 
   , userUsername  :: Username       -- ^ Username
-  , userFirstName :: Text           -- ^ First name
-  , userLastName  :: Text           -- ^ Last name
-  , userEmail     :: Text           -- ^ Email 
-  , userPhone     :: Text           -- ^ Phone with international code: +39... 
-  , userFacebook  :: Text           -- ^ Facebook account
-  , userTwitter   :: Text           -- ^ Twitter account, without the @ 
+  , userFirstName :: Maybe Text     -- ^ First name
+  , userLastName  :: Maybe Text     -- ^ Last name
+  , userEmail     :: Maybe Text     -- ^ Email 
+  , userPhone     :: Maybe Text     -- ^ Phone with international code: +39... 
+  , userFacebook  :: Maybe Text     -- ^ Facebook account
+  , userTwitter   :: Maybe Text     -- ^ Twitter account, without the @ 
   } deriving (Show, Eq, Generic)
 
 defaultUser = User
   { userId        = Nothing 
   , userUsername  = "cdupont"
-  , userFirstName = "Corentin"
-  , userLastName  = "Dupont"
-  , userEmail     = ""
-  , userPhone     = "+39000"
-  , userFacebook  = "" 
-  , userTwitter   = ""
+  , userFirstName = Just "Corentin"
+  , userLastName  = Just "Dupont"
+  , userEmail     = Nothing
+  , userPhone     = Nothing
+  , userFacebook  = Nothing
+  , userTwitter   = Nothing
   }
 
 

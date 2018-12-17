@@ -9,13 +9,14 @@ module Keycloak.Types where
 import           Data.Aeson
 import           Data.Aeson.Types
 import           Data.Aeson.Casing
-import           Data.Text hiding (head, tail, map, toLower)
+import           Data.Text hiding (head, tail, map, toLower, drop)
 import           Data.Text.Encoding
 import           Data.Monoid
 import           Data.Maybe
 import           Data.Aeson.BetterErrors as AB
 import qualified Data.ByteString as BS
-import           Data.Word8 (isSpace, _colon, toLower)
+import qualified Data.Word8 as W8 (isSpace, _colon, toLower)
+import           Data.Char
 import           Control.Monad.Except (ExceptT)
 import           Control.Monad.Reader as R
 import           Control.Lens hiding ((.=))
@@ -76,9 +77,9 @@ instance FromHttpApiData Token where
 
 extractBearerAuth :: BS.ByteString -> Maybe BS.ByteString
 extractBearerAuth bs =
-    let (x, y) = BS.break isSpace bs
-    in if BS.map toLower x == "bearer"
-        then Just $ BS.dropWhile isSpace y
+    let (x, y) = BS.break W8.isSpace bs
+    in if BS.map W8.toLower x == "bearer"
+        then Just $ BS.dropWhile W8.isSpace y
         else Nothing
 
 instance ToHttpApiData Token where
@@ -167,6 +168,42 @@ instance FromJSON Permission where
 type Username = Text
 type Password = Text
 
+
+------------
+-- * User --
+------------
+
+type Start = Int
+type Max = Int
+
+-- Id of a user
+newtype UserId = UserId {unUserId :: Text} deriving (Show, Eq, Generic)
+
+--JSON instances
+instance ToJSON UserId where
+  toJSON = genericToJSON (defaultOptions {unwrapUnaryRecords = True})
+
+instance FromJSON UserId where
+  parseJSON = genericParseJSON (defaultOptions {unwrapUnaryRecords = True})
+
+-- | User 
+data User = User
+  { userId        :: Maybe UserId   -- ^ The unique user ID 
+  , userUsername  :: Username       -- ^ Username
+  , userFirstName :: Maybe Text     -- ^ First name
+  , userLastName  :: Maybe Text     -- ^ Last name
+  , userEmail     :: Maybe Text     -- ^ Email 
+  } deriving (Show, Eq, Generic)
+
+unCapitalize :: String -> String
+unCapitalize (c:cs) = toLower c : cs
+unCapitalize [] = []
+
+instance FromJSON User where
+  parseJSON = genericParseJSON defaultOptions {fieldLabelModifier = unCapitalize . drop 4}
+
+instance ToJSON User where
+  toJSON = genericToJSON defaultOptions {fieldLabelModifier = drop 4, omitNothingFields = True}
 
 -------------
 -- * Owner --

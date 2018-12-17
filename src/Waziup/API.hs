@@ -11,8 +11,8 @@ import Data.Text
 import Data.Time
 import Data.Aeson
 import Data.Swagger hiding (Header)
-import Keycloak
 import Servant.Swagger.UI
+import Keycloak (Token)
 
 -----------------------------
 -- | Waziup type-level API --

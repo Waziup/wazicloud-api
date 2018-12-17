@@ -25,7 +25,7 @@ import           Data.Char
 import           Data.Monoid
 import           Data.Time.ISO8601
 import           Data.Aeson.BetterErrors as AB
-import           Data.Swagger
+import           Data.Swagger hiding (fieldLabelModifier)
 import           Data.Swagger.Internal
 import           Data.Swagger.Lens
 import           Data.String.Conversions
@@ -37,7 +37,7 @@ import           Control.Monad.Reader
 import           Servant
 import           Servant.Swagger
 import           Servant.API.Flatten
-import           Keycloak as KC hiding (info, warn, debug, Scope) 
+import           Keycloak as KC hiding (info, warn, debug, Scope, User(..), UserId, unCapitalize) 
 import           GHC.Generics (Generic)
 import qualified Database.MongoDB as DB
 import qualified Orion.Types as O
@@ -1051,8 +1051,7 @@ instance ToSchema ResourceId
 -- Also perform any replacements for special characters.
 removeFieldLabelPrefix :: Bool -> String -> Options
 removeFieldLabelPrefix forParsing prefix =
-  defaultOptions
-  {AT.fieldLabelModifier = fromMaybe (error ("did not find prefix " ++ prefix)) . fmap unCapitalize . stripPrefix prefix . replaceSpecialChars}
+  defaultOptions {fieldLabelModifier = fromMaybe (error ("did not find prefix " ++ prefix)) . fmap unCapitalize . stripPrefix prefix . replaceSpecialChars}
   where
     replaceSpecialChars field = foldl (&) field (map mkCharReplacement specialChars)
     specialChars =

@@ -177,6 +177,24 @@ keycloakDelete path tok = do
       warn $ "Keycloak HTTP error: " ++ (show err)
       throwError $ HTTPError err
 
+-- Perform get to Keycloak.
+keycloakAdminGet :: Path -> Maybe Token -> Keycloak BL.ByteString
+keycloakAdminGet path mtok = do 
+  (KCConfig baseUrl realm _ _ _ _ _ _) <- ask
+  let opts = case mtok of
+       Just tok -> W.defaults & W.header "Authorization" .~ ["Bearer " <> (unToken tok)]
+       Nothing -> W.defaults
+  let url = (unpack $ baseUrl <> "/admin/realms/" <> realm <> "/" <> path) 
+  info $ "Issuing KEYCLOAK GET with url: " ++ (show url) 
+  debug $ "  headers: " ++ (show $ opts ^. W.headers) 
+  eRes <- C.try $ liftIO $ W.getWith opts url
+  case eRes of 
+    Right res -> do
+      return $ fromJust $ res ^? responseBody
+    Left err -> do
+      warn $ "Keycloak HTTP error: " ++ (show err)
+      throwError $ HTTPError err
+
 debug, warn, info, err :: (MonadIO m) => String -> m ()
 debug s = liftIO $ debugM "API" s
 info s  = liftIO $ infoM "API" s
@@ -204,3 +222,16 @@ getUsername tok = do
     Left e -> do
       traceM $ "Error while decoding token: " ++ (show e)
       Nothing
+
+getUsers :: Maybe Max -> Maybe Start -> Keycloak [User]
+getUsers ml mo = do
+  tok <- getUserAuthToken "admin" "admin"
+  body <- keycloakAdminGet "users" (Just tok) 
+  debug $ "Keycloak success: " ++ (show body) 
+  case eitherDecode body of
+    Right ret -> do
+      debug $ "Keycloak success: " ++ (show ret) 
+      return ret
+    Left (err2 :: String) -> do
+      debug $ "Keycloak parse error: " ++ (show err2) 
+      throwError $ ParseError $ pack (show err2)

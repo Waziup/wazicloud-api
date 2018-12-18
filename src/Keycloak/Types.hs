@@ -173,7 +173,7 @@ type Password = Text
 -- * User --
 ------------
 
-type Start = Int
+type First = Int
 type Max = Int
 
 -- Id of a user

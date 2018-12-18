@@ -17,15 +17,16 @@ import           Data.Text.Encoding
 import           Data.Maybe
 import           Data.ByteString.Base64 as B64
 import           Data.String.Conversions
-import           Data.Monoid
+import           Data.Monoid hiding (First)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL
 import           Keycloak.Types
 import           Network.HTTP.Client as HC hiding (responseBody)
 import           Network.HTTP.Types.Status
+import           Network.HTTP.Types.Method 
+import           Network.HTTP.Types (renderQuery)
 import           Network.Wreq as W hiding (statusCode)
 import           Network.Wreq.Types
-import           Network.HTTP.Types.Method 
 import           System.Log.Logger
 import           Debug.Trace
 import           System.IO.Unsafe
@@ -64,11 +65,6 @@ getAllPermissions scopes mtok = do
     Left (err2 :: String) -> do
       debug $ "Keycloak parse error: " ++ (show err2) 
       throwError $ ParseError $ pack (show err2)
-
---decodeEither :: FromJSON a => BL.ByteString -> Either String a
---decodeEither bs = unsafePerformIO
---                $ either Left id
---                <$> decodeHelper (JSON.decode bs)
   
 getUserAuthToken :: Text -> Text -> Keycloak Token
 getUserAuthToken username password = do 
@@ -223,10 +219,12 @@ getUsername tok = do
       traceM $ "Error while decoding token: " ++ (show e)
       Nothing
 
-getUsers :: Maybe Max -> Maybe Start -> Keycloak [User]
+getUsers :: Maybe Max -> Maybe First -> Keycloak [User]
 getUsers ml mo = do
   tok <- getUserAuthToken "admin" "admin"
-  body <- keycloakAdminGet "users" (Just tok) 
+  let query = maybe [] (\l -> [("limit", Just $ convertString $ show l)]) ml
+           ++ maybe [] (\m -> [("max", Just $ convertString $ show m)]) mo
+  body <- keycloakAdminGet ("users" <> (convertString $ renderQuery True query)) (Just tok) 
   debug $ "Keycloak success: " ++ (show body) 
   case eitherDecode body of
     Right ret -> do

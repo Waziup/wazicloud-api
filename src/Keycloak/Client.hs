@@ -31,7 +31,12 @@ import           System.Log.Logger
 import           Debug.Trace
 import           System.IO.Unsafe
 
-checkPermission :: ResourceId -> Scope -> Maybe Token -> Keycloak ()
+
+-------------------
+-- * Permissions --
+-------------------
+
+checkPermission :: ResourceId -> ScopeName -> Maybe Token -> Keycloak ()
 checkPermission (ResourceId res) scope tok = do
   debug $ "Checking permissions: " ++ (show res) ++ " " ++ (show scope)
   client <- asks _clientId
@@ -41,7 +46,7 @@ checkPermission (ResourceId res) scope tok = do
   keycloakPostDef "protocol/openid-connect/token" dat tok
   return ()
 
-isAuthorized :: ResourceId -> Scope -> Maybe Token -> Keycloak Bool
+isAuthorized :: ResourceId -> ScopeName -> Maybe Token -> Keycloak Bool
 isAuthorized res scope tok = do
   r <- try $ checkPermission res scope tok
   case r of
@@ -49,7 +54,7 @@ isAuthorized res scope tok = do
     Left e | (statusCode <$> getErrorStatus e) == Just 403 -> return False
     Left e -> throwError e --rethrow the error
 
-getAllPermissions :: [Scope] -> Maybe Token -> Keycloak [Permission]
+getAllPermissions :: [ScopeName] -> Maybe Token -> Keycloak [Permission]
 getAllPermissions scopes mtok = do
   debug "Get all permissions"
   client <- asks _clientId
@@ -65,6 +70,11 @@ getAllPermissions scopes mtok = do
     Left (err2 :: String) -> do
       debug $ "Keycloak parse error: " ++ (show err2) 
       throwError $ ParseError $ pack (show err2)
+
+
+--------------
+-- * Tokens --
+--------------
   
 getUserAuthToken :: Text -> Text -> Keycloak Token
 getUserAuthToken username password = do 
@@ -103,10 +113,30 @@ getClientAuthToken = do
       debug $ "Keycloak parse error: " ++ (show err2) 
       throwError $ ParseError $ pack (show err2)
 
+decodeToken :: Token -> Either String TokenDec
+decodeToken (Token tok) = case (BS.split '.' tok) ^? element 1 of
+    Nothing -> Left "Token is not formed correctly"
+    Just part2 -> case AB.parse parseTokenDec (traceShowId $ convertString $ B64.decodeLenient $ traceShowId part2) of
+      Right td -> Right td
+      Left (e :: ParseError String) -> Left $ show e
+
+getUsername :: Token -> Maybe Username
+getUsername tok = do 
+  case decodeToken tok of
+    Right t -> Just $ preferredUsername t
+    Left e -> do
+      traceM $ "Error while decoding token: " ++ (show e)
+      Nothing
+
+----------------
+-- * Resource --
+----------------
+
 createResource :: Resource -> Maybe Token -> Keycloak ResourceId
 createResource r mtok = do
   debug $ convertString $ "Creating resource: " <> (JSON.encode r)
   body <- keycloakPostDef "authz/protection/resource_set" (toJSON r) mtok
+  debug $ convertString $ "Created resource: " ++ convertString body
   case eitherDecode body of
     Right ret -> do
       debug $ "Keycloak success: " ++ (show ret) 
@@ -119,6 +149,44 @@ deleteResource :: ResourceId -> Maybe Token -> Keycloak ()
 deleteResource (ResourceId rid) mtok = do
   keycloakDeleteDef ("authz/protection/resource_set/" <> rid) mtok 
   return ()
+
+
+-------------
+-- * Users --
+-------------
+
+getUsers :: Maybe Max -> Maybe First -> Keycloak [User]
+getUsers max first = do
+  tok <- getUserAuthToken "admin" "admin"
+  let query = maybe [] (\l -> [("limit", Just $ convertString $ show l)]) max
+           ++ maybe [] (\m -> [("max", Just $ convertString $ show m)]) first
+  body <- keycloakAdminGet ("users" <> (convertString $ renderQuery True query)) (Just tok) 
+  debug $ "Keycloak success: " ++ (show body) 
+  case eitherDecode body of
+    Right ret -> do
+      debug $ "Keycloak success: " ++ (show ret) 
+      return ret
+    Left (err2 :: String) -> do
+      debug $ "Keycloak parse error: " ++ (show err2) 
+      throwError $ ParseError $ pack (show err2)
+
+getUser :: UserId -> Keycloak User
+getUser (UserId id) = do
+  tok <- getUserAuthToken "admin" "admin"
+  body <- keycloakAdminGet ("users/" <> (convertString id)) (Just tok) 
+  debug $ "Keycloak success: " ++ (show body) 
+  case eitherDecode body of
+    Right ret -> do
+      debug $ "Keycloak success: " ++ (show ret) 
+      return ret
+    Left (err2 :: String) -> do
+      debug $ "Keycloak parse error: " ++ (show err2) 
+      throwError $ ParseError $ pack (show err2)
+
+
+-------------------------
+-- * Keycloak requests --
+-------------------------
 
 -- Perform post to Keycloak with token.
 -- If there is no token, retrieve a guest token
@@ -191,6 +259,11 @@ keycloakAdminGet path mtok = do
       warn $ "Keycloak HTTP error: " ++ (show err)
       throwError $ HTTPError err
 
+
+---------------
+-- * Helpers --
+---------------
+
 debug, warn, info, err :: (MonadIO m) => String -> m ()
 debug s = liftIO $ debugM "API" s
 info s  = liftIO $ infoM "API" s
@@ -204,45 +277,3 @@ getErrorStatus _ = Nothing
 try :: MonadError a m => m b -> m (Either a b)
 try act = catchError (Right <$> act) (return . Left)
 
-decodeToken :: Token -> Either String TokenDec
-decodeToken (Token tok) = case (BS.split '.' tok) ^? element 1 of
-    Nothing -> Left "Token is not formed correctly"
-    Just part2 -> case AB.parse parseTokenDec (traceShowId $ convertString $ B64.decodeLenient $ traceShowId part2) of
-      Right td -> Right td
-      Left (e :: ParseError String) -> Left $ show e
-
-getUsername :: Token -> Maybe Username
-getUsername tok = do 
-  case decodeToken tok of
-    Right t -> Just $ preferredUsername t
-    Left e -> do
-      traceM $ "Error while decoding token: " ++ (show e)
-      Nothing
-
-getUsers :: Maybe Max -> Maybe First -> Keycloak [User]
-getUsers ml mo = do
-  tok <- getUserAuthToken "admin" "admin"
-  let query = maybe [] (\l -> [("limit", Just $ convertString $ show l)]) ml
-           ++ maybe [] (\m -> [("max", Just $ convertString $ show m)]) mo
-  body <- keycloakAdminGet ("users" <> (convertString $ renderQuery True query)) (Just tok) 
-  debug $ "Keycloak success: " ++ (show body) 
-  case eitherDecode body of
-    Right ret -> do
-      debug $ "Keycloak success: " ++ (show ret) 
-      return ret
-    Left (err2 :: String) -> do
-      debug $ "Keycloak parse error: " ++ (show err2) 
-      throwError $ ParseError $ pack (show err2)
-
-getUser :: UserId -> Keycloak User
-getUser (UserId id) = do
-  tok <- getUserAuthToken "admin" "admin"
-  body <- keycloakAdminGet ("users/" <> (convertString id)) (Just tok) 
-  debug $ "Keycloak success: " ++ (show body) 
-  case eitherDecode body of
-    Right ret -> do
-      debug $ "Keycloak success: " ++ (show ret) 
-      return ret
-    Left (err2 :: String) -> do
-      debug $ "Keycloak parse error: " ++ (show err2) 
-      throwError $ ParseError $ pack (show err2)

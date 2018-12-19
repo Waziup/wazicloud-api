@@ -3,7 +3,7 @@
 
 module Waziup.Devices where
 
-import           Waziup.Types
+import           Waziup.Types as W
 import           Waziup.Utils
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
@@ -19,7 +19,7 @@ import qualified Data.HashMap.Strict as H
 import           Data.Aeson as JSON hiding (Options)
 import           Data.Time.ISO8601
 import           Servant
-import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
+import           Keycloak as KC hiding (info, warn, debug, err) 
 import           Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
 import           Paths_Waziup_Servant
@@ -34,7 +34,7 @@ getPerms tok = do
                    DevicesDataView]
   ps <- runKeycloak $ getAllPermissions (map (convertString.show) allScopes) tok
   let getP :: KC.Permission -> Perm
-      getP (KC.Permission rsname _ scopes) = Perm rsname (mapMaybe readScope scopes)
+      getP (KC.Permission rsname _ scopes) = Perm rsname (mapMaybe (readScope.scopeName) scopes)
   return $ map getP ps 
 
 postAuth :: AuthBody -> Waziup Token
@@ -52,7 +52,7 @@ getDevices tok mq mlimit moffset = do
   let devices2 = filter (checkPermDevice DevicesView ps) devices -- TODO limits
   return devices2
 
-checkPermDevice :: Scope -> [Perm] -> Device -> Bool
+checkPermDevice :: W.Scope -> [Perm] -> Device -> Bool
 checkPermDevice scope perms dev = any (\p -> (permResource p) == (unDeviceId $ devId dev) && scope `elem` (permScopes p)) perms
 
 getDevice :: Maybe Token -> DeviceId -> Waziup Device
@@ -83,7 +83,7 @@ postDevice tok s@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
          resName    = did,
          resType    = Nothing,
          resUris    = [],
-         resScopes  = map (pack.show) [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView],
+         resScopes  = map (\s -> Scope Nothing (pack $ show s)) [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView],
          resOwner   = Owner Nothing "cdupont",
          resOwnerManagedAccess = True,
          resAttributes = if (isJust vis) then [KC.Attribute "visibility" [pack $ show $ fromJust vis]] else []}

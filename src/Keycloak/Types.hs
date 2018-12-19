@@ -142,28 +142,39 @@ parseTokenDec = TokenDec <$>
 -- * Permission --
 ------------------
 
-type ScopeId = Text
 type ScopeName = Text
-type Scope = Text 
+
+newtype ScopeId = ScopeId {unScopeId :: Text} deriving (Show, Eq, Generic)
+
+--JSON instances
+instance ToJSON ScopeId where
+  toJSON = genericToJSON (defaultOptions {unwrapUnaryRecords = True})
+
+instance FromJSON ScopeId where
+  parseJSON = genericParseJSON (defaultOptions {unwrapUnaryRecords = True})
+
+data Scope = Scope {
+  scopeId   :: Maybe ScopeId,
+  scopeName :: ScopeName
+  } deriving (Generic, Show, Eq)
+
+instance ToJSON Scope where
+  toJSON = genericToJSON defaultOptions {omitNothingFields = True}
+
+instance FromJSON Scope where
+  parseJSON = genericParseJSON defaultOptions
 
 data Permission = Permission 
   { rsname :: ResourceName,
     rsid   :: ResourceId,
     scopes :: [Scope]
-  } deriving (Generic, Show)
+  } deriving (Generic, Show, Eq)
 
 instance ToJSON Permission where
   toJSON = genericToJSON defaultOptions {omitNothingFields = True}
 
 instance FromJSON Permission where
   parseJSON = genericParseJSON defaultOptions
-
---parsePermission :: Parse e Permission
---parsePermission = do
---    rsname  <- AB.key "rsname" asText
---    rsid    <- AB.key "rsid" asText
---    scopes  <- AB.keyMay "scopes" (eachInArray asText) 
---    return $ Permission rsname (ResourceId rsid) (if (isJust scopes) then (fromJust scopes) else [])
 
 type Username = Text
 type Password = Text
@@ -250,13 +261,13 @@ data Resource = Resource {
 instance FromJSON Resource where
   parseJSON (Object v) = do
     rId     <- v .:? "_id"
-    rName   <- v .: "name"
+    rName   <- v .:  "name"
     rType   <- v .:? "type"
-    rUris   <- v .: "uris"
-    rScopes <- v .: "scopes"
-    rOwn    <- v .: "owner"
-    rOMA    <- v .: "ownerManagedAccess"
-    rAtt    <- v .: "attributes"
+    rUris   <- v .:  "uris"
+    rScopes <- v .:  "scopes"
+    rOwn    <- v .:  "owner"
+    rOMA    <- v .:  "ownerManagedAccess"
+    rAtt    <- v .:  "attributes"
     return $ Resource rId rName rType rUris rScopes rOwn rOMA rAtt
 
 instance ToJSON Resource where

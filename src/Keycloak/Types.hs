@@ -109,11 +109,6 @@ data TokenDec = TokenDec {
   email :: Text
   } deriving (Generic, Show)
 
---instance FromJSON TokenDec where
---  parseJSON = genericParseJSON $ aesonDrop 3 camelCase 
---instance ToJSON TokenDec where
---  toJSON = genericToJSON $ (aesonDrop 3 camelCase) {omitNothingFields = True}
-
 parseTokenDec :: Parse e TokenDec
 parseTokenDec = TokenDec <$>
     AB.key "jti" asText <*>
@@ -159,15 +154,15 @@ data Scope = Scope {
   } deriving (Generic, Show, Eq)
 
 instance ToJSON Scope where
-  toJSON = genericToJSON defaultOptions {omitNothingFields = True}
+  toJSON = genericToJSON defaultOptions {fieldLabelModifier = unCapitalize . drop 5, omitNothingFields = True}
 
 instance FromJSON Scope where
-  parseJSON = genericParseJSON defaultOptions
+  parseJSON = genericParseJSON defaultOptions {fieldLabelModifier = unCapitalize . drop 5}
 
 data Permission = Permission 
   { rsname :: ResourceName,
     rsid   :: ResourceId,
-    scopes :: [Scope]
+    scopes :: [ScopeName]
   } deriving (Generic, Show, Eq)
 
 instance ToJSON Permission where
@@ -267,8 +262,8 @@ instance FromJSON Resource where
     rScopes <- v .:  "scopes"
     rOwn    <- v .:  "owner"
     rOMA    <- v .:  "ownerManagedAccess"
-    rAtt    <- v .:  "attributes"
-    return $ Resource rId rName rType rUris rScopes rOwn rOMA rAtt
+    rAtt    <- v .:? "attributes"
+    return $ Resource rId rName rType rUris rScopes rOwn rOMA (maybe [] fromJust rAtt)
 
 instance ToJSON Resource where
   toJSON (Resource id name typ uris scopes own uma attrs) =

@@ -55,7 +55,7 @@ main = do
   let host = conf ^. serverConf.serverHost
   let port = conf ^. serverConf.serverPort
   Main.info $ convertString $ "API is running on " <> host <> "/api/v1"
-  Main.info $ convertString $ "Documentation is on " <> host <> "/swagger-ui"
+  Main.info $ convertString $ "Documentation is on " <> host <> "/docs"
   run port $ logStdoutDev $ waziupServer $ WaziupInfo pipe conf ontologies
 
 opts :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> ParserInfo WaziupConfig

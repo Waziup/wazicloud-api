@@ -33,7 +33,7 @@ type WaziupAPI = AuthAPI
             :<|> NotifsAPI
             :<|> OntologiesAPI
 
-type WaziupDocs = SwaggerSchemaUI "swagger-ui" "swagger.json"
+type WaziupDocs = SwaggerSchemaUI "docs" "swagger.json"
 
 ----------------------
 -- * Authentication --

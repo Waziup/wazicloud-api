@@ -34,20 +34,33 @@ getDatapoints :: Maybe Token
               -> Waziup [Datapoint]
 getDatapoints tok did sid lastN limit offset dateFrom dateTo = do
   info "Get datapoints"
-  return []
-  --withKCId did $ \(keyId, _) -> do
-  --  debug "Check permissions"
-  --  runKeycloak $ checkPermission keyId (pack $ show DevicesDataView) tok
-  --  debug "Permission granted, returning datapoints"
-  --  runMongo $ getDatapointsMongo did sid
+  withKCId (fromJust did) $ \(keyId, _) -> do
+    debug "Check permissions"
+    runKeycloak $ checkPermission keyId (pack $ show DevicesDataView) tok
+    debug "Permission granted, returning datapoints"
+    runMongo $ getDatapointsMongo did sid
 
-getDatapointsMongo :: Maybe DeviceId -> Maybe SensorId -> Action IO [Datapoint]
+getDatapointsMongo :: Maybe DeviceId 
+                   -> Maybe SensorId
+                   -> Action IO [Datapoint]
 getDatapointsMongo did sid = do
-  docs <- rest =<< find (select [] "waziup_history")
-  let res = sequence $ map (fromJSON . Object . aesonify) docs
-  case res of
+  info "Get datapoints from Mongo"
+  let selDev = ["device_id" =: did' | (Just (DeviceId did')) <- [did]]
+  let selSen = ["sensor_id" =: sid' | (Just (SensorId sid')) <- [sid]]
+  cur <- find $ select (selDev <> selSen) "waziup_history"
+  docs <- rest cur
+  debug $ "Got docs:" <> (show docs)
+  let res = filter isSuccess $ map (fromJSON . Object . aesonify) docs
+  debug $ "Got datapoints:" <> (show res)
+  case (sequence res) of
     JSON.Success a -> return a
-    JSON.Error _ -> return []
+    JSON.Error e -> do
+      err $ "Error from Mongo:" ++ (show e)
+      return []
+
+isSuccess :: Result a -> Bool
+isSuccess (JSON.Success _) = True
+isSuccess (JSON.Error _) = False
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

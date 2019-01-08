@@ -23,6 +23,8 @@ import           Keycloak as KC hiding (info, warn, debug, err)
 import           Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
 import           Paths_Waziup_Servant
+import           Database.MongoDB as DB hiding (value, Limit, Array, lookup, Value, Null)
+import           Data.AesonBson
 
 getPerms :: Maybe Token -> Waziup [Perm]
 getPerms tok = do
@@ -34,7 +36,7 @@ getPerms tok = do
                    DevicesDataView]
   ps <- runKeycloak $ getAllPermissions (map (convertString.show) allScopes) tok
   let getP :: KC.Permission -> Perm
-      getP (KC.Permission rsname _ scopes) = Perm rsname (mapMaybe (readScope.scopeName) scopes)
+      getP (KC.Permission rsname _ scopes) = Perm rsname (mapMaybe readScope scopes)
   return $ map getP ps 
 
 postAuth :: AuthBody -> Waziup Token
@@ -65,8 +67,8 @@ getDevice tok did = do
     return device
 
 postDevice :: Maybe Token -> Device -> Waziup NoContent
-postDevice tok s@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
-  info $ "Post device: " ++ (show s)
+postDevice tok d@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
+  info $ "Post device: " ++ (show d)
   debug "Check permissions"
   runKeycloak $ checkPermission (ResourceId "Devices") (pack $ show DevicesCreate) tok
   debug "Create entity"
@@ -74,7 +76,7 @@ postDevice tok s@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
        Just t -> getUsername t
        Nothing -> Just "guest"
   debug $ "Onwer: " <> (show username)
-  let entity = getEntityFromDevice (s {devOwner = username})
+  let entity = getEntityFromDevice (d {devOwner = username})
   res2 <- C.try $ runOrion $ O.postEntity entity 
   case res2 of
     Right _ -> do 
@@ -92,10 +94,10 @@ postDevice tok s@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
         Right (ResourceId resId) -> do
           runOrion $ O.postTextAttributeOrion (EntityId did) (AttributeId "keycloak_id") resId
           return NoContent
-        Left err -> do
-          error $ "Keycloak error: " ++ (show err) ++ " deleting device"
+        Left e -> do
+          err $ "Keycloak error: " ++ (show e) ++ " deleting device"
           (_ :: Either ServantErr ()) <- C.try $ runOrion $ O.deleteEntity (EntityId did)
-          throwError err
+          throwError e
     Left (err :: ServantErr)  -> do
       warn "Orion error"
       throwError err 
@@ -110,6 +112,8 @@ deleteDevice tok did = do
     runKeycloak $ deleteResource keyId tok
     debug "Delete Orion resource"
     runOrion $ O.deleteEntity (toEntityId did)
+    debug "Delete Mongo resources"
+    runMongo $ deleteDeviceDatapoints did
     return NoContent
 
 putDeviceLocation :: Maybe Token -> DeviceId -> Location -> Waziup NoContent
@@ -188,7 +192,7 @@ getSensorFromAttribute (O.Attribute (AttributeId name) aType val mets) =
                          senQuantityKind  = QuantityKindId <$> fromSimpleMetadata (MetadataId "quantity_kind") mets,
                          senSensorKind    = SensorKindId   <$> fromSimpleMetadata (MetadataId "sensing_device") mets,
                          senUnit          = UnitId         <$> fromSimpleMetadata (MetadataId "unit") mets,
-                         senLastValue     = getSensorLastValue val mets,
+                         senValue         = getSensorValue val mets,
                          senCalib         = getSensorCalib mets}
     else Nothing
 
@@ -202,8 +206,8 @@ getActuatorFromAttribute (O.Attribute (AttributeId name) aType val mets) =
                            actValue             = val}
     else Nothing
 
-getSensorLastValue :: Maybe Value -> [O.Metadata] -> Maybe SensorValue
-getSensorLastValue mval mets = do
+getSensorValue :: Maybe Value -> [O.Metadata] -> Maybe SensorValue
+getSensorValue mval mets = do
    value <- mval
    guard $ not $ isNull value
    return $ SensorValue value 
@@ -274,6 +278,39 @@ withKCId (DeviceId did) f = do
 
 toEntityId :: DeviceId -> EntityId
 toEntityId (DeviceId did) = EntityId did
+
+
+-- * Mongo datapoints
+
+postDatapoint :: Datapoint -> Action IO ()
+postDatapoint d = do
+  debug "Post datapoint to Mongo"
+  let ob = case toJSON d of
+       JSON.Object o -> o
+       _ -> error "Wrong object format"
+  res <- insert "waziup_history" (bsonify ob)
+  return ()
+
+postDatapointFromSensor :: DeviceId -> Sensor -> Action IO ()
+postDatapointFromSensor did (Sensor sid _ _ _ _ (Just (SensorValue v t rt)) _) = postDatapoint $ Datapoint did sid v t rt
+postDatapointFromSensor did _ = return ()
+
+postDatapointsFromDevice :: Device -> Action IO ()
+postDatapointsFromDevice (Device did _ _ _ _ _ ss _ _ _ _ _) = void $ forM ss $ postDatapointFromSensor did
+postDatapointsFromDevice _ = return ()
+
+deleteSensorDatapoints :: DeviceId -> SensorId -> Action IO ()
+deleteSensorDatapoints (DeviceId did) (SensorId sid) = do
+  debug "delete datapoints from Mongo"
+  res <- delete $ select ["device_id" =: did, "sensor_id" := val sid] "waziup_history"
+  return ()
+
+deleteDeviceDatapoints :: DeviceId -> Action IO ()
+deleteDeviceDatapoints (DeviceId did) = do
+  debug "delete datapoints from Mongo"
+  res <- delete $ select ["device_id" =: did] "waziup_history"
+  return ()
+
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

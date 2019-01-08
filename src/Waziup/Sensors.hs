@@ -64,6 +64,8 @@ deleteSensor tok did sid = do
     runKeycloak $ checkPermission keyId (pack $ show DevicesUpdate) tok
     debug "Permission granted, deleting sensor"
     runOrion $ O.deleteAttribute (toEntityId did) (toAttributeId sid)
+    debug "Deleting Mongo datapoints"
+    runMongo $ deleteSensorDatapoints did sid
     return NoContent
 
 putSensorName :: Maybe Token -> DeviceId -> SensorId -> SensorName -> Waziup NoContent
@@ -90,28 +92,28 @@ putSensorUnit mtok did sid u = do
   updateSensorField mtok did sid $ \sensor -> do 
     runOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senUnit = Just u})
 
-putSensorValue :: Maybe Token -> DeviceId -> SensorId -> SensorValue -> Waziup NoContent
-putSensorValue mtok did sid senVal = do
-  info $ "Put sensor value: " ++ (show senVal)
-  updateSensorField mtok did sid $ \sensor -> do 
-    runOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senLastValue = Just senVal})
-    runMongo $ postDatapoint $ Datapoint did sid senVal
-
 putSensorCalib :: Maybe Token -> DeviceId -> SensorId -> LinearCalib -> Waziup NoContent
 putSensorCalib mtok did sid cal = do
   info $ "Put sensor cal: " ++ (show cal)
   updateSensorField mtok did sid $ \sensor -> do 
     runOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senCalib = Just cal})
-  
-postDatapoint :: Datapoint -> Action IO ()
-postDatapoint d = do
-  debug "Post datapoint to Mongo"
-  let ob = case toJSON d of
-       JSON.Object o -> o
-       _ -> error "Wrong object format"
-  res <- insert "waziup_history" (bsonify ob)
-  return ()
 
+putSensorValue :: Maybe Token -> DeviceId -> SensorId -> SensorValue -> Waziup NoContent
+putSensorValue mtok did sid senVal@(SensorValue v ts dr) = do
+  info $ "Put sensor value: " ++ (show senVal)
+  withKCId did $ \(keyId, device) -> do
+    debug "Check permissions"
+    runKeycloak $ checkPermission keyId (pack $ show DevicesDataCreate) mtok
+    debug "Permission granted, updating sensor"
+    case L.find (\s -> (senId s) == sid) (devSensors device) of
+      Just sensor -> do
+        runOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senValue = Just senVal})
+        runMongo $ postDatapoint $ Datapoint did sid v ts dr
+        return NoContent
+      Nothing -> do 
+        warn "sensor not found"
+        throwError err404 {errBody = "Sensor not found"}
+  
 updateSensorField :: Maybe Token -> DeviceId -> SensorId -> (Sensor -> Waziup ()) -> Waziup NoContent
 updateSensorField mtok did sid w = do
   withKCId did $ \(keyId, device) -> do

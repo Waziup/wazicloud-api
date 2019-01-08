@@ -216,7 +216,7 @@ instance ToJSON Device where
   toJSON = genericToJSON (aesonDrop 3 snakeCase) {omitNothingFields = True}
 
 instance FromJSON Device where
-  parseJSON = genericParseJSON $ aesonDrop 3 snakeCase
+  parseJSON = genericParseJSON (aesonDrop 3 snakeCase) {omitNothingFields = True}
 
 instance ToSchema Device where
   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
@@ -321,7 +321,7 @@ data Sensor = Sensor
   , senSensorKind    :: Maybe SensorKindId     -- ^ sensing platform used for the sensor, from https://github.com/Waziup/waziup-js/blob/master/src/model/SensingDevices.js
   , senQuantityKind  :: Maybe QuantityKindId   -- ^ quantity measured, from https://github.com/Waziup/waziup-js/blob/master/src/model/QuantityKinds.js
   , senUnit          :: Maybe UnitId           -- ^ unit of the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/Units.js
-  , senLastValue     :: Maybe SensorValue      -- ^ last value received by the platform
+  , senValue         :: Maybe SensorValue      -- ^ last value received by the platform
   , senCalib         :: Maybe LinearCalib
   } deriving (Show, Eq, Generic)
 
@@ -331,7 +331,7 @@ defaultSensor = Sensor
   , senSensorKind    = Just $ SensorKindId "Thermometer" 
   , senQuantityKind  = Just $ QuantityKindId "AirTemperature" 
   , senUnit          = Just $ UnitId "DegreeCelsius"
-  , senLastValue     = Nothing
+  , senValue         = Nothing
   , senCalib         = Nothing
   } 
 
@@ -361,10 +361,10 @@ defaultSensorValue = SensorValue
 
 --JSON instances
 instance FromJSON SensorValue where
-  parseJSON = genericParseJSON $ aesonDrop 3 snakeCase
+  parseJSON = genericParseJSON $ aesonDrop 6 snakeCase
 
 instance ToJSON SensorValue where
-  toJSON = genericToJSON (aesonDrop 3 snakeCase) {omitNothingFields = True}
+  toJSON = genericToJSON (aesonDrop 6 snakeCase) {omitNothingFields = True}
 
 --Swagger instance
 instance ToSchema SensorValue where
@@ -421,15 +421,19 @@ instance ToSchema CalibValue
 
 -- | one datapoint 
 data Datapoint = Datapoint
-  { dataDeviceId :: DeviceId     -- ^ ID of the device
-  , dataSenId    :: SensorId     -- ^ ID of the sensor
-  , dataValue    :: SensorValue  -- ^ last value received by the platform
+  { dataDeviceId     :: DeviceId       -- ^ ID of the device
+  , dataSensorId     :: SensorId       -- ^ ID of the sensor
+  , dataValue        :: Value          -- ^ value of the measurement
+  , dataTimestamp    :: Maybe UTCTime  -- ^ time of the measurement
+  , dataDateReceived :: Maybe UTCTime  -- ^ time at which the measurement has been received on the Cloud
   } deriving (Show, Eq, Generic)
 
 defaultDatapoint = Datapoint 
-  { dataDeviceId = DeviceId "MyDevice90"   -- ^ ID of the device
-  , dataSenId    = SensorId "TC1"          -- ^ ID of the sensor
-  , dataValue    = defaultSensorValue -- ^ last value received by the platform
+  { dataDeviceId     = DeviceId "MyDevice90"   -- ^ ID of the device
+  , dataSensorId     = SensorId "TC1"          -- ^ ID of the sensor
+  , dataValue        = Number 25
+  , dataTimestamp    = parseISO8601 "2016-06-08T18:20:27.873Z"
+  , dataDateReceived = Nothing
   }
 
 -- JSON instances

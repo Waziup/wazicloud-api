@@ -122,9 +122,9 @@ type SensorDataAPI = Flat (
   "sensors_data" :> Header "Authorization" Token 
   :> QueryParam "device_id" DeviceId
   :> QueryParam "sensor_id" SensorId
-  :> QueryParam "lastN"     Int
   :> QueryParam "limit"     Int
   :> QueryParam "offset"    Int
+  :> QueryParam "sort"      Sort
   :> QueryParam "dateFrom"  UTCTime
   :> QueryParam "dataTo"    UTCTime
   :> Get '[JSON] [Datapoint])

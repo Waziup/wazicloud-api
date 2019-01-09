@@ -183,7 +183,7 @@ instance ToParamSchema DeviceId
 
 -- | one device 
 data Device = Device
-  { devId           :: DeviceId   -- ^ Unique ID of the device node
+  { devId           :: DeviceId         -- ^ Unique ID of the device node
   , devGatewayId    :: Maybe GatewayId  -- ^ Unique ID of the gateway
   , devName         :: Maybe DeviceName -- ^ name of the device node
   , devLocation     :: Maybe Location
@@ -230,11 +230,10 @@ data Visibility = Public | Private
 
 --JSON instances
 instance ToJSON Visibility where
-  toJSON Public  = "public" 
-  toJSON Private = "private" 
+  toJSON = genericToJSON $ defaultOptions {fieldLabelModifier = unCapitalize, AT.allNullaryToStringTag = True}
 
 instance FromJSON Visibility where
-  parseJSON = Aeson.withText "String" (\x -> return $ fromJust $ readVisibility x)
+  parseJSON = genericParseJSON $ defaultOptions {fieldLabelModifier = unCapitalize, AT.allNullaryToStringTag = True}
 
 -- Visibility is use as plain text body
 instance MimeUnrender PlainText Visibility
@@ -447,6 +446,29 @@ instance ToJSON Datapoint where
 instance ToSchema Datapoint where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON defaultDatapoint 
+
+
+-- * Query options
+
+data Sort = Asc | Dsc
+  deriving (Eq, Generic)
+
+instance ToJSON Sort where
+  toJSON = genericToJSON $ defaultOptions {fieldLabelModifier = unCapitalize, AT.allNullaryToStringTag = True}
+
+instance FromJSON Sort where
+  parseJSON = genericParseJSON $ defaultOptions {fieldLabelModifier = unCapitalize, AT.allNullaryToStringTag = True}
+
+-- Sort is used in Url pieces
+instance FromHttpApiData Sort where
+  parseUrlPiece "asc" = Right Asc
+  parseUrlPiece "dsc" = Right Dsc
+  parseUrlPiece _ = Left "Wrong sort parameter. Acceptable are \"asc\" or \"dsc\""
+
+instance ToParamSchema Sort where
+  toParamSchema _ = mempty
+     & type_ .~ SwaggerString
+     & enum_ ?~ [ "asc", "dsc" ]
 
 
 -----------------

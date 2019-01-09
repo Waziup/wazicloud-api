@@ -16,6 +16,7 @@ import qualified Data.List as L
 import           Data.Aeson as JSON
 import           Data.AesonBson
 import           Data.Time
+import           Data.Time.ISO8601
 import           Servant
 import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
 import           Orion as O hiding (info, warn, debug, err)
@@ -38,16 +39,28 @@ getDatapoints tok did sid lastN limit offset dateFrom dateTo = do
     debug "Check permissions"
     runKeycloak $ checkPermission keyId (pack $ show DevicesDataView) tok
     debug "Permission granted, returning datapoints"
-    runMongo $ getDatapointsMongo did sid
-
+    runMongo $ getDatapointsMongo did sid lastN limit offset dateFrom dateTo
+    
 getDatapointsMongo :: Maybe DeviceId 
                    -> Maybe SensorId
+                   -> Maybe Int
+                   -> Maybe Int
+                   -> Maybe Int
+                   -> Maybe UTCTime
+                   -> Maybe UTCTime
                    -> Action IO [Datapoint]
-getDatapointsMongo did sid = do
+getDatapointsMongo did sid lastN limit offset dateFrom dateTo = do
   info "Get datapoints from Mongo"
   let selDev = ["device_id" =: did' | (Just (DeviceId did')) <- [did]]
   let selSen = ["sensor_id" =: sid' | (Just (SensorId sid')) <- [sid]]
-  cur <- find $ select (selDev <> selSen) "waziup_history"
+  let selDateFrom = ["$gte" =: formatISO8601 dateFrom' | (Just dateFrom') <- [dateFrom]]
+  let selDateTo   = ["$lte" =: formatISO8601 dateTo' | (Just dateTo') <- [dateTo]]
+  let selTimestamp = if isJust dateFrom || isJust dateTo 
+                     then ["timestamp" =: selDateFrom <> selDateTo] 
+                     else []
+  
+  
+  cur <- find $ select (selDev <> selSen <> selTimestamp) "waziup_history"
   docs <- rest cur
   debug $ "Got docs:" <> (show docs)
   let res = filter isSuccess $ map (fromJSON . Object . aesonify) docs

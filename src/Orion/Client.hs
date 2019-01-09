@@ -16,11 +16,11 @@ import           Data.Text hiding (head, tail, find, map, filter)
 import           Data.Text.Encoding as TE
 import           Data.Maybe
 import           Data.Aeson.BetterErrors.Internal
+import           Data.Time
 import           Data.Time.ISO8601
 import           Data.Foldable as F
 import           Data.Scientific
 import           Data.Monoid
-import           Data.Time
 import qualified Data.HashMap.Strict as H
 import qualified Data.Vector as V
 import qualified Data.ByteString.Char8 as C8

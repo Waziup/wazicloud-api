@@ -29,6 +29,7 @@ import           Data.Swagger hiding (fieldLabelModifier)
 import           Data.Swagger.Internal
 import           Data.Swagger.Lens
 import           Data.String.Conversions
+import qualified Data.Csv as CSV
 import           Control.Lens hiding ((.=))
 import           Control.Monad
 import           Control.Monad.Except (ExceptT, throwError)
@@ -441,6 +442,28 @@ instance FromJSON Datapoint where
 
 instance ToJSON Datapoint where
   toJSON = genericToJSON (aesonDrop 4 snakeCase) {omitNothingFields = True}
+
+-- CSV instances
+instance CSV.ToField DeviceId where
+  toField (DeviceId d) = convertString d
+
+instance CSV.ToField SensorId where
+  toField (SensorId d) = convertString d
+
+instance CSV.ToField Value where 
+  toField v = convertString $ encode v
+
+instance CSV.ToField UTCTime where 
+  toField d = convertString $ formatISO8601 d
+
+myOptions :: CSV.Options
+myOptions = CSV.defaultOptions { CSV.fieldLabelModifier = snakeCase . drop 4 }
+
+instance CSV.DefaultOrdered Datapoint where
+  headerOrder = CSV.genericHeaderOrder myOptions
+
+instance CSV.ToNamedRecord Datapoint where
+  toNamedRecord = CSV.genericToNamedRecord myOptions 
 
 -- Swagger instance
 instance ToSchema Datapoint where

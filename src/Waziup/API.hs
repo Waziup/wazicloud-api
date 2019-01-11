@@ -4,15 +4,17 @@
 
 module Waziup.API where
 
-import Servant
-import Servant.API.Flatten
-import Waziup.Types
-import Data.Text
-import Data.Time
-import Data.Aeson
-import Data.Swagger hiding (Header)
-import Servant.Swagger.UI
-import Keycloak (Token)
+import           Waziup.Types
+import           Data.Text
+import           Data.Time
+import           Data.Aeson
+import           Data.Swagger hiding (Header)
+import qualified Data.Csv as CSV
+import           Servant
+import           Servant.API.Flatten
+import           Servant.CSV.Cassava
+import           Servant.Swagger.UI
+import           Keycloak (Token)
 
 -----------------------------
 -- | Waziup type-level API --
@@ -134,7 +136,11 @@ type SensorDataAPI = Flat (
   :> QueryParam "sort"      Sort
   :> QueryParam "dateFrom"  UTCTime
   :> QueryParam "dataTo"    UTCTime
-  :> Get '[JSON] [Datapoint])
+  :> Get '[JSON, CSV' 'HasHeader CSVOpts] [Datapoint])
+
+data CSVOpts
+instance EncodeOpts CSVOpts where
+   encodeOpts _ = CSV.defaultEncodeOptions {CSV.encQuoting = CSV.QuoteNone}
 
 -----------------
 -- * Actuators --

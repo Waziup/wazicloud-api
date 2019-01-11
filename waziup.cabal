@@ -37,6 +37,7 @@ Executable waziup-servant
                      , aeson-better-errors
                      , text
                      , containers
+                     , cassava
                      , network-uri
                      , servant
                      , http-api-data
@@ -47,6 +48,7 @@ Executable waziup-servant
                      , servant-swagger
                      , servant-swagger-ui
                      , servant-swagger-ui-core
+                     , servant-cassava
                      , swagger2
                      , warp
                      , transformers

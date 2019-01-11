@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE DataKinds #-}
 
 module Waziup.Server where
 
@@ -20,6 +21,7 @@ import           Data.Proxy (Proxy(..))
 import qualified Data.Swagger as S
 import qualified Data.ByteString.Lazy as BL
 import           Data.Set
+import           Data.String.Conversions
 import           Servant
 import           Servant.Server
 import           Servant.Swagger
@@ -31,7 +33,16 @@ import           System.Log.Logger
 server :: ServerT API Waziup
 server = serverWaziup
     :<|> serverDocs
+    :<|> redir
 
+-- redirect root queries to docs
+redir :: ServerT Redir Waziup
+redir = do
+  info <- ask
+  let host = _serverHost $ _serverConf $ _waziupConfig info
+  throwError $ err301 { errHeaders = [("Location", convertString $ host <> "/docs")] }
+
+-- All API servers
 serverWaziup :: ServerT WaziupAPI Waziup
 serverWaziup = authServer
           :<|> devicesServer
@@ -45,13 +56,16 @@ serverWaziup = authServer
           :<|> notifsServer
           :<|> ontologiesServer
 
+-- Docs server
 serverDocs :: ServerT WaziupDocs Waziup
 serverDocs = hoistDocs $ swaggerSchemaUIServer swaggerDoc
 
+-- Authentication server
 authServer :: ServerT AuthAPI Waziup
 authServer = getPerms
         :<|> postAuth
 
+-- Devices servers
 devicesServer :: ServerT DevicesAPI Waziup
 devicesServer = getDevices
            :<|> postDevice
@@ -62,6 +76,7 @@ devicesServer = getDevices
            :<|> putDeviceGatewayId
            :<|> putDeviceVisibility
 
+-- Sensors server
 sensorsServer :: ServerT SensorsAPI Waziup
 sensorsServer = getSensors
            :<|> postSensor
@@ -74,12 +89,15 @@ sensorsServer = getSensors
            :<|> putSensorCalib
            :<|> putSensorValue
 
+-- Sensor data server
 sensorDataServer :: ServerT SensorDataAPI Waziup
 sensorDataServer = getDatapoints
 
+-- Gateways server
 gatewaysServer :: ServerT GatewaysAPI Waziup
 gatewaysServer = error "Not yet implemented"
 
+-- Actuators server
 actuatorsServer :: ServerT ActuatorsAPI Waziup
 actuatorsServer = getActuators
              :<|> postActuator
@@ -90,16 +108,20 @@ actuatorsServer = getActuators
              :<|> putActuatorValueType
              :<|> putActuatorValue
 
+-- users server
 usersServer :: ServerT UsersAPI Waziup
 usersServer = getUsers
          :<|> getUser
 
+-- socials server
 socialsServer :: ServerT SocialsAPI Waziup
 socialsServer = error "Not yet implemented"
 
+--notifs server
 notifsServer :: ServerT NotifsAPI Waziup
 notifsServer = error "Not yet implemented"
 
+-- projects server
 projectsServer :: ServerT ProjectsAPI Waziup
 projectsServer = getProjects
             :<|> postProject
@@ -108,6 +130,7 @@ projectsServer = getProjects
             :<|> putProjectDevices
             :<|> putProjectGateways
 
+-- ontologies server
 ontologiesServer :: ServerT OntologiesAPI Waziup
 ontologiesServer = getSensorKinds
               :<|> getActuatorKinds

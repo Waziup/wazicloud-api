@@ -18,9 +18,15 @@ import Keycloak (Token)
 -- | Waziup type-level API --
 -----------------------------
 
+-- Complete API
 type API = "api" :> "v2" :> WaziupAPI
-      :<|> WaziupDocs 
+      :<|> WaziupDocs
+      :<|> Redir 
 
+-- Redirection for root requests
+type Redir = (GetNoContent '[JSON] NoContent)
+
+-- Waziup APIs
 type WaziupAPI = AuthAPI
             :<|> DevicesAPI
             :<|> SensorsAPI
@@ -33,6 +39,7 @@ type WaziupAPI = AuthAPI
             :<|> NotifsAPI
             :<|> OntologiesAPI
 
+-- Documentation
 type WaziupDocs = SwaggerSchemaUI "docs" "swagger.json"
 
 ----------------------

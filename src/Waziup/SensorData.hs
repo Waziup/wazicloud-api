@@ -65,9 +65,9 @@ getDatapointsMongo did sid limit offset sort dateFrom dateTo = do
                Nothing  -> 1 :: Int
   let limit' = if isJust limit  then fromJust limit else 20
   let skip'  = if isJust offset then fromJust offset else 0
-  let sel = (select filters "waziup_history") {sort = ["timestamp" := val sort'],
+  let sel = (select filters "waziup_history") {sort  = ["timestamp" := val sort'],
                                                limit = fromIntegral limit',
-                                               skip = fromIntegral skip'}
+                                               skip  = fromIntegral skip'}
   debug $ show sel
   cur <- find sel
   docs <- rest cur

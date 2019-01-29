@@ -75,7 +75,7 @@ postDevice tok d@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
   let username = case tok of
        Just t -> getUsername t
        Nothing -> Just "guest"
-  debug $ "Onwer: " <> (show username)
+  debug $ "Owner: " <> (show username)
   let entity = getEntityFromDevice (d {devOwner = username})
   res2 <- C.try $ runOrion $ O.postEntity entity 
   case res2 of

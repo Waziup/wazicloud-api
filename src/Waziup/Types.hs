@@ -231,10 +231,10 @@ data Visibility = Public | Private
 
 --JSON instances
 instance ToJSON Visibility where
-  toJSON = genericToJSON $ defaultOptions {fieldLabelModifier = unCapitalize, AT.allNullaryToStringTag = True}
+  toJSON = genericToJSON $ defaultOptions {AT.constructorTagModifier = unCapitalize, AT.allNullaryToStringTag = True}
 
 instance FromJSON Visibility where
-  parseJSON = genericParseJSON $ defaultOptions {fieldLabelModifier = unCapitalize, AT.allNullaryToStringTag = True}
+  parseJSON = genericParseJSON $ defaultOptions {AT.constructorTagModifier = unCapitalize, AT.allNullaryToStringTag = True}
 
 -- Visibility is use as plain text body
 instance MimeUnrender PlainText Visibility
@@ -1001,7 +1001,7 @@ readValueType "Array"  = Just ActArray
 readValueType _        = Nothing
 
 instance ToJSON ActuatorValueTypeId where
-  toJSON = genericToJSON $ (removeFieldLabelPrefix False "Act") {AT.allNullaryToStringTag = True}
+  toJSON = genericToJSON $ (removeFieldLabelPrefix False "Act") {AT.allNullaryToStringTag = True} --TODO use constructorTagModifier
 
 instance FromJSON ActuatorValueTypeId where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "Act") {AT.allNullaryToStringTag = True}

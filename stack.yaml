@@ -1,6 +1,11 @@
-resolver: lts-12.20
+resolver: lts-13.5
 extra-deps:
+- mqtt-hs-1.0.2
+- net-mqtt-0.2.2.0
 packages:
 - '.'
 - './aesonbson'
 - './servant-flatten'
+#- './mqtt-hs'
+
+allow-newer: true

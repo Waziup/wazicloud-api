@@ -21,7 +21,7 @@ import           Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
 import           Paths_Waziup_Servant
 import           Database.MongoDB as DB hiding (value)
-
+import           MQTT hiding (info, warn, debug, err, Scope) 
 
 getSensors :: Maybe Token -> DeviceId -> Waziup [Sensor]
 getSensors tok did = do
@@ -109,6 +109,7 @@ putSensorValue mtok did sid senVal@(SensorValue v ts dr) = do
       Just sensor -> do
         runOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senValue = Just senVal})
         runMongo $ postDatapoint $ Datapoint did sid v ts dr
+        liftIO $ publishSensorValue did sid senVal
         return NoContent
       Nothing -> do 
         warn "sensor not found"

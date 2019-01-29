@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DataKinds #-}
 
 module Main where
 
@@ -28,9 +29,12 @@ import           Options.Applicative as Opts hiding (Success, Failure)
 import           Control.Exception
 import           Control.Lens
 import           Control.Monad.IO.Class
+import           Control.Concurrent
+import           Control.Monad.Reader
 import           System.FilePath ((</>))
 import           System.Environment
 import           Paths_Waziup_Servant
+import           MQTT
 
 main :: IO ()
 main = do
@@ -54,9 +58,11 @@ main = do
   ontologies <- loadOntologies
   let host = conf ^. serverConf.serverHost
   let port = conf ^. serverConf.serverPort
+  let waziupInfo = WaziupInfo pipe conf ontologies
   Main.info $ convertString $ "API is running on " <> host <> "/api/v1"
   Main.info $ convertString $ "Documentation is on " <> host <> "/docs"
-  run port $ logStdoutDev $ waziupServer $ WaziupInfo pipe conf ontologies
+  forkIO $ runReaderT mqttClient waziupInfo
+  run port $ logStdoutDev $ waziupServer waziupInfo
 
 opts :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> ParserInfo WaziupConfig
 opts serv m kc o = Opts.info ((waziupConfigParser serv m kc o) <**> helper) parserInfo

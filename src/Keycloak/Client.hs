@@ -104,11 +104,11 @@ getClientAuthToken = do
   let dat = ["client_id" := client, 
              "client_secret" := secret,
              "grant_type" := ("client_credentials" :: Text)]
-  body <- keycloakPostDef "protocol/openid-connect/token" dat Nothing
+  body <- keycloakPost "protocol/openid-connect/token" dat Nothing
   case eitherDecode body of
     Right ret -> do
       debug $ "Keycloak success: " ++ (show ret) 
-      return $ Token $ encodeUtf8 ret
+      return $ ret
     Left err2 -> do
       debug $ "Keycloak parse error: " ++ (show err2) 
       throwError $ ParseError $ pack (show err2)

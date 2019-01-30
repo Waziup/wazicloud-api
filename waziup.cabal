@@ -22,9 +22,6 @@ Executable waziup-servant
                      , Waziup.Server
                      , Waziup.Types
                      , Waziup.Utils
-                     , Keycloak
-                     , Keycloak.Client
-                     , Keycloak.Types
                      , Orion
                      , Orion.Client
                      , Orion.Types

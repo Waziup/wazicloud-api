@@ -109,7 +109,7 @@ putSensorValue mtok did sid senVal@(SensorValue v ts dr) = do
       Just sensor -> do
         runOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senValue = Just senVal})
         runMongo $ postDatapoint $ Datapoint did sid v ts dr
-        liftIO $ publishSensorValue did sid senVal
+        if (devVisibility device == Just Public) then liftIO $ publishSensorValue did sid senVal else return ()
         return NoContent
       Nothing -> do 
         warn "sensor not found"

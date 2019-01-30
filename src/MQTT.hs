@@ -55,7 +55,7 @@ readMsg tc wi = do
   
 postSensorValue :: DeviceId -> SensorId -> SensorValue -> ReaderT WaziupInfo IO ()
 postSensorValue did sid senVal@(SensorValue v ts dr) = do 
-  info $ "Put sensor value: " ++ (show senVal)
+  info $ convertString $ "Post device " <> (unDeviceId did) <> ", sensor " <> (unSensorId sid) <> ", value: " <> (convertString $ show senVal)
   (WaziupInfo pipe (WaziupConfig _ _ _ conf) _) <- ask
   eent <- liftIO $ runExceptT $ runReaderT (O.getEntity $ toEntityId did) conf
   case eent of 
@@ -75,7 +75,7 @@ publishSensorValue (DeviceId d) (SensorId s) v = do
   let topic = "devices/" <> d <> "/sensors/" <> s <> "/value"
   mc <- runClient mqttConfig { _connID = "pub"}
   info $ "Publish sensor value: " ++ (convertString $ encode v) ++ " to topic: " ++ (show topic)
-  publish mc topic (convertString $ encode v) True
+  publish mc topic (convertString $ encode v) False
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

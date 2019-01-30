@@ -80,7 +80,7 @@ Executable waziup-servant
                      , string-conversions
                      , optparse-applicative
                      , validation
-                     , mqtt-hs
                      , stm
                      , net-mqtt
+                     , keycloak-hs
   default-language:    Haskell2010

@@ -61,7 +61,7 @@ main = do
   let waziupInfo = WaziupInfo pipe conf ontologies
   Main.info $ convertString $ "API is running on " <> host <> "/api/v1"
   Main.info $ convertString $ "Documentation is on " <> host <> "/docs"
-  forkIO $ runReaderT mqttClient waziupInfo
+  forkIO $ mqttClient waziupInfo
   run port $ logStdoutDev $ waziupServer waziupInfo
 
 opts :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> ParserInfo WaziupConfig

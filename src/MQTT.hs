@@ -3,11 +3,12 @@
 
 module MQTT where
 
-import qualified Network.MQTT as MQTT
 import           Data.Aeson
 import           Data.String.Conversions
 import qualified Data.List as L
 import           Data.Maybe
+import qualified Data.Text as T
+import qualified Data.ByteString.Lazy as BL
 import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Monad (unless, forever)
@@ -19,47 +20,39 @@ import           System.Log.Logger
 import           Waziup.Types
 import           Orion as O hiding (info, warn, debug, err)
 import           Waziup.Devices hiding (info, warn, debug, err)
-import Network.MQTT.Client
+import           Network.MQTT.Client
 import           Database.MongoDB as DB
 
-sensorsTopic :: MQTT.Topic
+sensorsTopic :: Topic
 sensorsTopic = "devices/+/sensors/+/value"
 
 
-mqttClient :: ReaderT WaziupInfo IO ()
-mqttClient = do
-  wi <- ask
-  liftIO $ do
-    cmds <- MQTT.mkCommands
-    pubChan <- newTChanIO
-    let conf = (MQTT.defaultConfig cmds pubChan)
-                { MQTT.cUsername = Nothing
-                , MQTT.cPassword = Nothing
-                , MQTT.cLogDebug = debug}
-    forkIO $ do
-      qosGranted <- MQTT.subscribe conf [(sensorsTopic, MQTT.Handshake)]
-      case qosGranted of
-        [MQTT.Handshake] -> forever $ do
-                              msg <- atomically (readTChan pubChan)
-                              runReaderT (handleMsg msg) wi
-        _                -> err $ "Wanted QoS Handshake, got " ++ show qosGranted
-    info "Subscribe to MQTT server"
-    terminated <- MQTT.run conf
-    print terminated
+mqttClient :: WaziupInfo -> IO ()
+mqttClient wi = do
+  pubChan <- newTChanIO
+  mc <- runClient mqttConfig {_msgCB  = Just (handleMsg pubChan),
+                              _connID = "sub"}
+  res <- subscribe mc [(sensorsTopic, QoS0)]
+  case res of
+    [Just QoS0] -> forkIO $ forever $ readMsg pubChan wi
+    _ -> error "Subscribe failed"
+  res <- waitForClient mc   -- wait for the the client to disconnect
+  err $ "MQTT client terminated:" ++ (show res)
 
-handleMsg :: MQTT.Message MQTT.PUBLISH -> ReaderT WaziupInfo IO ()
-handleMsg msg =
-  -- sometimes it's useful to ignore retained messages
-  unless (MQTT.retain $ MQTT.header msg) $ do
-    let t = MQTT.topic $ MQTT.body msg
-        p = MQTT.payload $ MQTT.body msg
-    case MQTT.getLevels t of
-      ["devices", d, "sensors", s, "value"] -> do
-         case (decode $ convertString p) of
-           Just val -> postSensorValue (DeviceId d) (SensorId s) val
-           Nothing -> err "not a sensor value"
+handleMsg :: TChan (Topic, BL.ByteString) -> MQTTClient -> Topic -> BL.ByteString -> IO ()
+handleMsg tc mq topic payload = do
+  atomically $ writeTChan tc (topic, payload)
 
 
+readMsg :: TChan (Topic, BL.ByteString) -> WaziupInfo -> IO ()
+readMsg tc wi = do
+  (topic, payload) <- liftIO $ atomically $ readTChan tc
+  case T.split (== '/') topic of
+    ["devices", d, "sensors", s, "value"] -> do
+       case (decode $ convertString payload) of
+         Just val -> runReaderT (postSensorValue (DeviceId d) (SensorId s) val) wi
+         Nothing -> err "not a sensor value"
+  
 postSensorValue :: DeviceId -> SensorId -> SensorValue -> ReaderT WaziupInfo IO ()
 postSensorValue did sid senVal@(SensorValue v ts dr) = do 
   info $ "Put sensor value: " ++ (show senVal)
@@ -80,7 +73,7 @@ postSensorValue did sid senVal@(SensorValue v ts dr) = do
 publishSensorValue :: DeviceId -> SensorId -> SensorValue -> IO ()
 publishSensorValue (DeviceId d) (SensorId s) v = do
   let topic = "devices/" <> d <> "/sensors/" <> s <> "/value"
-  mc <- runClient mqttConfig
+  mc <- runClient mqttConfig { _connID = "pub"}
   info $ "Publish sensor value: " ++ (convertString $ encode v) ++ " to topic: " ++ (show topic)
   publish mc topic (convertString $ encode v) True
 

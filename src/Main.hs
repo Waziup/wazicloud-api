@@ -51,10 +51,12 @@ main = do
   let serverConfig = defaultServerConfig & serverHost .~? (convertString <$> envUrl)
                                          & serverPort .~? (read          <$> envPort)
   conf <- execParser $ opts serverConfig mongoConfig kcConfig orionConfig 
-  epipe <- try $ DB.connect (host $ convertString $ conf ^. mongoConf.mongoUrl)
-  let pipe = case epipe of
-       Right pipe -> pipe
-       Left (e :: SomeException) -> error "Cannot connect to MongoDB"
+  epipe <- try $ DB.connect' 2 (host "127.0.0.1") -- $ convertString $ conf ^. mongoConf.mongoUrl)
+  pipe <- case epipe of
+       Right pipe -> return pipe 
+       Left (e :: SomeException) -> do
+         Main.err "Cannot connect to MongoDB"
+         throw e
   ontologies <- loadOntologies
   let host = conf ^. serverConf.serverHost
   let port = conf ^. serverConf.serverPort

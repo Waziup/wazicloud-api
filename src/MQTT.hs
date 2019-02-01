@@ -3,7 +3,7 @@
 
 module MQTT where
 
-import           Data.Aeson
+import           Data.Aeson as JSON
 import           Data.String.Conversions
 import qualified Data.List as L
 import           Data.Maybe
@@ -23,8 +23,9 @@ import           Waziup.Devices hiding (info, warn, debug, err)
 import           Network.MQTT.Client
 import           Database.MongoDB as DB
 
-sensorsTopic :: Topic
-sensorsTopic = "devices/+/sensors/+/value"
+senTopic, actTopic :: Topic
+senTopic = "devices/+/sensors/+/value"
+actTopic = "devices/+/actuators/+/value"
 
 
 mqttClient :: WaziupInfo -> IO ()
@@ -32,17 +33,15 @@ mqttClient wi = do
   pubChan <- newTChanIO
   mc <- runClient mqttConfig {_msgCB  = Just (handleMsg pubChan),
                               _connID = "sub"}
-  res <- subscribe mc [(sensorsTopic, QoS0)]
+  res <- subscribe mc [(senTopic, QoS0), (actTopic, QoS0)]
   case res of
-    [Just QoS0] -> forkIO $ forever $ readMsg pubChan wi
+    [Just QoS0, Just QoS0] -> forkIO $ forever $ readMsg pubChan wi
     _ -> error "Subscribe failed"
   res <- waitForClient mc   -- wait for the the client to disconnect
   err $ "MQTT client terminated:" ++ (show res)
 
 handleMsg :: TChan (Topic, BL.ByteString) -> MQTTClient -> Topic -> BL.ByteString -> IO ()
-handleMsg tc mq topic payload = do
-  atomically $ writeTChan tc (topic, payload)
-
+handleMsg tc mq topic payload = atomically $ writeTChan tc (topic, payload)
 
 readMsg :: TChan (Topic, BL.ByteString) -> WaziupInfo -> IO ()
 readMsg tc wi = do
@@ -52,7 +51,13 @@ readMsg tc wi = do
        case (decode $ convertString payload) of
          Just val -> runReaderT (postSensorValue (DeviceId d) (SensorId s) val) wi
          Nothing -> err "not a sensor value"
-  
+    ["devices", d, "actuators", s, "value"] -> do
+       case (decode $ convertString payload) of
+         Just val -> runReaderT (putActuatorValue (DeviceId d) (ActuatorId s) val) wi
+         Nothing -> err "not an actuator value"
+
+-- Post sensor value to DBs
+-- TODO: access control
 postSensorValue :: DeviceId -> SensorId -> SensorValue -> ReaderT WaziupInfo IO ()
 postSensorValue did sid senVal@(SensorValue v ts dr) = do 
   info $ convertString $ "Post device " <> (unDeviceId did) <> ", sensor " <> (unSensorId sid) <> ", value: " <> (convertString $ show senVal)
@@ -68,6 +73,22 @@ postSensorValue did sid senVal@(SensorValue v ts dr) = do
             return ()
           Nothing -> do 
             err "sensor not found"
+    Left e -> err "Orion error"
+
+putActuatorValue :: DeviceId -> ActuatorId ->JSON.Value -> ReaderT WaziupInfo IO ()
+putActuatorValue did aid actVal = do
+  info $ convertString $ "Post device " <> (unDeviceId did) <> ", actuator " <> (unActuatorId aid) <> ", value: " <> (convertString $ show actVal)
+  (WaziupInfo pipe (WaziupConfig _ _ _ conf) _) <- ask
+  eent <- liftIO $ runExceptT $ runReaderT (O.getEntity $ toEntityId did) conf
+  case eent of 
+    Right ent -> do
+      let mdevice = getDeviceFromEntity ent
+      case L.find (\a -> (actId a) == aid) (devActuators $ fromJust mdevice) of
+          Just act -> do
+            liftIO $ runExceptT $ runReaderT (O.postAttribute (toEntityId did) $ getAttFromActuator (act {actValue = Just actVal})) conf
+            return ()
+          Nothing -> do 
+            err "actuator not found"
     Left e -> err "Orion error"
 
 publishSensorValue :: DeviceId -> SensorId -> SensorValue -> IO ()

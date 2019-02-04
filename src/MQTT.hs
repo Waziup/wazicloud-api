@@ -9,6 +9,7 @@ import qualified Data.List as L
 import           Data.Maybe
 import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString as B
 import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Monad (unless, forever)
@@ -21,7 +22,40 @@ import           Waziup.Types
 import           Orion as O hiding (info, warn, debug, err)
 import           Waziup.Devices hiding (info, warn, debug, err)
 import           Network.MQTT.Client
+import qualified Network.MQTT.Types as T
 import           Database.MongoDB as DB
+import           Conduit
+import           Data.Conduit.Network
+import           Data.Word8           (toUpper)
+import           Control.Concurrent.Async (concurrently)
+import           Data.Conduit.Attoparsec (conduitParser, sinkParser)
+import           Data.Attoparsec.ByteString
+
+mqttProxy :: IO ()
+mqttProxy = do
+  runTCPServer (serverSettings 4002 "*") handleClient where
+    handleClient client = runTCPClient (clientSettings 1883 "localhost") handleMosq where
+      handleMosq   server = void $ concurrently
+                    (runConduit $ appSource server .| appSink client)
+                    (runConduit $ appSource client .| filterMQTT .| appSink server)
+
+displayMQTT :: ConduitT B.ByteString B.ByteString IO ()
+displayMQTT = iterMC (putStrLn . show . parse T.parsePacket) 
+
+filterMQTT :: ConduitT B.ByteString B.ByteString IO ()
+filterMQTT = filterMC $ \p ->  do
+  let res = parse T.parsePacket p
+  case res of 
+    Done _ m -> authMQTT m
+    _ -> return True
+  
+
+authMQTT :: T.MQTTPkt -> IO Bool
+authMQTT (T.PublishPkt (T.PublishRequest _ _ _ topic _ _)) = do
+  putStrLn $ "Topic: " ++ (show topic)
+  return False
+authMQTT _ = return True
+
 
 senTopic, actTopic :: Topic
 senTopic = "devices/+/sensors/+/value"

@@ -51,11 +51,11 @@ getDevices tok mq mlimit moffset = do
   entities <- runOrion $ O.getEntities mq
   let devices = catMaybes $ map getDeviceFromEntity entities
   ps <- getPerms tok
-  let devices2 = filter (checkPermDevice DevicesView ps) devices -- TODO limits
+  let devices2 = filter (checkPermDevice DevicesView ps . devId) devices -- TODO limits
   return devices2
 
-checkPermDevice :: W.Scope -> [Perm] -> Device -> Bool
-checkPermDevice scope perms dev = any (\p -> (permResource p) == (unDeviceId $ devId dev) && scope `elem` (permScopes p)) perms
+checkPermDevice :: W.Scope -> [Perm] -> DeviceId -> Bool
+checkPermDevice scope perms dev = any (\p -> (permResource p) == (unDeviceId $ dev) && scope `elem` (permScopes p)) perms
 
 getDevice :: Maybe Token -> DeviceId -> Waziup Device
 getDevice tok did = do

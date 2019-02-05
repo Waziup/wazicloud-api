@@ -19,9 +19,10 @@ import           Control.Monad.Except (throwError, runExceptT)
 import           System.IO (hPutStrLn, stderr)
 import           System.Log.Logger
 import           Waziup.Types
+import           Waziup.Utils
 import           Orion as O hiding (info, warn, debug, err)
 import           Waziup.Devices hiding (info, warn, debug, err)
-import           Network.MQTT.Client
+import           Network.MQTT.Client hiding (info, warn, debug, err)
 import qualified Network.MQTT.Types as T
 import           Database.MongoDB as DB
 import           Conduit
@@ -30,31 +31,64 @@ import           Data.Word8           (toUpper)
 import           Control.Concurrent.Async (concurrently)
 import           Data.Conduit.Attoparsec (conduitParser, sinkParser)
 import           Data.Attoparsec.ByteString
+import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
+import           Servant.Server.Internal.Handler
 
-mqttProxy :: IO ()
-mqttProxy = do
+
+mqttProxy :: WaziupInfo -> IO ()
+mqttProxy wi = do
   runTCPServer (serverSettings 4002 "*") handleClient where
-    handleClient client = runTCPClient (clientSettings 1883 "localhost") handleMosq where
-      handleMosq   server = void $ concurrently
-                    (runConduit $ appSource server .| appSink client)
-                    (runConduit $ appSource client .| filterMQTT .| appSink server)
+    handleClient :: AppData -> IO ()
+    handleClient client = runTCPClient (clientSettings 1883 "localhost") (handleServer wi client) where
+
+handleServer :: WaziupInfo -> AppData -> AppData -> IO ()
+handleServer wi clientData serverData = do
+  perms <- atomically $ newTVar []
+  void $ concurrently
+              (runConduit $ appSource serverData .| appSink clientData)
+              (runConduit $ appSource clientData .| filterMQTT wi perms .| appSink serverData)
+  putStrLn "fun"
 
 displayMQTT :: ConduitT B.ByteString B.ByteString IO ()
 displayMQTT = iterMC (putStrLn . show . parse T.parsePacket) 
 
-filterMQTT :: ConduitT B.ByteString B.ByteString IO ()
-filterMQTT = filterMC $ \p ->  do
+filterMQTT :: WaziupInfo -> TVar [Perm] -> ConduitT B.ByteString B.ByteString IO ()
+filterMQTT wi perms = filterMC $ \p ->  do
   let res = parse T.parsePacket p
   case res of 
-    Done _ m -> authMQTT m
+    Done _ m -> do
+       res <- runExceptT $ runHandler' $ runReaderT (authMQTT m perms) wi
+       case res of
+         Right b -> return b
+         Left e -> error "Error"
     _ -> return True
   
 
-authMQTT :: T.MQTTPkt -> IO Bool
-authMQTT (T.PublishPkt (T.PublishRequest _ _ _ topic _ _)) = do
-  putStrLn $ "Topic: " ++ (show topic)
-  return False
-authMQTT _ = return True
+authMQTT :: T.MQTTPkt -> TVar [Perm] -> Waziup Bool
+authMQTT (T.ConnPkt (T.ConnectRequest user pass _ _ _ _)) tperms = do
+  debug $ "Connect with user: " ++ (show user)
+  (WaziupInfo _ (WaziupConfig _ _ keyconf _) _) <- ask 
+  if isJust user && isJust pass
+    then do
+      tok <- runKeycloak $ getUserAuthToken (convertString $ fromJust user) (convertString $ fromJust pass)
+      perms <- getPerms (Just tok)
+      debug $ "Perms: " ++ (show perms)
+      liftIO $ atomically $ writeTVar tperms perms
+      return True
+    else do
+      return True
+authMQTT (T.PublishPkt (T.PublishRequest _ _ _ topic _ _)) tperms = do
+  info $ "Topic: " ++ (show topic)
+  perms <- liftIO $ atomically $ readTVar tperms
+  case T.split (== '/') (convertString topic) of
+    ["devices", d, "sensors", s, "value"] -> do
+      let res = checkPermDevice DevicesDataCreate perms (DeviceId d)
+      debug $ "Perm check: " ++ (show res)
+      return res
+    ["devices", d, "actuators", s, "value"] -> do
+      return $ checkPermDevice DevicesDataCreate perms (DeviceId d)
+    _ -> return False
+authMQTT _ _ = return True
 
 
 senTopic, actTopic :: Topic

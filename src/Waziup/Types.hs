@@ -51,6 +51,8 @@ type Offset = Int
 -- * Waziup Monad --
 --------------------
 
+-- Monad for running requests against Waziup backend components
+-- Servant.Handler is ExceptT ServantErr IO a
 type Waziup = ReaderT WaziupInfo Servant.Handler
 
 data WaziupInfo = WaziupInfo {

@@ -38,35 +38,33 @@ import           MQTT
 
 main :: IO ()
 main = do
-  mqttProxy
-  return ()
-  --startLog "Waziup-log.xml"
-  --Main.info $ "API server starting..."
-  --envUrl     <- lookupEnv "HTTP_URL"
-  --envPort    <- lookupEnv "HTTP_PORT"
-  --envKCUrl   <- lookupEnv "KEYCLOAK_URL"
-  --envOrUrl   <- lookupEnv "ORION_URL"
-  --envMongUrl <- lookupEnv "MONGODB_URL"
-  --let kcConfig     = defaultKCConfig     & baseUrl    .~? (convertString <$> envKCUrl)
-  --let orionConfig  = defaultOrionConfig  & orionUrl   .~? (convertString <$> envOrUrl)
-  --let mongoConfig  = defaultMongoConfig  & mongoUrl   .~? (convertString <$> envMongUrl)
-  --let serverConfig = defaultServerConfig & serverHost .~? (convertString <$> envUrl)
-  --                                       & serverPort .~? (read          <$> envPort)
-  --conf <- execParser $ opts serverConfig mongoConfig kcConfig orionConfig 
-  --epipe <- try $ DB.connect' 2 (host "127.0.0.1") -- $ convertString $ conf ^. mongoConf.mongoUrl)
-  --pipe <- case epipe of
-  --     Right pipe -> return pipe 
-  --     Left (e :: SomeException) -> do
-  --       Main.err "Cannot connect to MongoDB"
-  --       throw e
-  --ontologies <- loadOntologies
-  --let host = conf ^. serverConf.serverHost
-  --let port = conf ^. serverConf.serverPort
-  --let waziupInfo = WaziupInfo pipe conf ontologies
-  --Main.info $ convertString $ "API is running on " <> host <> "/api/v1"
-  --Main.info $ convertString $ "Documentation is on " <> host <> "/docs"
-  --forkIO $ mqttClient waziupInfo
-  --run port $ logStdoutDev $ waziupServer waziupInfo
+  startLog "Waziup-log.xml"
+  Main.info $ "API server starting..."
+  envUrl     <- lookupEnv "HTTP_URL"
+  envPort    <- lookupEnv "HTTP_PORT"
+  envKCUrl   <- lookupEnv "KEYCLOAK_URL"
+  envOrUrl   <- lookupEnv "ORION_URL"
+  envMongUrl <- lookupEnv "MONGODB_URL"
+  let kcConfig     = defaultKCConfig     & baseUrl    .~? (convertString <$> envKCUrl)
+  let orionConfig  = defaultOrionConfig  & orionUrl   .~? (convertString <$> envOrUrl)
+  let mongoConfig  = defaultMongoConfig  & mongoUrl   .~? (convertString <$> envMongUrl)
+  let serverConfig = defaultServerConfig & serverHost .~? (convertString <$> envUrl)
+                                         & serverPort .~? (read          <$> envPort)
+  conf <- execParser $ opts serverConfig mongoConfig kcConfig orionConfig 
+  epipe <- try $ DB.connect' 2 (host "127.0.0.1") -- $ convertString $ conf ^. mongoConf.mongoUrl)
+  pipe <- case epipe of
+       Right pipe -> return pipe 
+       Left (e :: SomeException) -> do
+         Main.err "Cannot connect to MongoDB"
+         throw e
+  ontologies <- loadOntologies
+  let host = conf ^. serverConf.serverHost
+  let port = conf ^. serverConf.serverPort
+  let waziupInfo = WaziupInfo pipe conf ontologies
+  Main.info $ convertString $ "API is running on " <> host <> "/api/v1"
+  Main.info $ convertString $ "Documentation is on " <> host <> "/docs"
+  forkIO $ mqttProxy waziupInfo
+  run port $ logStdoutDev $ waziupServer waziupInfo
 
 opts :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> ParserInfo WaziupConfig
 opts serv m kc o = Opts.info ((waziupConfigParser serv m kc o) <**> helper) parserInfo

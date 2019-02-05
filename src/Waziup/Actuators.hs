@@ -21,6 +21,7 @@ import           Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
 import           Paths_Waziup_Servant
 import           Database.MongoDB as DB hiding (value)
+import           MQTT hiding (info, warn, debug, err, Scope) 
 
 
 getActuators :: Maybe Token -> DeviceId -> Waziup [Actuator]
@@ -87,9 +88,18 @@ putActuatorValueType mtok did aid av = do
 putActuatorValue :: Maybe Token -> DeviceId -> ActuatorId -> JSON.Value -> Waziup NoContent
 putActuatorValue mtok did aid actVal = do
   info $ "Put actuator value: " ++ (show actVal)
-  updateActuatorField mtok did aid $ \act -> do 
-    runOrion $ O.postAttribute (toEntityId did) $ getAttFromActuator (act {actValue = Just actVal})
-
+  withKCId did $ \(keyId, device) -> do
+     debug "Check permissions"
+     runKeycloak $ checkPermission keyId (pack $ show DevicesUpdate) mtok
+     debug "Permission granted, returning actuator"
+     case L.find (\s -> actId s == aid) (devActuators device) of
+       Just act -> do
+         runOrion $ O.postAttribute (toEntityId did) $ getAttFromActuator (act {actValue = Just actVal})
+         if (devVisibility device == Just Public) then liftIO $ publishActuatorValue did aid actVal else return ()
+         return NoContent
+       Nothing -> do 
+         warn "Actuator not found"
+         throwError err404 {errBody = "Actuator not found"}
 
 updateActuatorField :: Maybe Token -> DeviceId -> ActuatorId -> (Actuator -> Waziup ()) -> Waziup NoContent
 updateActuatorField mtok did aid w = do

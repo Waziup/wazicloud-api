@@ -47,10 +47,7 @@ handleServer wi clientData serverData = do
   void $ concurrently
               (runConduit $ appSource serverData .| appSink clientData)
               (runConduit $ appSource clientData .| filterMQTT wi perms .| appSink serverData)
-  putStrLn "fun"
-
-displayMQTT :: ConduitT B.ByteString B.ByteString IO ()
-displayMQTT = iterMC (putStrLn . show . parse T.parsePacket) 
+  debug "Connection finished"
 
 filterMQTT :: WaziupInfo -> TVar [Perm] -> ConduitT B.ByteString B.ByteString IO ()
 filterMQTT wi perms = filterMC $ \p ->  do
@@ -77,93 +74,68 @@ authMQTT (T.ConnPkt (T.ConnectRequest user pass _ _ _ _)) tperms = do
       return True
     else do
       return True
-authMQTT (T.PublishPkt (T.PublishRequest _ _ _ topic _ _)) tperms = do
+authMQTT (T.PublishPkt (T.PublishRequest _ _ _ topic _ body)) tperms = do
   info $ "Topic: " ++ (show topic)
   perms <- liftIO $ atomically $ readTVar tperms
   case T.split (== '/') (convertString topic) of
     ["devices", d, "sensors", s, "value"] -> do
-      let res = checkPermDevice DevicesDataCreate perms (DeviceId d)
-      debug $ "Perm check: " ++ (show res)
-      return res
+      case decode body of
+        Just senVal -> do
+          let auth = checkPermDevice DevicesDataCreate perms (DeviceId d)
+          debug $ "Perm check: " ++ (show auth)
+          when auth $ postSensorValue (DeviceId d) (SensorId s) senVal
+          return auth
+        Nothing -> return False
     ["devices", d, "actuators", s, "value"] -> do
-      return $ checkPermDevice DevicesDataCreate perms (DeviceId d)
+      case decode body of
+        Just actVal -> do
+          let auth = checkPermDevice DevicesDataCreate perms (DeviceId d)
+          debug $ "Perm check: " ++ (show auth)
+          when auth $ putActuatorValue (DeviceId d) (ActuatorId s) actVal
+          return auth
+        Nothing -> return False
     _ -> return False
 authMQTT _ _ = return True
 
-
-senTopic, actTopic :: Topic
-senTopic = "devices/+/sensors/+/value"
-actTopic = "devices/+/actuators/+/value"
-
-
-mqttClient :: WaziupInfo -> IO ()
-mqttClient wi = do
-  pubChan <- newTChanIO
-  mc <- runClient mqttConfig {_msgCB  = Just (handleMsg pubChan),
-                              _connID = "sub"}
-  res <- subscribe mc [(senTopic, QoS0), (actTopic, QoS0)]
-  case res of
-    [Just QoS0, Just QoS0] -> forkIO $ forever $ readMsg pubChan wi
-    _ -> error "Subscribe failed"
-  res <- waitForClient mc   -- wait for the the client to disconnect
-  err $ "MQTT client terminated:" ++ (show res)
-
-handleMsg :: TChan (Topic, BL.ByteString) -> MQTTClient -> Topic -> BL.ByteString -> IO ()
-handleMsg tc mq topic payload = atomically $ writeTChan tc (topic, payload)
-
-readMsg :: TChan (Topic, BL.ByteString) -> WaziupInfo -> IO ()
-readMsg tc wi = do
-  (topic, payload) <- liftIO $ atomically $ readTChan tc
-  case T.split (== '/') topic of
-    ["devices", d, "sensors", s, "value"] -> do
-       case (decode $ convertString payload) of
-         Just val -> runReaderT (postSensorValue (DeviceId d) (SensorId s) val) wi
-         Nothing -> err "not a sensor value"
-    ["devices", d, "actuators", s, "value"] -> do
-       case (decode $ convertString payload) of
-         Just val -> runReaderT (putActuatorValue (DeviceId d) (ActuatorId s) val) wi
-         Nothing -> err "not an actuator value"
-
 -- Post sensor value to DBs
 -- TODO: access control
-postSensorValue :: DeviceId -> SensorId -> SensorValue -> ReaderT WaziupInfo IO ()
+postSensorValue :: DeviceId -> SensorId -> SensorValue -> Waziup ()
 postSensorValue did sid senVal@(SensorValue v ts dr) = do 
   info $ convertString $ "Post device " <> (unDeviceId did) <> ", sensor " <> (unSensorId sid) <> ", value: " <> (convertString $ show senVal)
-  (WaziupInfo pipe (WaziupConfig _ _ _ conf) _) <- ask
-  eent <- liftIO $ runExceptT $ runReaderT (O.getEntity $ toEntityId did) conf
-  case eent of 
-    Right ent -> do
-      let mdevice = getDeviceFromEntity ent
-      case L.find (\s -> (senId s) == sid) (devSensors $ fromJust mdevice) of
-          Just sensor -> do
-            liftIO $ runExceptT $ runReaderT (O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senValue = Just senVal})) conf
-            liftIO $ access pipe DB.master "waziup" (postDatapoint $ Datapoint did sid v ts dr)
-            return ()
-          Nothing -> do 
-            err "sensor not found"
-    Left e -> err "Orion error"
+  ent <- runOrion (O.getEntity $ toEntityId did)
+  let mdevice = getDeviceFromEntity ent
+  case L.find (\s -> (senId s) == sid) (devSensors $ fromJust mdevice) of
+      Just sensor -> do
+        runOrion (O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senValue = Just senVal}))
+        runMongo (postDatapoint $ Datapoint did sid v ts dr)
+        return ()
+      Nothing -> do 
+        err "sensor not found"
 
-putActuatorValue :: DeviceId -> ActuatorId ->JSON.Value -> ReaderT WaziupInfo IO ()
+putActuatorValue :: DeviceId -> ActuatorId -> JSON.Value -> Waziup ()
 putActuatorValue did aid actVal = do
   info $ convertString $ "Post device " <> (unDeviceId did) <> ", actuator " <> (unActuatorId aid) <> ", value: " <> (convertString $ show actVal)
-  (WaziupInfo pipe (WaziupConfig _ _ _ conf) _) <- ask
-  eent <- liftIO $ runExceptT $ runReaderT (O.getEntity $ toEntityId did) conf
-  case eent of 
-    Right ent -> do
-      let mdevice = getDeviceFromEntity ent
-      case L.find (\a -> (actId a) == aid) (devActuators $ fromJust mdevice) of
-          Just act -> do
-            liftIO $ runExceptT $ runReaderT (O.postAttribute (toEntityId did) $ getAttFromActuator (act {actValue = Just actVal})) conf
-            return ()
-          Nothing -> do 
-            err "actuator not found"
-    Left e -> err "Orion error"
+  ent <- runOrion (O.getEntity $ toEntityId did)
+  let mdevice = getDeviceFromEntity ent
+  case L.find (\a -> (actId a) == aid) (devActuators $ fromJust mdevice) of
+      Just act -> do
+        runOrion (O.postAttribute (toEntityId did) $ getAttFromActuator (act {actValue = Just actVal}))
+        return ()
+      Nothing -> do 
+        err "actuator not found"
 
 publishSensorValue :: DeviceId -> SensorId -> SensorValue -> IO ()
 publishSensorValue (DeviceId d) (SensorId s) v = do
   let topic = "devices/" <> d <> "/sensors/" <> s <> "/value"
   mc <- runClient mqttConfig { _connID = "pub"}
   info $ "Publish sensor value: " ++ (convertString $ encode v) ++ " to topic: " ++ (show topic)
+  publish mc topic (convertString $ encode v) False
+
+publishActuatorValue :: DeviceId -> ActuatorId -> JSON.Value -> IO ()
+publishActuatorValue (DeviceId d) (ActuatorId a) v = do
+  let topic = "devices/" <> d <> "/actuator/" <> a <> "/value"
+  mc <- runClient mqttConfig { _connID = "pub"}
+  info $ "Publish actuator value: " ++ (convertString $ encode v) ++ " to topic: " ++ (show topic)
   publish mc topic (convertString $ encode v) False
 
 -- Logging

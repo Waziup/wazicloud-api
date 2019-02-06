@@ -18,7 +18,10 @@ import           Network.HTTP.Types.Status as HTS
 import           Network.HTTP.Client as HC
 import           Servant
 import           Database.MongoDB as DB
+
 -- * Lifting
+
+-- Run Orion functions
 runOrion :: O.Orion a -> Waziup a
 runOrion orion = do
  (WaziupInfo _ (WaziupConfig _ _ _ conf) _) <- ask
@@ -27,14 +30,27 @@ runOrion orion = do
    Right res -> return res
    Left err -> throwError $ fromOrionError err
 
-runKeycloak :: KC.Keycloak a -> Waziup a
-runKeycloak kc = do
- (WaziupInfo _ (WaziupConfig _ _ conf _) _) <- ask
+-- * Run a Keycloak function with default guest token
+runKeycloak :: Maybe KC.Token -> (Token -> KC.Keycloak a) -> Waziup a
+runKeycloak mtok kc = do
+ conf      <- view $ waziupConfig.keycloakConf
+ guestId   <- view (waziupConfig.serverConf.guestLogin)
+ guestPass <- view (waziupConfig.serverConf.guestPassword)
+ e <- liftIO $ runExceptT $ runReaderT (getUserAuthToken guestId guestPass >>= kc) conf
+ case e of
+   Right res -> return res
+   Left e    -> throwError $ fromKCError e
+
+-- * Run Keycloak function
+runKeycloak' :: KC.Keycloak a -> Waziup a
+runKeycloak' kc = do
+ conf <- view $ waziupConfig.keycloakConf
  e <- liftIO $ runExceptT $ runReaderT kc conf
  case e of
    Right res -> return res
    Left err -> throwError $ fromKCError err
 
+-- * run Mongo function
 runMongo :: Action IO a -> Waziup a
 runMongo dbAction = do
   (WaziupInfo pipe _ _) <- ask

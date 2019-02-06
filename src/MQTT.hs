@@ -67,7 +67,7 @@ authMQTT (T.ConnPkt (T.ConnectRequest user pass _ _ _ _)) tperms = do
   (WaziupInfo _ (WaziupConfig _ _ keyconf _) _) <- ask 
   if isJust user && isJust pass
     then do
-      tok <- runKeycloak $ getUserAuthToken (convertString $ fromJust user) (convertString $ fromJust pass)
+      tok <- runKeycloak' $ getUserAuthToken (convertString $ fromJust user) (convertString $ fromJust pass)
       perms <- getPerms (Just tok)
       debug $ "Perms: " ++ (show perms)
       liftIO $ atomically $ writeTVar tperms perms

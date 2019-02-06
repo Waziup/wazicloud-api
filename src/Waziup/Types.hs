@@ -66,23 +66,25 @@ data WaziupInfo = WaziupInfo {
 --------------
 
 data WaziupConfig = WaziupConfig {
-  _serverConf   :: ServerConfig,
-  _mongoConf    :: MongoConfig,
-  _keycloakConf :: KCConfig,
-  _orionConf    :: O.OrionConfig
+  _serverConf    :: ServerConfig,
+  _mongoConf     :: MongoConfig,
+  _keycloakConf  :: KCConfig,
+  _orionConf     :: O.OrionConfig
   } deriving (Eq, Show)
 
 -- | Server or client configuration, specifying the host and port to query or serve on.
-data ServerConfig = ServerConfig
-  { _serverHost :: String   -- ^ Hostname to serve on, e.g. "127.0.0.1"
-  , _serverPort :: Int      -- ^ Port to serve on, e.g. 8080
-  } deriving (Eq, Show)
+data ServerConfig = ServerConfig {
+  _serverHost    :: String,   -- ^ Hostname to serve on, e.g. "127.0.0.1"
+  _serverPort    :: Int,      -- ^ Port to serve on, e.g. 8080
+  _guestLogin    :: Username,
+  _guestPassword :: Password} deriving (Eq, Show)
 
 defaultServerConfig :: ServerConfig
 defaultServerConfig = ServerConfig {
-  _serverHost = "http://localhost:3000",
-  _serverPort = 3000
-  }
+  _serverHost    = "http://localhost:3000",
+  _serverPort    = 3000,
+  _guestLogin    = "guest",
+  _guestPassword = "guest"}
 
 data MongoConfig = MongoConfig {
   _mongoUrl :: Text } deriving (Show, Eq)

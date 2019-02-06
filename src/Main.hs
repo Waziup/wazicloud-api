@@ -83,22 +83,20 @@ waziupConfigParser servDef mDef kcDef oDef = do
   return $ WaziupConfig serv m kc o
 
 serverConfigParser :: ServerConfig -> Parser ServerConfig
-serverConfigParser (ServerConfig defUrl defPort) = do
+serverConfigParser (ServerConfig defUrl defPort defGueLog defGuePass) = do
   url  <- strOption (long "url"  <> metavar "<url>"  <> help "url of this server"  <> value defUrl)
   port <- option auto (long "port" <> metavar "<port>" <> help "port of this server" <> value defPort) 
-  return $ ServerConfig url port
+  guestLogin    <- strOption (long "kcGuestLog"  <> metavar "<login>"    <> help "Guest login of Keycloak"    <> value defGueLog)
+  guestPassword <- strOption (long "kcGuestPass" <> metavar "<password>" <> help "Guest password of Keycloak" <> value defGuePass)
+  return $ ServerConfig url port guestLogin guestPassword
 
 kcConfigParser :: KCConfig -> Parser KCConfig
-kcConfigParser (KCConfig defUrl defRealm defCID defCSec defAdmLog defAdmPass defGueLog defGuePass) = do
+kcConfigParser (KCConfig defUrl defRealm defCID defCSec) = do
   baseUrl       <- strOption (long "kcUrl"       <> metavar "<url>"      <> help "url of Keycloak"            <> value defUrl)
   realm         <- strOption (long "kcRealm"     <> metavar "<realm>"    <> help "realm of Keycloak"          <> value defRealm) 
   clientId      <- strOption (long "kcClientId"  <> metavar "<id>"       <> help "Client ID of Keycloak"      <> value defCID)
   clientSecret  <- strOption (long "kcClientSec" <> metavar "<secret>"   <> help "Client Secret of Keycloak"  <> value defCSec)
-  adminLogin    <- strOption (long "kcAdminLog"  <> metavar "<login>"    <> help "Admin login of Keycloak"    <> value defAdmLog)
-  adminPassword <- strOption (long "kcAdminPass" <> metavar "<password>" <> help "Admin password of Keycloak" <> value defAdmPass)
-  guestLogin    <- strOption (long "kcGuestLog"  <> metavar "<login>"    <> help "Guest login of Keycloak"    <> value defGueLog)
-  guestPassword <- strOption (long "kcGuestPass" <> metavar "<password>" <> help "Guest password of Keycloak" <> value defGuePass)
-  return $ KCConfig baseUrl realm clientId clientSecret adminLogin adminPassword guestLogin guestPassword
+  return $ KCConfig baseUrl realm clientId clientSecret
 
 orionConfigParser :: OrionConfig -> Parser OrionConfig
 orionConfigParser (OrionConfig defUrl defServ) = do

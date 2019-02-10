@@ -8,27 +8,20 @@ import           Waziup.Utils
 import           Waziup.Devices hiding (info, warn, debug, err)
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
-import           Control.Monad.Catch as C
-import           Data.Maybe
 import           Data.Text hiding (map, filter, foldl, any)
-import           Data.String.Conversions
 import qualified Data.List as L
-import           Data.Aeson as JSON
-import           Data.AesonBson
 import           Servant
 import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
 import           Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
-import           Paths_Waziup_Servant
-import           Database.MongoDB as DB hiding (value)
-import           MQTT hiding (info, warn, debug, err, Scope) 
+import           MQTT hiding (info, warn, debug, err) 
 
 getSensors :: Maybe Token -> DeviceId -> Waziup [Sensor]
 getSensors tok did = do
   info "Get sensors"
   withKCId did $ \(keyId, device) -> do
     debug "Check permissions"
-    runKeycloak tok $ checkPermission keyId (pack $ show DevicesView)
+    liftKeycloak tok $ checkPermission keyId (pack $ show DevicesView)
     debug "Permission granted, returning sensors"
     return $ devSensors device
 
@@ -37,7 +30,7 @@ postSensor tok did sensor = do
   info $ "Post sensor: " ++ (show sensor)
   withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
-    runKeycloak tok $ checkPermission keyId (pack $ show DevicesUpdate)
+    liftKeycloak tok $ checkPermission keyId (pack $ show DevicesUpdate)
     debug "Permission granted, creating sensor"
     let att = getAttFromSensor sensor
     runOrion $ O.postAttribute (toEntityId did) att 
@@ -48,7 +41,7 @@ getSensor tok did sid = do
   info "Get sensor"
   withKCId did $ \(keyId, device) -> do
      debug "Check permissions"
-     runKeycloak tok $ checkPermission keyId (pack $ show DevicesView)
+     liftKeycloak tok $ checkPermission keyId (pack $ show DevicesView)
      debug "Permission granted, returning sensor"
      case L.find (\s -> senId s == sid) (devSensors device) of
        Just sensor -> return sensor
@@ -61,7 +54,7 @@ deleteSensor tok did sid = do
   info "Delete sensor"
   withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
-    runKeycloak tok $ checkPermission keyId (pack $ show DevicesUpdate)
+    liftKeycloak tok $ checkPermission keyId (pack $ show DevicesUpdate)
     debug "Permission granted, deleting sensor"
     runOrion $ O.deleteAttribute (toEntityId did) (toAttributeId sid)
     debug "Deleting Mongo datapoints"
@@ -103,7 +96,7 @@ putSensorValue mtok did sid senVal@(SensorValue v ts dr) = do
   info $ "Put sensor value: " ++ (show senVal)
   withKCId did $ \(keyId, device) -> do
     debug "Check permissions"
-    runKeycloak mtok $ checkPermission keyId (pack $ show DevicesDataCreate)
+    liftKeycloak mtok $ checkPermission keyId (pack $ show DevicesDataCreate)
     debug "Permission granted, updating sensor"
     case L.find (\s -> (senId s) == sid) (devSensors device) of
       Just sensor -> do
@@ -119,7 +112,7 @@ updateSensorField :: Maybe Token -> DeviceId -> SensorId -> (Sensor -> Waziup ()
 updateSensorField mtok did sid w = do
   withKCId did $ \(keyId, device) -> do
     debug "Check permissions"
-    runKeycloak mtok $ checkPermission keyId (pack $ show DevicesUpdate)
+    liftKeycloak mtok $ checkPermission keyId (pack $ show DevicesUpdate)
     debug "Permission granted, updating sensor"
     case L.find (\s -> (senId s) == sid) (devSensors device) of
       Just sensor -> do

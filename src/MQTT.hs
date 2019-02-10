@@ -8,15 +8,11 @@ import           Data.String.Conversions
 import qualified Data.List as L
 import           Data.Maybe
 import qualified Data.Text as T
-import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString as B
-import           Control.Concurrent
 import           Control.Concurrent.STM
-import           Control.Monad (unless, forever)
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
-import           Control.Monad.Except (throwError, runExceptT)
-import           System.IO (hPutStrLn, stderr)
+import           Control.Monad.Except (runExceptT)
 import           System.Log.Logger
 import           Waziup.Types
 import           Waziup.Utils
@@ -24,10 +20,8 @@ import           Orion as O hiding (info, warn, debug, err)
 import           Waziup.Devices hiding (info, warn, debug, err)
 import           Network.MQTT.Client hiding (info, warn, debug, err)
 import qualified Network.MQTT.Types as T
-import           Database.MongoDB as DB
 import           Conduit
 import           Data.Conduit.Network
-import           Data.Word8           (toUpper)
 import           Control.Concurrent.Async (concurrently)
 import           Data.Conduit.Attoparsec (conduitParser, sinkParser)
 import           Data.Attoparsec.ByteString

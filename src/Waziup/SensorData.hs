@@ -37,7 +37,7 @@ getDatapoints tok did sid limit offset sort dateFrom dateTo = do
   info "Get datapoints"
   withKCId (fromJust did) $ \(keyId, _) -> do
     debug "Check permissions"
-    runKeycloak tok $ checkPermission keyId (pack $ show DevicesDataView)
+    liftKeycloak tok $ checkPermission keyId (pack $ show DevicesDataView)
     debug "Permission granted, returning datapoints"
     runMongo $ getDatapointsMongo did sid limit offset sort dateFrom dateTo
     

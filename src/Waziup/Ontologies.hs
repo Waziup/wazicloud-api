@@ -9,7 +9,6 @@ import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 import           Data.String.Conversions
-import           Data.Aeson.BetterErrors as AB
 import qualified Data.ByteString as BS
 import           Servant
 import           System.FilePath ((</>))

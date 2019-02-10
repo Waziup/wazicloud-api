@@ -1,10 +1,11 @@
 resolver: lts-13.5
 extra-deps:
 - net-mqtt-0.2.2.0
+# - keycloak-hs-0.0.0.2
 packages:
 - '.'
 - './aesonbson'
 - './servant-flatten'
 - './keycloak-hs'
-
+- './orion-hs'
 allow-newer: true

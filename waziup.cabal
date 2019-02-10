@@ -20,18 +20,17 @@ Executable waziup-servant
                      , Waziup.Sensors
                      , Waziup.SensorData
                      , Waziup.Server
+                     , Waziup.Actuators
+                     , Waziup.Users
                      , Waziup.Types
                      , Waziup.Utils
-                     , Orion
-                     , Orion.Client
-                     , Orion.Types
                      , Paths_Waziup_Servant
+                     , MQTT
   data-dir: data
   data-files: ontologies/*.json
   ghc-options:         -Wall
   build-depends:       base
                      , aeson
-                     , aeson-better-errors
                      , text
                      , containers
                      , cassava
@@ -83,8 +82,10 @@ Executable waziup-servant
                      , stm
                      , net-mqtt
                      , keycloak-hs
+                     , orion-hs
                      , conduit
                      , conduit-extra
                      , async
                      , attoparsec
+                     , twitter-conduit
   default-language:    Haskell2010

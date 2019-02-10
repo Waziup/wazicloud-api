@@ -13,13 +13,13 @@ import qualified Keycloak as KC
 getUsers :: Maybe KC.Token -> Maybe Limit -> Maybe Offset -> Waziup [User]
 getUsers tok ml mo = do
   info "Get users"
-  us <- runKeycloak tok $ KC.getUsers ml mo
+  us <- liftKeycloak tok $ KC.getUsers ml mo
   return $ map toUser us
 
 getUser :: Maybe KC.Token -> UserId -> Waziup User
 getUser tok (UserId uid) = do
   info "Get users"
-  u <- runKeycloak tok $ KC.getUser (KC.UserId uid)
+  u <- liftKeycloak tok $ KC.getUser (KC.UserId uid)
   return $ toUser u
 
 

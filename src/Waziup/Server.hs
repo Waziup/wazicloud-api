@@ -13,6 +13,7 @@ import           Waziup.Sensors
 import           Waziup.SensorData
 import           Waziup.Actuators
 import           Waziup.Users
+import           Waziup.Socials
 import qualified Keycloak.Types as KC
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
@@ -115,7 +116,11 @@ usersServer = getUsers
 
 -- socials server
 socialsServer :: ServerT SocialsAPI Waziup
-socialsServer = error "Not yet implemented"
+socialsServer = getSocialMessages
+           :<|> postSocialMessage
+           :<|> postSocialMessageBatch
+           :<|> getSocialMessage
+           :<|> deleteSocialMessage
 
 --notifs server
 notifsServer :: ServerT NotifsAPI Waziup

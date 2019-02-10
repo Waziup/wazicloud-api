@@ -34,7 +34,7 @@ getPerms tok = do
                    DevicesDelete,
                    DevicesDataCreate,
                    DevicesDataView]
-  ps <- runKeycloak tok $ getAllPermissions (map (convertString.show) allScopes)
+  ps <- liftKeycloak tok $ getAllPermissions (map (convertString.show) allScopes)
   let getP :: KC.Permission -> Perm
       getP (KC.Permission rsname _ scopes) = Perm rsname (mapMaybe readScope scopes)
   return $ map getP ps 
@@ -42,7 +42,7 @@ getPerms tok = do
 postAuth :: AuthBody -> Waziup Token
 postAuth (AuthBody username password) = do
   info "Post authentication"
-  tok <- runKeycloak' $ getUserAuthToken username password
+  tok <- liftKeycloak' $ getUserAuthToken username password
   return tok
 
 getDevices :: Maybe Token -> Maybe DevicesQuery -> Maybe Limit -> Maybe Offset -> Waziup [Device]
@@ -62,7 +62,7 @@ getDevice tok did = do
   info "Get device"
   withKCId did $ \(keyId, device) -> do
     debug "Check permissions"
-    runKeycloak tok $ checkPermission keyId (pack $ show DevicesView)
+    liftKeycloak tok $ checkPermission keyId (pack $ show DevicesView)
     debug "Permission granted, returning device"
     return device
 
@@ -70,7 +70,7 @@ postDevice :: Maybe Token -> Device -> Waziup NoContent
 postDevice tok d@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
   info $ "Post device: " ++ (show d)
   debug "Check permissions"
-  runKeycloak tok $ checkPermission (ResourceId "Devices") (pack $ show DevicesCreate)
+  liftKeycloak tok $ checkPermission (ResourceId "Devices") (pack $ show DevicesCreate)
   debug "Create entity"
   let username = case tok of
        Just t -> getUsername t
@@ -89,7 +89,7 @@ postDevice tok d@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
          resOwner   = Owner Nothing "cdupont",
          resOwnerManagedAccess = True,
          resAttributes = if (isJust vis) then [KC.Attribute "visibility" [pack $ show $ fromJust vis]] else []}
-      keyRes <- C.try $ runKeycloak tok $ createResource res
+      keyRes <- C.try $ liftKeycloak tok $ createResource res
       case keyRes of
         Right (ResourceId resId) -> do
           runOrion $ O.postTextAttributeOrion (EntityId did) (AttributeId "keycloak_id") resId
@@ -107,9 +107,9 @@ deleteDevice tok did = do
   info "Delete device"
   withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
-    runKeycloak tok $ checkPermission keyId (pack $ show DevicesDelete)
+    liftKeycloak tok $ checkPermission keyId (pack $ show DevicesDelete)
     debug "Delete Keycloak resource"
-    runKeycloak tok $ deleteResource keyId
+    liftKeycloak tok $ deleteResource keyId
     debug "Delete Orion resource"
     runOrion $ O.deleteEntity (toEntityId did)
     debug "Delete Mongo resources"
@@ -121,7 +121,7 @@ putDeviceLocation mtok did loc = do
   info $ "Put device location: " ++ (show loc)
   withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
-    runKeycloak mtok $ checkPermission keyId (pack $ show DevicesUpdate)
+    liftKeycloak mtok $ checkPermission keyId (pack $ show DevicesUpdate)
 
     debug "Update Orion resource"
     let att = getLocationAttr loc
@@ -133,7 +133,7 @@ putDeviceName mtok did name = do
   info $ "Put device name: " ++ (show name)
   withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
-    runKeycloak mtok $ checkPermission keyId (pack $ show DevicesUpdate)
+    liftKeycloak mtok $ checkPermission keyId (pack $ show DevicesUpdate)
     debug "Update Orion resource"
     runOrion $ O.postTextAttributeOrion (toEntityId did) (AttributeId "name") name
   return NoContent
@@ -143,7 +143,7 @@ putDeviceGatewayId mtok did (GatewayId gid) = do
   info $ "Put device gateway ID: " ++ (show gid)
   withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
-    runKeycloak mtok $ checkPermission keyId (pack $ show DevicesUpdate)
+    liftKeycloak mtok $ checkPermission keyId (pack $ show DevicesUpdate)
     debug "Update Orion resource"
     runOrion $ O.postTextAttributeOrion (toEntityId did) (AttributeId "gateway_id") gid
   return NoContent
@@ -153,7 +153,7 @@ putDeviceVisibility mtok did vis = do
   info $ "Put device visibility: " ++ (show vis)
   withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
-    runKeycloak mtok $ checkPermission keyId (pack $ show DevicesUpdate)
+    liftKeycloak mtok $ checkPermission keyId (pack $ show DevicesUpdate)
     debug "Update Orion resource"
     runOrion $ O.postTextAttributeOrion (toEntityId did) (AttributeId "visibility") (convertString $ show vis)
   return NoContent

@@ -24,7 +24,6 @@ import           Data.Maybe
 import           Data.Char
 import           Data.Monoid
 import           Data.Time.ISO8601
-import           Data.Aeson.BetterErrors as AB
 import           Data.Swagger hiding (fieldLabelModifier)
 import           Data.Swagger.Internal
 import           Data.Swagger.Lens
@@ -241,7 +240,10 @@ instance FromJSON Visibility where
   parseJSON = genericParseJSON $ defaultOptions {AT.constructorTagModifier = unCapitalize, AT.allNullaryToStringTag = True}
 
 -- Visibility is use as plain text body
-instance MimeUnrender PlainText Visibility
+instance MimeUnrender PlainText Visibility where
+  mimeUnrender _ "public"  = Right Public
+  mimeUnrender _ "private" = Right Private
+  mimeUnrender _ _         = Left "Cannot decode visibility. Valid values are \"public\" and \"private\"."
 
 --Swagger instances
 instance ToParamSchema Visibility
@@ -948,12 +950,11 @@ data SensorKind = SensorKind {
   sdQk    :: [QuantityKindId]
   } deriving (Show, Eq, Generic)
 
-parseSDI :: Parse e SensorKind
-parseSDI = do
-    id    <- AB.key "id" asText
-    label <- AB.key "label" asText
-    qks   <- AB.key "QK" (eachInArray asText) 
-    return $ SensorKind (SensorKindId id) label (map QuantityKindId qks)
+instance FromJSON SensorKind where
+  parseJSON (Object v) = SensorKind <$> v .: "id"
+                                    <*> v .: "label"
+                                    <*> v .: "QK"
+  parseJSON _          = mzero 
 
 instance ToJSON SensorKind where
   toJSON = genericToJSON (removeFieldLabelPrefix False "sd")
@@ -1010,10 +1011,18 @@ instance ToJSON ActuatorValueTypeId where
 instance FromJSON ActuatorValueTypeId where
   parseJSON = genericParseJSON (removeFieldLabelPrefix True "Act") {AT.allNullaryToStringTag = True}
 
-instance MimeUnrender PlainText ActuatorValueTypeId
+instance MimeUnrender PlainText ActuatorValueTypeId where
+  mimeUnrender _ "string" = Right ActString
+  mimeUnrender _ "number" = Right ActNumber
+  mimeUnrender _ "bool"   = Right ActBool
+  mimeUnrender _ "null"   = Right ActNull
+  mimeUnrender _ "object" = Right ActObject
+  mimeUnrender _ "array"  = Right ActArray
+  mimeUnrender _ _        = Left "Cannot decode value type. Valid values are \"string\", \"number\", \"bool\", \"null\", \"object\" and \"array\"."
 
-instance ToSchema ActuatorValueTypeId
-
+instance ToSchema ActuatorValueTypeId where
+  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ "string" 
 
 -- * Quantity kinds
 
@@ -1030,12 +1039,11 @@ data QuantityKind = QuantityKind {
   qkUnits :: [UnitId]
   } deriving (Show, Eq, Generic)
 
-parseQKI :: Parse e QuantityKind
-parseQKI = do
-    id    <- AB.key "id" asText
-    label <- AB.key "label" asText
-    us    <- AB.key "units" (eachInArray asText) 
-    return $ QuantityKind (QuantityKindId id) label (map UnitId us)
+instance FromJSON QuantityKind where
+  parseJSON (Object v) = QuantityKind <$> v .: "id"
+                                      <*> v .: "label"
+                                      <*> v .: "units" 
+  parseJSON _          = mzero 
 
 instance ToJSON QuantityKind where
   toJSON = genericToJSON (removeFieldLabelPrefix False "qk")
@@ -1057,11 +1065,10 @@ data Unit = Unit {
   uLabel :: Text
   } deriving (Show, Eq, Generic)
 
-parseUnit :: Parse e Unit
-parseUnit = do
-    id    <- AB.key "id" asText
-    label <- AB.key "label" asText
-    return $ Unit (UnitId id) label
+instance FromJSON Unit where
+  parseJSON (Object v) = Unit <$> v .: "id"
+                              <*> v .: "label"
+  parseJSON _          = mzero 
 
 instance ToJSON Unit where
   toJSON = genericToJSON (removeFieldLabelPrefix False "u")

@@ -11,7 +11,7 @@ import           Waziup.Server
 import           Waziup.Types 
 import           Waziup.Utils 
 import           Data.String.Conversions
-import           Data.Aeson.BetterErrors as AB
+import           Data.Aeson hiding (Success)
 import qualified Data.ByteString as BS
 import           Data.Validation
 import           Data.Foldable
@@ -30,7 +30,6 @@ import           Control.Exception
 import           Control.Lens
 import           Control.Monad.IO.Class
 import           Control.Concurrent
-import           Control.Monad.Reader
 import           System.FilePath ((</>))
 import           System.Environment
 import           Paths_Waziup_Servant
@@ -147,25 +146,25 @@ loadSensingDevices :: IO [SensorKind]
 loadSensingDevices = do
   dir <- liftIO $ getDataDir
   msd <- liftIO $ BS.readFile $ dir </> "ontologies" </> "sensing_devices.json"
-  case AB.parse (eachInArray parseSDI) (convertString msd) of
+  case eitherDecode (convertString msd) of
     Right sd -> return sd
-    Left (e :: AB.ParseError String) -> error $ "Cannot decode data file: " ++ (show e)
+    Left (e :: String) -> error $ "Cannot decode data file: " ++ (show e)
 
 loadQuantityKinds :: IO [QuantityKind]
 loadQuantityKinds = do
   dir <- liftIO getDataDir
   mqk <- liftIO $ BS.readFile $ dir </> "ontologies" </> "quantity_kinds.json"
-  case AB.parse (eachInArray parseQKI) (convertString mqk) of
+  case eitherDecode (convertString mqk) of
     Right qk -> return qk
-    Left (e :: AB.ParseError String) -> error $ "Cannot decode data file: " ++ (show e)
+    Left (e :: String) -> error $ "Cannot decode data file: " ++ (show e)
 
 loadUnits :: IO [Unit]
 loadUnits = do
   dir <- liftIO getDataDir
   mus <- liftIO $ BS.readFile $ dir </> "ontologies" </> "units.json"
-  case AB.parse (eachInArray parseUnit) (convertString mus) of
+  case eitherDecode (convertString mus) of
     Right us -> return us
-    Left (e :: AB.ParseError String) -> error $ "Cannot decode data file: " ++ (show e)
+    Left (e :: String) -> error $ "Cannot decode data file: " ++ (show e)
 
 checkSensingDevices :: [SensorKind] -> [QuantityKind] -> Validation [String] ()
 checkSensingDevices sds qks = sequenceA_ $ map (isSDValid qks) sds

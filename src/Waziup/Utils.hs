@@ -31,21 +31,20 @@ runOrion orion = do
    Left err -> throwError $ fromOrionError err
 
 -- * Run a Keycloak function with default guest token
-runKeycloak :: Maybe KC.Token -> (Token -> KC.Keycloak a) -> Waziup a
-runKeycloak mtok kc = do
- conf      <- view $ waziupConfig.keycloakConf
+liftKeycloak :: Maybe KC.Token -> (Token -> KC.Keycloak a) -> Waziup a
+liftKeycloak mtok kc = do
  guestId   <- view (waziupConfig.serverConf.guestLogin)
  guestPass <- view (waziupConfig.serverConf.guestPassword)
- e <- liftIO $ runExceptT $ runReaderT (getUserAuthToken guestId guestPass >>= kc) conf
- case e of
-   Right res -> return res
-   Left e    -> throwError $ fromKCError e
+ tok <- case mtok of
+   Just tok -> return tok
+   Nothing -> liftKeycloak' (getUserAuthToken guestId guestPass)
+ liftKeycloak' (kc tok)
 
 -- * Run Keycloak function
-runKeycloak' :: KC.Keycloak a -> Waziup a
-runKeycloak' kc = do
+liftKeycloak' :: KC.Keycloak a -> Waziup a
+liftKeycloak' kc = do
  conf <- view $ waziupConfig.keycloakConf
- e <- liftIO $ runExceptT $ runReaderT kc conf
+ e <- liftIO $ runKeycloak kc conf
  case e of
    Right res -> return res
    Left err -> throwError $ fromKCError err

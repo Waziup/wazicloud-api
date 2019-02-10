@@ -236,10 +236,11 @@ type SocialsAPI = Flat ( Header "Authorization" Token :>
     :<|>  "batch"
        :> ReqBody '[JSON] SocialMessageBatch
        :> PostNoContent '[JSON] NoContent
-    :<|> Capture "social_msg_id" SocialMessageId :> (
-           Get '[JSON] SocialMessage
-      :<|> DeleteNoContent '[JSON] NoContent
-    )))
+    :<|> Capture "social_msg_id" SocialMessageId
+       :> Get '[JSON] SocialMessage
+    :<|> Capture "social_msg_id" SocialMessageId
+       :> DeleteNoContent '[JSON] NoContent
+    ))
 
 
 --------------------

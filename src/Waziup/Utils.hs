@@ -22,10 +22,10 @@ import           Database.MongoDB as DB
 -- * Lifting
 
 -- Run Orion functions
-runOrion :: O.Orion a -> Waziup a
-runOrion orion = do
- (WaziupInfo _ (WaziupConfig _ _ _ conf) _) <- ask
- e <- liftIO $ runExceptT $ runReaderT orion conf
+liftOrion :: O.Orion a -> Waziup a
+liftOrion orion = do
+ conf <- view (waziupConfig.orionConf)
+ e <- liftIO $ O.runOrion orion conf
  case e of
    Right res -> return res
    Left err -> throwError $ fromOrionError err

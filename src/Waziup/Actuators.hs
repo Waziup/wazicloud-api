@@ -35,7 +35,7 @@ postActuator tok did actuator = do
     liftKeycloak tok $ checkPermission keyId (pack $ show DevicesUpdate)
     debug "Permission granted, creating actuator"
     let att = getAttFromActuator actuator
-    runOrion $ O.postAttribute (toEntityId did) att 
+    liftOrion $ O.postAttribute (toEntityId did) att 
     return NoContent
  
 getActuator :: Maybe Token -> DeviceId -> ActuatorId -> Waziup Actuator
@@ -58,26 +58,26 @@ deleteActuator tok did aid = do
     debug "Check permissions"
     liftKeycloak tok $ checkPermission keyId (pack $ show DevicesUpdate)
     debug "Permission granted, deleting actuator"
-    runOrion $ O.deleteAttribute (toEntityId did) (toAttributeId aid)
+    liftOrion $ O.deleteAttribute (toEntityId did) (toAttributeId aid)
     return NoContent
 
 putActuatorName :: Maybe Token -> DeviceId -> ActuatorId -> ActuatorName -> Waziup NoContent
 putActuatorName mtok did aid name = do
   info $ "Put actuator name: " ++ (show name)
   updateActuatorField mtok did aid $ \act -> do 
-    runOrion $ O.postAttribute (toEntityId did) $ getAttFromActuator (act {actName = Just name})
+    liftOrion $ O.postAttribute (toEntityId did) $ getAttFromActuator (act {actName = Just name})
 
 putActActuatorKind :: Maybe Token -> DeviceId -> ActuatorId -> ActuatorKindId -> Waziup NoContent
 putActActuatorKind mtok did aid ak = do
   info $ "Put actuator kind: " ++ (show ak)
   updateActuatorField mtok did aid $ \act -> do 
-    runOrion $ O.postAttribute (toEntityId did) $ getAttFromActuator (act {actActuatorKind = Just ak})
+    liftOrion $ O.postAttribute (toEntityId did) $ getAttFromActuator (act {actActuatorKind = Just ak})
 
 putActuatorValueType :: Maybe Token -> DeviceId -> ActuatorId -> ActuatorValueTypeId -> Waziup NoContent
 putActuatorValueType mtok did aid av = do
   info $ "Put actuator quantity kind: " ++ (show av)
   updateActuatorField mtok did aid $ \act -> do 
-    runOrion $ O.postAttribute (toEntityId did) $ getAttFromActuator (act {actActuatorValueType = Just av})
+    liftOrion $ O.postAttribute (toEntityId did) $ getAttFromActuator (act {actActuatorValueType = Just av})
 
 putActuatorValue :: Maybe Token -> DeviceId -> ActuatorId -> JSON.Value -> Waziup NoContent
 putActuatorValue mtok did aid actVal = do
@@ -88,7 +88,7 @@ putActuatorValue mtok did aid actVal = do
      debug "Permission granted, returning actuator"
      case L.find (\s -> actId s == aid) (devActuators device) of
        Just act -> do
-         runOrion $ O.postAttribute (toEntityId did) $ getAttFromActuator (act {actValue = Just actVal})
+         liftOrion $ O.postAttribute (toEntityId did) $ getAttFromActuator (act {actValue = Just actVal})
          if (devVisibility device == Just Public) then liftIO $ publishActuatorValue did aid actVal else return ()
          return NoContent
        Nothing -> do 

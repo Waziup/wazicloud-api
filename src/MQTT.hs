@@ -148,11 +148,11 @@ decodePub topic body = do
 postSensorValue :: DeviceId -> SensorId -> SensorValue -> Waziup ()
 postSensorValue did sid senVal@(SensorValue v ts dr) = do 
   info $ convertString $ "Post device " <> (unDeviceId did) <> ", sensor " <> (unSensorId sid) <> ", value: " <> (convertString $ show senVal)
-  ent <- runOrion (O.getEntity $ toEntityId did)
+  ent <- liftOrion (O.getEntity $ toEntityId did)
   let mdevice = getDeviceFromEntity ent
   case L.find (\s -> (senId s) == sid) (devSensors $ fromJust mdevice) of
       Just sensor -> do
-        runOrion (O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senValue = Just senVal}))
+        liftOrion (O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senValue = Just senVal}))
         runMongo (postDatapoint $ Datapoint did sid v ts dr)
         return ()
       Nothing -> do 
@@ -161,11 +161,11 @@ postSensorValue did sid senVal@(SensorValue v ts dr) = do
 putActuatorValue :: DeviceId -> ActuatorId -> JSON.Value -> Waziup ()
 putActuatorValue did aid actVal = do
   info $ convertString $ "Post device " <> (unDeviceId did) <> ", actuator " <> (unActuatorId aid) <> ", value: " <> (convertString $ show actVal)
-  ent <- runOrion (O.getEntity $ toEntityId did)
+  ent <- liftOrion (O.getEntity $ toEntityId did)
   let mdevice = getDeviceFromEntity ent
   case L.find (\a -> (actId a) == aid) (devActuators $ fromJust mdevice) of
       Just act -> do
-        runOrion (O.postAttribute (toEntityId did) $ getAttFromActuator (act {actValue = Just actVal}))
+        liftOrion (O.postAttribute (toEntityId did) $ getAttFromActuator (act {actValue = Just actVal}))
         return ()
       Nothing -> do 
         err "actuator not found"

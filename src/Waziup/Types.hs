@@ -31,7 +31,7 @@ import           Data.String.Conversions
 import qualified Data.Csv as CSV
 import           Control.Lens hiding ((.=))
 import           Control.Monad
-import           Control.Monad.Except (ExceptT, throwError)
+import           Control.Monad.Except (ExceptT, throwError, runExceptT)
 import           Control.Monad.Catch as C
 import           Control.Monad.Reader
 import           Servant
@@ -59,6 +59,11 @@ data WaziupInfo = WaziupInfo {
   _waziupConfig :: WaziupConfig,
   _ontologies   :: Ontologies
   }
+
+-- | run a Waziup monad
+runWaziup :: Waziup a -> WaziupInfo -> IO (Either ServantErr a)
+runWaziup w wi = runExceptT $ runHandler' $ runReaderT w wi
+
 
 --------------
 -- * Config --

@@ -9,6 +9,7 @@ import qualified Data.List as L
 import           Data.Maybe
 import qualified Data.Text as T
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as LB
 import           Control.Concurrent.STM
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
@@ -37,58 +38,110 @@ mqttProxy wi = do
 
 handleServer :: WaziupInfo -> AppData -> AppData -> IO ()
 handleServer wi clientData serverData = do
-  perms <- atomically $ newTVar []
+  permst <- atomically $ newTVar []
   void $ concurrently
-              (runConduit $ appSource serverData .| appSink clientData)
-              (runConduit $ appSource clientData .| filterMQTT wi perms .| appSink serverData)
+              (runConduit $ appSource serverData .| filterMQTTout wi permst .| appSink clientData)
+              (runConduit $ appSource clientData .| filterMQTTin wi permst .| appSink serverData)
   debug "Connection finished"
 
-filterMQTT :: WaziupInfo -> TVar [Perm] -> ConduitT B.ByteString B.ByteString IO ()
-filterMQTT wi perms = filterMC $ \p ->  do
+data MQTTData = MQTTSen DeviceId SensorId SensorValue | 
+                MQTTAct DeviceId ActuatorId JSON.Value |
+                MQTTError String |
+                MQTTOther
+
+filterMQTTout :: WaziupInfo -> TVar [Perm] -> ConduitT B.ByteString B.ByteString IO ()
+filterMQTTout wi tperms = awaitForever $ \p -> do
   let res = parse T.parsePacket p
-  case res of 
-    Done _ m -> do
-       res <- runExceptT $ runHandler' $ runReaderT (authMQTT m perms) wi
-       case res of
-         Right b -> return b
-         Left e -> error "Error"
-    _ -> return True
+  debug $ "Received downstream: " ++ (show res)
+  case res of
+    -- Decode Publish
+    Done _ (T.PublishPkt (T.PublishRequest _ _ _ topic _ body)) -> do
+      -- Get the permissions
+      perms <- liftIO $ atomically $ readTVar tperms
+      -- Decode MQTT message
+      case decodePub topic body of
+        MQTTSen devId senId senVal -> do
+          -- check authorization
+          let auth = checkPermDevice DevicesDataView perms devId
+          debug $ "Perm check downstream: " ++ (show auth)
+          when auth $ yield p
+        MQTTAct devId actId actVal -> do 
+          let auth = checkPermDevice DevicesDataCreate perms devId
+          debug $ "Perm check downstream: " ++ (show auth)
+          when auth $ yield p
+        MQTTError e -> do
+          err e
+        MQTTOther -> yield p
+    _ -> yield p
   
 
-authMQTT :: T.MQTTPkt -> TVar [Perm] -> Waziup Bool
-authMQTT (T.ConnPkt (T.ConnectRequest user pass _ _ _ _)) tperms = do
+filterMQTTin :: WaziupInfo -> TVar [Perm] -> ConduitT B.ByteString B.ByteString IO ()
+filterMQTTin wi tperms = awaitForever $ \p -> do
+  let res = parse T.parsePacket p
+  debug $ "Received: " ++ (show res)
+  case res of
+    -- Decode Connect request
+    Done _ (T.ConnPkt (T.ConnectRequest user pass _ _ _ _)) -> do
+      -- get permissions for this user
+      res <- lift $ runWaziup (getPerms' (convertString <$> user) (convertString <$> pass)) wi
+      case res of
+        Right perms -> do
+          debug $ "Got perms:" ++ (show perms)
+          -- store permissions
+          liftIO $ atomically $ writeTVar tperms perms 
+          yield p
+        Left e -> do 
+          err $ "Could not get Waziup permissions: " ++ (show e)
+          return ()
+    -- Decode Publish
+    Done _ (T.PublishPkt (T.PublishRequest _ _ _ topic _ body)) -> do
+      -- Get the permissions
+      perms <- liftIO $ atomically $ readTVar tperms
+      -- Decode MQTT message
+      case decodePub topic body of
+        MQTTSen devId senId senVal -> do
+          -- check authorization
+          let auth = checkPermDevice DevicesDataCreate perms devId
+          debug $ "Perm check: " ++ (show auth)
+          when auth $ do
+            -- Store the value
+            lift $ runWaziup (postSensorValue devId senId senVal) wi
+            -- pass value to MQTT server
+            yield p
+        MQTTAct devId actId actVal -> do 
+          let auth = checkPermDevice DevicesDataCreate perms devId
+          debug $ "Perm check: " ++ (show auth)
+          when auth $ do
+            lift $ runWaziup (putActuatorValue devId actId actVal) wi
+            yield p
+        MQTTError e -> do
+          err e
+        MQTTOther -> yield p
+    _ -> yield p
+      
+  
+getPerms' :: Maybe T.Text -> Maybe T.Text -> Waziup [Perm]
+getPerms' user pass = do
   debug $ "Connect with user: " ++ (show user)
   if isJust user && isJust pass
     then do
-      tok <- liftKeycloak' $ getUserAuthToken (convertString $ fromJust user) (convertString $ fromJust pass)
-      perms <- getPerms (Just tok)
-      debug $ "Perms: " ++ (show perms)
-      liftIO $ atomically $ writeTVar tperms perms
-      return True
+      tok <- liftKeycloak' $ getUserAuthToken (fromJust user) (fromJust pass)
+      getPerms (Just tok)
     else do
-      return True
-authMQTT (T.PublishPkt (T.PublishRequest _ _ _ topic _ body)) tperms = do
-  info $ "Topic: " ++ (show topic)
-  perms <- liftIO $ atomically $ readTVar tperms
+      getPerms Nothing 
+
+decodePub :: LB.ByteString -> LB.ByteString -> MQTTData
+decodePub topic body = do
   case T.split (== '/') (convertString topic) of
     ["devices", d, "sensors", s, "value"] -> do
       case decode body of
-        Just senVal -> do
-          let auth = checkPermDevice DevicesDataCreate perms (DeviceId d)
-          debug $ "Perm check: " ++ (show auth)
-          when auth $ postSensorValue (DeviceId d) (SensorId s) senVal
-          return auth
-        Nothing -> return False
+        Just senVal -> MQTTSen (DeviceId d) (SensorId s) senVal
+        Nothing -> MQTTError "Wrong body" 
     ["devices", d, "actuators", s, "value"] -> do
       case decode body of
-        Just actVal -> do
-          let auth = checkPermDevice DevicesDataCreate perms (DeviceId d)
-          debug $ "Perm check: " ++ (show auth)
-          when auth $ putActuatorValue (DeviceId d) (ActuatorId s) actVal
-          return auth
-        Nothing -> return False
-    _ -> return False
-authMQTT _ _ = return True
+        Just actVal -> MQTTAct (DeviceId d) (ActuatorId s) actVal
+        Nothing -> MQTTError "Wrong body" 
+    _ -> MQTTOther 
 
 -- Post sensor value to DBs
 -- TODO: access control

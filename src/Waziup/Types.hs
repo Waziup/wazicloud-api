@@ -73,29 +73,39 @@ data WaziupConfig = WaziupConfig {
   _serverConf    :: ServerConfig,
   _mongoConf     :: MongoConfig,
   _keycloakConf  :: KCConfig,
-  _orionConf     :: O.OrionConfig
+  _orionConf     :: O.OrionConfig,
+  _mqttConf      :: MQTTConfig
   } deriving (Eq, Show)
 
 -- | Server or client configuration, specifying the host and port to query or serve on.
 data ServerConfig = ServerConfig {
-  _serverHost    :: String,   -- ^ Hostname to serve on, e.g. "127.0.0.1"
-  _serverPort    :: Int,      -- ^ Port to serve on, e.g. 8080
-  _guestLogin    :: Username,
-  _guestPassword :: Password} deriving (Eq, Show)
+  _serverHost     :: String,   -- ^ Hostname to serve on, e.g. "127.0.0.1"
+  _serverPort     :: Int,      -- ^ Port to serve on, e.g. 8080
+  _serverPortMQTT :: Int,      -- ^ Port to serve on, e.g. 2883 
+  _guestLogin     :: Username,
+  _guestPassword  :: Password} deriving (Eq, Show)
 
 defaultServerConfig :: ServerConfig
 defaultServerConfig = ServerConfig {
-  _serverHost    = "http://localhost:3000",
-  _serverPort    = 3000,
-  _guestLogin    = "guest",
-  _guestPassword = "guest"}
-
+  _serverHost     = "http://localhost:3000",
+  _serverPort     = 3000,
+  _serverPortMQTT = 3883,
+  _guestLogin     = "guest",
+  _guestPassword  = "guest"}
+ 
 data MongoConfig = MongoConfig {
   _mongoUrl :: Text } deriving (Show, Eq)
 
 defaultMongoConfig = MongoConfig {
   _mongoUrl = "127.0.0.1"}
 
+data MQTTConfig = MQTTConfig {
+  _mqttUrl  :: Text,
+  _mqttPort :: Int } deriving (Show, Eq)
+
+defaultMQTTConfig = MQTTConfig {
+  _mqttUrl  = "127.0.0.1",
+  _mqttPort = 1883 }
 
 --------------------------------------
 -- * Authentication & authorization --
@@ -1163,5 +1173,6 @@ removeFieldLabelPrefix forParsing prefix =
 
 makeLenses ''ServerConfig
 makeLenses ''WaziupConfig
+makeLenses ''MQTTConfig
 makeLenses ''WaziupInfo
 makeLenses ''MongoConfig

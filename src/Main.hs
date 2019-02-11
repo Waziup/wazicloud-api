@@ -39,17 +39,21 @@ main :: IO ()
 main = do
   startLog "Waziup-log.xml"
   Main.info $ "API server starting..."
-  envUrl     <- lookupEnv "HTTP_URL"
-  envPort    <- lookupEnv "HTTP_PORT"
-  envKCUrl   <- lookupEnv "KEYCLOAK_URL"
-  envOrUrl   <- lookupEnv "ORION_URL"
-  envMongUrl <- lookupEnv "MONGODB_URL"
-  let kcConfig     = defaultKCConfig     & baseUrl    .~? (convertString <$> envKCUrl)
-  let orionConfig  = defaultOrionConfig  & orionUrl   .~? (convertString <$> envOrUrl)
-  let mongoConfig  = defaultMongoConfig  & mongoUrl   .~? (convertString <$> envMongUrl)
-  let serverConfig = defaultServerConfig & serverHost .~? (convertString <$> envUrl)
-                                         & serverPort .~? (read          <$> envPort)
-  conf <- execParser $ opts serverConfig mongoConfig kcConfig orionConfig 
+  envUrl      <- lookupEnv "HTTP_URL"
+  envPort     <- lookupEnv "HTTP_PORT" 
+  envPortMQTT <- lookupEnv "MQTT_PORT"
+  envKCUrl    <- lookupEnv "KEYCLOAK_URL"
+  envOrUrl    <- lookupEnv "ORION_URL"
+  envMongUrl  <- lookupEnv "MONGODB_URL"
+  envMosqUrl  <- lookupEnv "MOSQ_URL"
+  let kcConfig     = defaultKCConfig     & baseUrl        .~? (convertString <$> envKCUrl)
+  let orionConfig  = defaultOrionConfig  & orionUrl       .~? (convertString <$> envOrUrl)
+  let mongoConfig  = defaultMongoConfig  & mongoUrl       .~? (convertString <$> envMongUrl)
+  let serverConfig = defaultServerConfig & serverHost     .~? (convertString <$> envUrl)
+                                         & serverPort     .~? (read          <$> envPort)
+                                         & serverPortMQTT .~? (read          <$> envPortMQTT)
+  let mqttConfig   = defaultMQTTConfig   & mqttUrl        .~? (convertString <$> envMosqUrl)
+  conf <- execParser $ opts serverConfig mongoConfig kcConfig orionConfig mqttConfig 
   epipe <- try $ DB.connect' 2 (host "127.0.0.1") -- $ convertString $ conf ^. mongoConf.mongoUrl)
   pipe <- case epipe of
        Right pipe -> return pipe 
@@ -65,29 +69,30 @@ main = do
   forkIO $ mqttProxy waziupInfo
   run port $ logStdoutDev $ waziupServer waziupInfo
 
-opts :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> ParserInfo WaziupConfig
-opts serv m kc o = Opts.info ((waziupConfigParser serv m kc o) <**> helper) parserInfo
+opts :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> MQTTConfig -> ParserInfo WaziupConfig
+opts serv m kc o mqtt = Opts.info ((waziupConfigParser serv m kc o mqtt) <**> helper) parserInfo
 
 parserInfo :: InfoMod WaziupConfig
 parserInfo = fullDesc
   <> progDesc "Create a server for Waziup API based on backend components Mongo, Orion and Keycloak"
   <> header "Waziup API server"
 
-waziupConfigParser :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> Parser WaziupConfig
-waziupConfigParser servDef mDef kcDef oDef = do
+waziupConfigParser :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> MQTTConfig -> Parser WaziupConfig
+waziupConfigParser servDef mDef kcDef oDef mqttDef = do
   serv <- serverConfigParser servDef
-  m <- mongoConfigParser mDef
-  kc <- kcConfigParser kcDef
-  o <- orionConfigParser oDef
-  return $ WaziupConfig serv m kc o
+  m    <- mongoConfigParser mDef
+  kc   <- kcConfigParser kcDef
+  o    <- orionConfigParser oDef
+  return $ WaziupConfig serv m kc o mqttDef
 
 serverConfigParser :: ServerConfig -> Parser ServerConfig
-serverConfigParser (ServerConfig defUrl defPort defGueLog defGuePass) = do
-  url  <- strOption (long "url"  <> metavar "<url>"  <> help "url of this server"  <> value defUrl)
-  port <- option auto (long "port" <> metavar "<port>" <> help "port of this server" <> value defPort) 
-  guestLogin    <- strOption (long "kcGuestLog"  <> metavar "<login>"    <> help "Guest login of Keycloak"    <> value defGueLog)
-  guestPassword <- strOption (long "kcGuestPass" <> metavar "<password>" <> help "Guest password of Keycloak" <> value defGuePass)
-  return $ ServerConfig url port guestLogin guestPassword
+serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass) = do
+  url           <- strOption   (long "url"         <> metavar "<url>"      <> help "url of this server"  <> value defUrl)
+  port          <- option auto (long "port"        <> metavar "<port>"     <> help "HTTP port of this server" <> value defPort) 
+  portMQTT      <- option auto (long "portMQTT"    <> metavar "<portMQTT>" <> help "MQTT port of this server" <> value defPort) 
+  guestLogin    <- strOption   (long "kcGuestLog"  <> metavar "<login>"    <> help "Guest login of Keycloak"    <> value defGueLog)
+  guestPassword <- strOption   (long "kcGuestPass" <> metavar "<password>" <> help "Guest password of Keycloak" <> value defGuePass)
+  return $ ServerConfig url port portMQTT guestLogin guestPassword
 
 kcConfigParser :: KCConfig -> Parser KCConfig
 kcConfigParser (KCConfig defUrl defRealm defCID defCSec) = do
@@ -99,7 +104,7 @@ kcConfigParser (KCConfig defUrl defRealm defCID defCSec) = do
 
 orionConfigParser :: OrionConfig -> Parser OrionConfig
 orionConfigParser (OrionConfig defUrl defServ) = do
-  url     <- strOption (long "orionUrl"      <> metavar "<url>"     <> help "url of Orion"                  <> value defUrl)
+  url     <- strOption (long "orionUrl"     <> metavar "<url>"     <> help "url of Orion"                  <> value defUrl)
   service <- strOption (long "orionService" <> metavar "<service>" <> help "Fiware Service used for Orion" <> value defServ) 
   return $ OrionConfig url service
 

@@ -26,6 +26,8 @@ import           Paths_Waziup_Servant
 import           Database.MongoDB as DB hiding (value, Limit, Array, lookup, Value, Null)
 import           Data.AesonBson
 
+
+-- | Get all permissions. If no toekn is passed, the guest token will be used.
 getPerms :: Maybe Token -> Waziup [Perm]
 getPerms tok = do
   info "Get Permissions"
@@ -39,12 +41,14 @@ getPerms tok = do
       getP (KC.Permission rsname _ scopes) = Perm rsname (mapMaybe readScope scopes)
   return $ map getP ps 
 
+-- | get a token
 postAuth :: AuthBody -> Waziup Token
 postAuth (AuthBody username password) = do
   info "Post authentication"
   tok <- liftKeycloak' $ getUserAuthToken username password
   return tok
 
+-- | Get devices, given a query, limits and offsets
 getDevices :: Maybe Token -> Maybe DevicesQuery -> Maybe Limit -> Maybe Offset -> Waziup [Device]
 getDevices tok mq mlimit moffset = do
   info "Get devices"
@@ -57,6 +61,7 @@ getDevices tok mq mlimit moffset = do
 checkPermDevice :: W.Scope -> [Perm] -> DeviceId -> Bool
 checkPermDevice scope perms dev = any (\p -> (permResource p) == (unDeviceId $ dev) && scope `elem` (permScopes p)) perms
 
+-- | get a sigle device
 getDevice :: Maybe Token -> DeviceId -> Waziup Device
 getDevice tok did = do
   info "Get device"

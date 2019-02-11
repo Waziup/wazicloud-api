@@ -1,6 +1,9 @@
 resolver: lts-13.5
 extra-deps:
 - net-mqtt-0.2.2.0
+- twitter-conduit-0.3.0
+- twitter-types-0.7.2
+- twitter-types-lens-0.7.2
 # - keycloak-hs-0.0.0.2
 packages:
 - '.'

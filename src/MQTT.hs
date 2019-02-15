@@ -19,7 +19,7 @@ import           Waziup.Types
 import           Waziup.Utils
 import           Orion as O hiding (info, warn, debug, err)
 import           Waziup.Devices hiding (info, warn, debug, err)
-import           Network.MQTT.Client hiding (info, warn, debug, err)
+import           Network.MQTT.Client hiding (info, warn, debug, err, MQTTConfig)
 import qualified Network.MQTT.Types as T
 import           Conduit
 import           Data.Conduit.Network
@@ -32,9 +32,12 @@ import           Servant.Server.Internal.Handler
 
 mqttProxy :: WaziupInfo -> IO ()
 mqttProxy wi = do
-  runTCPServer (serverSettings 4002 "*") handleClient where
+  let port = _serverPortMQTT $ _serverConf $ _waziupConfig wi
+  runTCPServer (serverSettings port "*") handleClient where
     handleClient :: AppData -> IO ()
-    handleClient client = runTCPClient (clientSettings 1883 "localhost") (handleServer wi client) where
+    handleClient client = do
+      let (MQTTConfig mosqUrl mosqPort) = _mqttConf $ _waziupConfig wi
+      runTCPClient (clientSettings mosqPort (convertString mosqUrl)) (handleServer wi client)
 
 handleServer :: WaziupInfo -> AppData -> AppData -> IO ()
 handleServer wi clientData serverData = do
@@ -42,7 +45,6 @@ handleServer wi clientData serverData = do
   void $ concurrently
               (runConduit $ appSource serverData .| filterMQTTout wi permst .| appSink clientData)
               (runConduit $ appSource clientData .| filterMQTTin wi permst .| appSink serverData)
-  debug "Connection finished"
 
 data MQTTData = MQTTSen DeviceId SensorId SensorValue | 
                 MQTTAct DeviceId ActuatorId JSON.Value |

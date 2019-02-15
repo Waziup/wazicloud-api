@@ -16,6 +16,7 @@ import qualified Data.ByteString as BS
 import           Data.Validation
 import           Data.Foldable
 import           Data.Maybe
+import           Data.Pool
 import           System.Log.Logger
 import           System.Log.Formatter
 import           System.Log.Handler hiding (setLevel)
@@ -46,6 +47,7 @@ main = do
   envOrUrl    <- lookupEnv "ORION_URL"
   envMongUrl  <- lookupEnv "MONGODB_URL"
   envMosqUrl  <- lookupEnv "MOSQ_URL"
+  envMosqPort <- lookupEnv "MOSQ_PORT"
   let kcConfig     = defaultKCConfig     & baseUrl        .~? (convertString <$> envKCUrl)
   let orionConfig  = defaultOrionConfig  & orionUrl       .~? (convertString <$> envOrUrl)
   let mongoConfig  = defaultMongoConfig  & mongoUrl       .~? (convertString <$> envMongUrl)
@@ -53,18 +55,17 @@ main = do
                                          & serverPort     .~? (read          <$> envPort)
                                          & serverPortMQTT .~? (read          <$> envPortMQTT)
   let mqttConfig   = defaultMQTTConfig   & mqttUrl        .~? (convertString <$> envMosqUrl)
+                                         & mqttPort       .~? (read          <$> envMosqPort)
   conf <- execParser $ opts serverConfig mongoConfig kcConfig orionConfig mqttConfig 
-  epipe <- try $ DB.connect' 2 (host "127.0.0.1") -- $ convertString $ conf ^. mongoConf.mongoUrl)
-  pipe <- case epipe of
-       Right pipe -> return pipe 
-       Left (e :: SomeException) -> do
-         Main.err "Cannot connect to MongoDB"
-         throw e
+  let mongoHost = conf ^. mongoConf.mongoUrl
+  pool <- createPool (DB.connect $ host $ convertString mongoHost) DB.close 1 300 5
   ontologies <- loadOntologies
   let host = conf ^. serverConf.serverHost
   let port = conf ^. serverConf.serverPort
-  let waziupInfo = WaziupInfo pipe conf ontologies
-  Main.info $ convertString $ "API is running on " <> host <> "/api/v1"
+  let mqttPort = conf ^. serverConf.serverPortMQTT
+  let waziupInfo = WaziupInfo pool conf ontologies
+  Main.info $ convertString $ "HTTP API is running on " <> host <> "/api/v1"
+  Main.info $ convertString $ "MQTT is running on port " <> (show mqttPort)
   Main.info $ convertString $ "Documentation is on " <> host <> "/docs"
   forkIO $ mqttProxy waziupInfo
   run port $ logStdoutDev $ waziupServer waziupInfo
@@ -89,7 +90,7 @@ serverConfigParser :: ServerConfig -> Parser ServerConfig
 serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass) = do
   url           <- strOption   (long "url"         <> metavar "<url>"      <> help "url of this server"  <> value defUrl)
   port          <- option auto (long "port"        <> metavar "<port>"     <> help "HTTP port of this server" <> value defPort) 
-  portMQTT      <- option auto (long "portMQTT"    <> metavar "<portMQTT>" <> help "MQTT port of this server" <> value defPort) 
+  portMQTT      <- option auto (long "portMQTT"    <> metavar "<portMQTT>" <> help "MQTT port of this server" <> value defPortMQTT) 
   guestLogin    <- strOption   (long "kcGuestLog"  <> metavar "<login>"    <> help "Guest login of Keycloak"    <> value defGueLog)
   guestPassword <- strOption   (long "kcGuestPass" <> metavar "<password>" <> help "Guest password of Keycloak" <> value defGuePass)
   return $ ServerConfig url port portMQTT guestLogin guestPassword

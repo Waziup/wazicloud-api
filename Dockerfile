@@ -1,24 +1,28 @@
-FROM haskell:8.4
-
-#RUN apk add stack --update-cache --repository http://dl-3.alpinelinux.org/alpine/edge/testing/ --allow-untrusted
+#Build stage
+FROM fpco/stack-build:lts-13.5 as build
 
 COPY stack.yaml   /opt/waziup/stack.yaml
 COPY waziup.cabal /opt/waziup/waziup.cabal
 COPY aesonbson/ /opt/waziup/aesonbson
 COPY servant-flatten/ /opt/waziup/servant-flatten
-
-RUN apt-get update
-RUN apt-get --assume-yes install liblzma-dev
+COPY keycloak-hs/ /opt/waziup/keycloak-hs
+COPY orion-hs/ /opt/waziup/orion-hs
 
 WORKDIR /opt/waziup
-RUN ls
-RUN stack setup
-RUN stack install --only-dependencies 
+RUN stack build --only-dependencies --system-ghc --fast
 
-COPY . /opt/waziup
-RUN stack install  
+COPY src/ /opt/waziup/src
+RUN stack build --system-ghc --fast
 
+# Deploy stage
+FROM ubuntu
+
+WORKDIR /opt/waziup
+COPY --from=build /opt/waziup/.stack-work/install/x86_64-linux/lts-13.5/8.6.3/bin/waziup-servant .
+COPY data /opt/waziup/data
 ENV PATH /usr/bin:$PATH
-CMD stack exec --system-ghc -- waziup-servant 
+RUN apt-get update && apt-get install -y netbase ca-certificates 
+
+CMD /opt/waziup/waziup-servant 
 
 EXPOSE 8081

@@ -46,7 +46,7 @@ main = do
   envKCUrl    <- lookupEnv "KEYCLOAK_URL"
   envOrUrl    <- lookupEnv "ORION_URL"
   envMongUrl  <- lookupEnv "MONGODB_URL"
-  envMosqUrl  <- lookupEnv "MOSQ_URL"
+  envMosqHost <- lookupEnv "MOSQ_HOST"
   envMosqPort <- lookupEnv "MOSQ_PORT"
   let kcConfig     = defaultKCConfig     & baseUrl        .~? (convertString <$> envKCUrl)
   let orionConfig  = defaultOrionConfig  & orionUrl       .~? (convertString <$> envOrUrl)
@@ -54,11 +54,13 @@ main = do
   let serverConfig = defaultServerConfig & serverHost     .~? (convertString <$> envUrl)
                                          & serverPort     .~? (read          <$> envPort)
                                          & serverPortMQTT .~? (read          <$> envPortMQTT)
-  let mqttConfig   = defaultMQTTConfig   & mqttUrl        .~? (convertString <$> envMosqUrl)
+  let mqttConfig   = defaultMQTTConfig   & mqttHost       .~? (convertString <$> envMosqHost)
                                          & mqttPort       .~? (read          <$> envMosqPort)
   conf <- execParser $ opts serverConfig mongoConfig kcConfig orionConfig mqttConfig 
+  let mongHost = conf ^. mongoConf.mongoHost
   let mongoHost = conf ^. mongoConf.mongoUrl
   pool <- createPool (DB.connect $ host $ convertString mongoHost) DB.close 1 300 5
+  pool <- createPool (DB.connect $ readHostPort (convertString mongHost) DB.close 1 300 5
   ontologies <- loadOntologies
   let host = conf ^. serverConf.serverHost
   let port = conf ^. serverConf.serverPort

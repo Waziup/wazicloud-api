@@ -101,11 +101,11 @@ defaultMongoConfig = MongoConfig {
   _mongoUrl = "127.0.0.1"}
 
 data MQTTConfig = MQTTConfig {
-  _mqttUrl  :: Text,
+  _mqttHost :: Text,
   _mqttPort :: Int } deriving (Show, Eq)
 
 defaultMQTTConfig = MQTTConfig {
-  _mqttUrl  = "127.0.0.1",
+  _mqttHost = "127.0.0.1",
   _mqttPort = 1883 }
 
 --------------------------------------

@@ -57,10 +57,8 @@ main = do
   let mqttConfig   = defaultMQTTConfig   & mqttHost       .~? (convertString <$> envMosqHost)
                                          & mqttPort       .~? (read          <$> envMosqPort)
   conf <- execParser $ opts serverConfig mongoConfig kcConfig orionConfig mqttConfig 
-  let mongHost = conf ^. mongoConf.mongoHost
-  let mongoHost = conf ^. mongoConf.mongoUrl
-  pool <- createPool (DB.connect $ host $ convertString mongoHost) DB.close 1 300 5
-  pool <- createPool (DB.connect $ readHostPort (convertString mongHost) DB.close 1 300 5
+  let mongUrl = conf ^. mongoConf.mongoUrl
+  pool <- createPool (DB.connect $ readHostPort (convertString mongUrl)) DB.close 1 300 5
   ontologies <- loadOntologies
   let host = conf ^. serverConf.serverHost
   let port = conf ^. serverConf.serverPort

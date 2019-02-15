@@ -14,6 +14,7 @@ import           Control.Concurrent.STM
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 import           Control.Monad.Except (runExceptT)
+import           Control.Lens
 import           System.Log.Logger
 import           Waziup.Types
 import           Waziup.Utils
@@ -172,19 +173,23 @@ putActuatorValue did aid actVal = do
       Nothing -> do 
         err "actuator not found"
 
-publishSensorValue :: DeviceId -> SensorId -> SensorValue -> IO ()
+publishSensorValue :: DeviceId -> SensorId -> SensorValue -> Waziup ()
 publishSensorValue (DeviceId d) (SensorId s) v = do
   let topic = "devices/" <> d <> "/sensors/" <> s <> "/value"
-  mc <- runClient mqttConfig { _connID = "pub"}
+  (MQTTConfig host port) <- view $ waziupConfig.mqttConf
   info $ "Publish sensor value: " ++ (convertString $ encode v) ++ " to topic: " ++ (show topic)
-  publish mc topic (convertString $ encode v) False
+  liftIO $ do
+    mc <- runClient mqttConfig { _connID = "pub", _hostname = convertString host, _port = port}
+    liftIO $ publish mc topic (convertString $ encode v) False
 
-publishActuatorValue :: DeviceId -> ActuatorId -> JSON.Value -> IO ()
+publishActuatorValue :: DeviceId -> ActuatorId -> JSON.Value -> Waziup ()
 publishActuatorValue (DeviceId d) (ActuatorId a) v = do
   let topic = "devices/" <> d <> "/actuator/" <> a <> "/value"
-  mc <- runClient mqttConfig { _connID = "pub"}
+  (MQTTConfig host port) <- view $ waziupConfig.mqttConf
   info $ "Publish actuator value: " ++ (convertString $ encode v) ++ " to topic: " ++ (show topic)
-  publish mc topic (convertString $ encode v) False
+  liftIO $ do
+    mc <- runClient mqttConfig { _connID = "pub", _hostname = convertString host, _port = port}
+    liftIO $ publish mc topic (convertString $ encode v) False
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

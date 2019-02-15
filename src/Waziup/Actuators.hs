@@ -89,7 +89,7 @@ putActuatorValue mtok did aid actVal = do
      case L.find (\s -> actId s == aid) (devActuators device) of
        Just act -> do
          liftOrion $ O.postAttribute (toEntityId did) $ getAttFromActuator (act {actValue = Just actVal})
-         if (devVisibility device == Just Public) then liftIO $ publishActuatorValue did aid actVal else return ()
+         liftIO $ publishActuatorValue did aid actVal
          return NoContent
        Nothing -> do 
          warn "Actuator not found"

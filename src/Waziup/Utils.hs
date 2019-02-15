@@ -13,6 +13,7 @@ import           Control.Lens
 import           Data.String.Conversions
 import           Data.Aeson
 import           Data.Maybe
+import           Data.Pool
 import qualified Data.ByteString.Lazy as BL
 import           Network.HTTP.Types.Status as HTS
 import           Network.HTTP.Client as HC
@@ -52,8 +53,8 @@ liftKeycloak' kc = do
 -- * run Mongo function
 runMongo :: Action IO a -> Waziup a
 runMongo dbAction = do
-  (WaziupInfo pipe _ _) <- ask
-  liftIO $ access pipe DB.master "waziup" dbAction
+  (WaziupInfo dBPool _ _) <- ask
+  liftIO $ withResource dBPool $ \p -> access p DB.master "waziup" dbAction
 
 -- * error convertions
 fromOrionError :: O.OrionError -> ServantErr

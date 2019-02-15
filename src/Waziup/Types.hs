@@ -28,6 +28,7 @@ import           Data.Swagger hiding (fieldLabelModifier)
 import           Data.Swagger.Internal
 import           Data.Swagger.Lens
 import           Data.String.Conversions
+import           Data.Pool
 import qualified Data.Csv as CSV
 import           Control.Lens hiding ((.=))
 import           Control.Monad
@@ -55,7 +56,7 @@ type Offset = Int
 type Waziup = ReaderT WaziupInfo Servant.Handler
 
 data WaziupInfo = WaziupInfo {
-  _dbPipe :: DB.Pipe,
+  _dbPool       :: Pool DB.Pipe,
   _waziupConfig :: WaziupConfig,
   _ontologies   :: Ontologies
   }

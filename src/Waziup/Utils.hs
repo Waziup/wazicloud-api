@@ -34,11 +34,13 @@ liftOrion orion = do
 -- * Run a Keycloak function with default guest token
 liftKeycloak :: Maybe KC.Token -> (Token -> KC.Keycloak a) -> Waziup a
 liftKeycloak mtok kc = do
- guestId   <- view (waziupConfig.serverConf.guestLogin)
- guestPass <- view (waziupConfig.serverConf.guestPassword)
  tok <- case mtok of
-   Just tok -> return tok
-   Nothing -> liftKeycloak' (getUserAuthToken guestId guestPass)
+   Just tok2 -> return tok2
+   Nothing -> do
+     guestId   <- view (waziupConfig.serverConf.guestLogin)
+     guestPass <- view (waziupConfig.serverConf.guestPassword)
+     -- retrieve guest token
+     liftKeycloak' (getUserAuthToken guestId guestPass)
  liftKeycloak' (kc tok)
 
 -- * Run Keycloak function

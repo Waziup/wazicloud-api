@@ -264,7 +264,9 @@ instance MimeUnrender PlainText Visibility where
 --Swagger instances
 instance ToParamSchema Visibility
 
-instance ToSchema Visibility
+instance ToSchema Visibility where
+  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ "public" 
 
 instance Show Visibility where
   show Public = "public"
@@ -992,7 +994,9 @@ instance FromJSON ActuatorKindId where
 instance MimeUnrender PlainText ActuatorKindId where
   mimeUnrender proxy bs = Right $ ActuatorKindId $ convertString bs 
 
-instance ToSchema ActuatorKindId
+instance ToSchema ActuatorKindId where
+  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON (ActuatorKindId "Buzzer")
 
 data ActuatorKind = ActuatorKind {
   akId        :: ActuatorKindId,
@@ -1010,6 +1014,7 @@ instance ToSchema ActuatorKind
 
 
 -- Actuator value type denote the kind of data needed to control the actuator
+-- TODO: find better name
 data ActuatorValueTypeId =  ActString | ActNumber | ActBool | ActNull | ActObject | ActArray deriving (Show, Eq, Generic)
 
 readValueType :: Text -> Maybe ActuatorValueTypeId
@@ -1022,10 +1027,10 @@ readValueType "Array"  = Just ActArray
 readValueType _        = Nothing
 
 instance ToJSON ActuatorValueTypeId where
-  toJSON = genericToJSON $ (removeFieldLabelPrefix False "Act") {AT.allNullaryToStringTag = True} --TODO use constructorTagModifier
+  toJSON = genericToJSON $ defaultOptions {AT.constructorTagModifier = unCapitalize . drop 3, AT.allNullaryToStringTag = True}
 
 instance FromJSON ActuatorValueTypeId where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "Act") {AT.allNullaryToStringTag = True}
+  parseJSON = genericParseJSON $ defaultOptions {AT.constructorTagModifier = unCapitalize . drop 3, AT.allNullaryToStringTag = True}
 
 instance MimeUnrender PlainText ActuatorValueTypeId where
   mimeUnrender _ "string" = Right ActString
@@ -1039,6 +1044,8 @@ instance MimeUnrender PlainText ActuatorValueTypeId where
 instance ToSchema ActuatorValueTypeId where
   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ "string" 
+
+instance ToParamSchema ActuatorValueTypeId
 
 -- * Quantity kinds
 

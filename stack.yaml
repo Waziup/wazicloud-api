@@ -12,4 +12,5 @@ packages:
 - './servant-flatten'
 - './keycloak-hs'
 - './orion-hs'
+- './twitter-conduit'
 allow-newer: true

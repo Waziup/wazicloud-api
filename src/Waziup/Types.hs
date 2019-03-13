@@ -42,6 +42,7 @@ import           Keycloak as KC hiding (info, warn, debug, Scope, User(..), User
 import           GHC.Generics (Generic)
 import qualified Database.MongoDB as DB
 import qualified Orion.Types as O
+import           Web.Twitter.Conduit hiding (map)
 
 type Limit  = Int
 type Offset = Int
@@ -75,7 +76,8 @@ data WaziupConfig = WaziupConfig {
   _mongoConf     :: MongoConfig,
   _keycloakConf  :: KCConfig,
   _orionConf     :: O.OrionConfig,
-  _mqttConf      :: MQTTConfig
+  _mqttConf      :: MQTTConfig,
+  _twitterConf   :: TWInfo
   } deriving (Eq, Show)
 
 -- | Server or client configuration, specifying the host and port to query or serve on.
@@ -107,6 +109,15 @@ data MQTTConfig = MQTTConfig {
 defaultMQTTConfig = MQTTConfig {
   _mqttHost = "127.0.0.1",
   _mqttPort = 1883 }
+
+defaultTwitterConf :: TWInfo
+defaultTwitterConf = 
+  def { twToken = def { 
+          twOAuth = twitterOAuth { oauthConsumerKey = "<Your consumer key>", 
+                                   oauthConsumerSecret = "<Your consumer secret>"}, 
+          twCredential = Credential [ ("oauth_token", "<Your OAuth token>"), 
+                                      ("oauth_token_secret", "<Your OAuth token secret>")]},
+        twProxy = Nothing}
 
 --------------------------------------
 -- * Authentication & authorization --

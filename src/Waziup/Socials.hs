@@ -4,8 +4,9 @@
 
 module Waziup.Socials where
 
-import           Waziup.Types
+import           Waziup.Types as T
 import           Waziup.Utils
+import qualified Waziup.Users as Users
 import           Waziup.Devices hiding (info, warn, debug, err)
 import           Control.Monad
 import           Control.Monad.Except (throwError)
@@ -29,6 +30,8 @@ import           Web.Twitter.Types as TWT
 import           Network.Wreq as W
 import           Control.Lens hiding ((.=))
 import           GHC.Generics (Generic)
+import           Data.Bson as BSON
+import           Servant
 
 getSocialMessages :: Maybe Token -> Waziup [SocialMessage]
 getSocialMessages tok = runMongo $ do
@@ -46,38 +49,49 @@ getSocialMessages tok = runMongo $ do
       return []
                                               
 postSocialMessage :: Maybe Token -> SocialMessage -> Waziup SocialMessageId
-postSocialMessage tok msg = case socChannel msg of
-  Twitter -> do
-    liftIO $ postTwitter msg 
-    return undefined 
-  SMS -> undefined 
-  Voice -> undefined
+postSocialMessage tok socMsg@(SocialMessage _ username chan msg) = do
+  users <- Users.getUsers tok Nothing Nothing (Just username)
+  let muser = L.find (\u -> T.userUsername u == username) users
+  debug $ (show muser)
+  case muser of
+    Just user -> do
+      case chan of
+        Twitter -> do
+          case (userFacebook user) of
+            Just screenName -> do
+              postTwitter screenName msg
+              return undefined 
+            Nothing -> throwError err400 {errBody = "Facebook ID not found in user profile"}
+        SMS -> undefined 
+        Voice -> undefined
+      runMongo $ logSocialMessage socMsg
+    Nothing -> throwError err400 {errBody = "User not found"}
 
-tokens :: OAuth
-tokens = twitterOAuth
-    { oauthConsumerKey = "QhmtxbYoNobspUn1af8fz3KYy"
-    , oauthConsumerSecret = "tLcIQZNqlew5fmSTzOhK298J22kHeNxX8w7SA4XVq0AU8L2xTZ"
-    }
+logSocialMessage :: SocialMessage -> Action IO SocialMessageId 
+logSocialMessage msg = do
+  debug "Post msg to Mongo"
+  let ob = case toJSON msg of
+       JSON.Object o -> o
+       _ -> error "Wrong object format"
+  res <- insert "waziup_social_msgs" (bsonify ob)
+  debug $ (show res)
+  case res of 
+    BSON.ObjId a -> return $ SocialMessageId $ convertString $ show a
+    _ -> error "bad mongo ID"
+  
 
-credential :: Credential
-credential = Credential
-    [ ("oauth_token", "1054663210824056832-jeXkixm5rnRQFhSc4ekAXlTCqi6UTJ")
-    , ("oauth_token_secret", "3CrGPwzNpsLre60kXzs5bowM1Soyxh63FkL358brgbEzz")
-    ]
 
-twInfo :: TWInfo
-twInfo = def
-    { twToken = def { twOAuth = tokens, twCredential = credential }
-    , twProxy = Nothing
-    }
-
-postTwitter :: SocialMessage -> IO ()
-postTwitter msg = do
-  mgr <- newManager tlsManagerSettings
-  users <- call twInfo mgr $ usersLookup $ ScreenNameListParam ["corentindupont2"]
+postTwitter :: Text -> Text -> Waziup ()
+postTwitter screenName msg = do
+  debug "Posting Twitter message"
+  twInfo <- view (waziupConfig.twitterConf)
+  mgr <- liftIO $ newManager tlsManagerSettings
+  users <- liftIO $ call twInfo mgr $ usersLookup $ ScreenNameListParam [convertString screenName]
   let usrId = TWT.userId $ L.head users
-  call twInfo mgr $ directMessagesNew (UserIdParam usrId) "Hello DM" 
-  return ()
+  ret <- C.try $ liftIO $ call twInfo mgr $ directMessagesNew (UserIdParam usrId) msg
+  case ret of
+    Right _ -> return () 
+    Left (e :: SomeException)  -> return ()
 
 
 postSMS :: SocialMessage -> Waziup ()

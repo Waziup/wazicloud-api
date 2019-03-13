@@ -32,6 +32,7 @@ import           Control.Lens hiding ((.=))
 import           GHC.Generics (Generic)
 import           Data.Bson as BSON
 import           Servant
+import           Network.HTTP.Types.Status as HTS
 
 getSocialMessages :: Maybe Token -> Waziup [SocialMessage]
 getSocialMessages tok = runMongo $ do
@@ -57,11 +58,9 @@ postSocialMessage tok socMsg@(SocialMessage _ username chan msg) = do
     Just user -> do
       case chan of
         Twitter -> do
-          case (userFacebook user) of
-            Just screenName -> do
-              postTwitter screenName msg
-              return undefined 
-            Nothing -> throwError err400 {errBody = "Facebook ID not found in user profile"}
+          case (userTwitter user) of
+            Just screenName -> postTwitter screenName msg
+            Nothing -> throwError err400 {errBody = "Twitter ID not found in user profile"}
         SMS -> undefined 
         Voice -> undefined
       runMongo $ logSocialMessage socMsg
@@ -86,13 +85,16 @@ postTwitter screenName msg = do
   debug "Posting Twitter message"
   twInfo <- view (waziupConfig.twitterConf)
   mgr <- liftIO $ newManager tlsManagerSettings
-  users <- liftIO $ call twInfo mgr $ usersLookup $ ScreenNameListParam [convertString screenName]
-  let usrId = TWT.userId $ L.head users
-  ret <- C.try $ liftIO $ call twInfo mgr $ directMessagesNew (UserIdParam usrId) msg
-  case ret of
+  res <- C.try $ do
+    users <- liftIO $ call twInfo mgr $ usersLookup $ ScreenNameListParam [convertString screenName]
+    let usrId = TWT.userId $ L.head users
+    liftIO $ call twInfo mgr $ directMessagesNew (UserIdParam usrId) msg
+  case res of
     Right _ -> return () 
-    Left (e :: SomeException)  -> return ()
-
+    Left (FromJSONError e) -> debug $ "Twitter FromJSONError: " ++ (show e) 
+    Left (TwitterErrorResponse (HTS.Status code msg) _ tms) -> do
+      debug $ "Twitter Error: " ++ (show code) ++ " " ++ (show msg) ++ " " ++ (show tms)
+      throwError err400 {errBody = convertString $ "Twitter error: " ++ (show tms)}
 
 postSMS :: SocialMessage -> Waziup ()
 postSMS (SocialMessage _ _ _ txt) = smsPost $ PlivoSMS undefined undefined txt

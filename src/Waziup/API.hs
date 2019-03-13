@@ -14,7 +14,7 @@ import           Servant
 import           Servant.API.Flatten
 import           Servant.CSV.Cassava
 import           Servant.Swagger.UI
-import           Keycloak (Token)
+import           Keycloak (Token, Username)
 
 -----------------------------
 -- | Waziup type-level API --
@@ -219,6 +219,7 @@ type UsersAPI = Flat ( Header "Authorization" Token :>
   "users" :> (
          QueryParam "limit"  Limit
       :> QueryParam "offset" Offset
+      :> QueryParam "username" Username
       :> Get '[JSON] [User]
     :<|> Capture "user_id" UserId
       :> Get '[JSON] User))

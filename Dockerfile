@@ -7,6 +7,7 @@ COPY aesonbson/ /opt/waziup/aesonbson
 COPY servant-flatten/ /opt/waziup/servant-flatten
 COPY keycloak-hs/ /opt/waziup/keycloak-hs
 COPY orion-hs/ /opt/waziup/orion-hs
+COPY twitter-conduit/ /opt/waziup/twitter-conduit
 
 WORKDIR /opt/waziup
 RUN stack build --only-dependencies --system-ghc --fast

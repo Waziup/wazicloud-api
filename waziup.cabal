@@ -26,8 +26,6 @@ Executable waziup-servant
                      , Waziup.Utils
                      , Paths_Waziup_Servant
                      , MQTT
-  data-dir: data
-  data-files: ontologies/*.json
   ghc-options:         -Wall
   build-depends:       base
                      , aeson

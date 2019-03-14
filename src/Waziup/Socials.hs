@@ -36,8 +36,7 @@ import           Network.HTTP.Types.Status as HTS
 
 getSocialMessages :: Maybe Token -> Waziup [SocialMessage]
 getSocialMessages tok = runMongo $ do
-  let filter = ["user" =: ("test" :: Text)]
-  let sel = (select filter "waziup_social_msgs") 
+  let sel = (select [] "waziup_social_msgs") 
   cur <- find sel
   docs <- rest cur
   debug $ "Got docs:" <> (show docs)
@@ -77,9 +76,7 @@ logSocialMessage msg = do
   case res of 
     BSON.ObjId a -> return $ SocialMessageId $ convertString $ show a
     _ -> error "bad mongo ID"
-  
-
-
+ 
 postTwitter :: Text -> Text -> Waziup ()
 postTwitter screenName msg = do
   debug "Posting Twitter message"
@@ -99,13 +96,39 @@ postTwitter screenName msg = do
 postSMS :: SocialMessage -> Waziup ()
 postSMS (SocialMessage _ _ _ txt) = smsPost $ PlivoSMS undefined undefined txt
 
-
 postSocialMessageBatch :: Maybe Token -> SocialMessageBatch -> Waziup NoContent
-postSocialMessageBatch sb = undefined
-
+postSocialMessageBatch tok (SocialMessageBatch uns chans msg) = do
+  forM_ uns $ \un -> do
+    forM_ chans $ \chan -> do
+      C.onException (return ()) $ postSocialMessage tok (SocialMessage Nothing un chan msg)
+  return NoContent 
 
 getSocialMessage :: Maybe Token -> SocialMessageId -> Waziup SocialMessage
-getSocialMessage id = undefined
+getSocialMessage tok soc = do
+  debug $ "getting message: " ++ (show soc)
+  res <- runMongo $ getSocialMessageMongo tok soc
+  case res of
+    Just a -> return a
+    Nothing -> throwError err404 {errBody = "Could not find social message"}
+
+getSocialMessageMongo :: Maybe Token -> SocialMessageId -> Action IO (Maybe SocialMessage)
+getSocialMessageMongo tok (SocialMessageId id) = do
+  let filter = ["_id" =: ObjId (read $ convertString id)]
+  let sel = (select filter "waziup_social_msgs") 
+  mdoc <- findOne sel
+  debug $ "Got docs:" <> (show mdoc)
+  case mdoc of
+    Nothing -> do
+      err $ "Could not find social message"
+      return Nothing
+    Just doc -> do
+      let res = fromJSON $ Object $ aesonify doc
+      debug $ "Got messages:" <> (show res)
+      case res of
+        JSON.Success a -> return a
+        JSON.Error e -> do
+          err $ "JSON error:" ++ (show e)
+          return Nothing
 
 
 deleteSocialMessage :: Maybe Token -> SocialMessageId -> Waziup NoContent

@@ -801,10 +801,14 @@ defaultSocialMessage = SocialMessage
 
 --JSON instances
 instance FromJSON SocialMessage where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "soc")
+  parseJSON = withObject "test" $ \v -> SocialMessage
+        <$> v .: "_id"
+        <*> v .: "username" 
+        <*> v .: "channel" 
+        <*> v .: "text" 
 
 instance ToJSON SocialMessage where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "soc") {omitNothingFields = True}
+  toJSON = genericToJSON $ defaultOptions {AT.fieldLabelModifier = unCapitalize . drop 3, omitNothingFields = True} 
 
 --Swagger instances
 instance ToSchema SocialMessage where

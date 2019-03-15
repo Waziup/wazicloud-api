@@ -802,7 +802,7 @@ defaultSocialMessage = SocialMessage
 --JSON instances
 instance FromJSON SocialMessage where
   parseJSON = withObject "test" $ \v -> SocialMessage
-        <$> v .: "_id"
+        <$> v .:? "_id"
         <*> v .: "username" 
         <*> v .: "channel" 
         <*> v .: "text" 

@@ -60,7 +60,9 @@ postSocialMessage tok socMsg@(SocialMessage _ username chan msg) = do
           case (userTwitter user) of
             Just screenName -> postTwitter screenName msg
             Nothing -> throwError err400 {errBody = "Twitter ID not found in user profile"}
-        SMS -> undefined 
+        SMS -> case (userPhone user) of
+            Just phone -> postSMS phone msg
+            Nothing -> throwError err400 {errBody = "Twitter ID not found in user profile"}
         Voice -> undefined
       runMongo $ logSocialMessage socMsg
     Nothing -> throwError err400 {errBody = "User not found"}
@@ -93,8 +95,8 @@ postTwitter screenName msg = do
       debug $ "Twitter Error: " ++ (show code) ++ " " ++ (show msg) ++ " " ++ (show tms)
       throwError err400 {errBody = convertString $ "Twitter error: " ++ (show tms)}
 
-postSMS :: SocialMessage -> Waziup ()
-postSMS (SocialMessage _ _ _ txt) = smsPost $ PlivoSMS undefined undefined txt
+postSMS :: Text -> Text -> Waziup ()
+postSMS phone txt = smsPost $ PlivoSMS "+393806412093" phone txt
 
 postSocialMessageBatch :: Maybe Token -> SocialMessageBatch -> Waziup NoContent
 postSocialMessageBatch tok (SocialMessageBatch uns chans msg) = do
@@ -132,7 +134,17 @@ getSocialMessageMongo tok (SocialMessageId id) = do
 
 
 deleteSocialMessage :: Maybe Token -> SocialMessageId -> Waziup NoContent
-deleteSocialMessage id = undefined
+deleteSocialMessage tok soc = do
+  res <- runMongo $ deleteSocialMessageMongo tok soc 
+  case res of 
+    True -> return NoContent
+    False -> throwError err404 {errBody = "Could not find social message"}
+
+deleteSocialMessageMongo :: Maybe Token -> SocialMessageId -> Action IO Bool 
+deleteSocialMessageMongo tok (SocialMessageId id) = do
+  let filter = ["_id" =: ObjId (read $ convertString id)]
+  res <- DB.deleteMany "waziup_social_msgs" [(filter, [])]
+  return $ not $ failed res 
 
 data PlivoSMS = PlivoSMS {
   smsSrc :: Text,
@@ -150,11 +162,6 @@ smsPost dat = do
   debug $ "  headers: " ++ (show $ opts ^. W.headers) 
   liftIO $ W.postWith opts path (toJSON dat)
   return ()
-  --case eRes of 
-  --  Right res -> return ()
-  --  Left err -> do
-  --    warn $ "Plivo HTTP Error: " ++ (show err)
-  --    throwError err404 {errBody = "Plivo error"}
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

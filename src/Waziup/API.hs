@@ -240,7 +240,7 @@ type SocialsAPI = Flat ( Header "Authorization" Token :>
     :<|> Capture "social_msg_id" SocialMessageId
        :> Get '[JSON] SocialMessage
     :<|> Capture "social_msg_id" SocialMessageId
-       :> DeleteNoContent '[JSON] NoContent
+       :> Delete '[JSON] NoContent
     ))
 
 

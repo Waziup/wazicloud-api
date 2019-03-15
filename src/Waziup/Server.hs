@@ -14,6 +14,7 @@ import           Waziup.SensorData
 import           Waziup.Actuators
 import           Waziup.Users
 import           Waziup.Socials
+import           Waziup.Notifs
 import qualified Keycloak.Types as KC
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
@@ -124,7 +125,10 @@ socialsServer = getSocialMessages
 
 --notifs server
 notifsServer :: ServerT NotifsAPI Waziup
-notifsServer = error "Not yet implemented"
+notifsServer = getNotifs
+          :<|> postNotif
+          :<|> getNotif
+          :<|> deleteNotif
 
 -- projects server
 projectsServer :: ServerT ProjectsAPI Waziup

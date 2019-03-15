@@ -10,6 +10,7 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Catch as C
 import           Control.Monad
 import           Data.Maybe
+import           Data.Map as M hiding (map, mapMaybe, filter, lookup, insert, delete)
 import           Data.Text hiding (map, filter, foldl, any)
 import           Data.String.Conversions
 import qualified Data.List as L
@@ -23,7 +24,7 @@ import           Keycloak as KC hiding (info, warn, debug, err)
 import           Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
 import           Paths_Waziup_Servant
-import           Database.MongoDB as DB hiding (value, Limit, Array, lookup, Value, Null)
+import           Database.MongoDB as DB hiding (value, Limit, Array, lookup, Value, Null, (!?))
 import           Data.AesonBson
 
 
@@ -130,7 +131,7 @@ putDeviceLocation mtok did loc = do
 
     debug "Update Orion resource"
     let att = getLocationAttr loc
-    liftOrion $ O.postAttribute (toEntityId did) att 
+    liftOrion $ O.postAttribute (toEntityId did) att
   return NoContent
 
 putDeviceName :: Maybe Token -> DeviceId -> DeviceName -> Waziup NoContent
@@ -177,21 +178,21 @@ getDeviceFromEntity (O.Entity (EntityId eId) eType attrs) =
                        devVisibility   = fromSimpleAttribute (AttributeId "visibility") attrs >>= readVisibility,
                        devDateCreated  = fromSimpleAttribute (AttributeId "dateCreated") attrs >>= parseISO8601.unpack,
                        devDateModified = fromSimpleAttribute (AttributeId "dateModified") attrs >>= parseISO8601.unpack,
-                       devSensors      = mapMaybe getSensorFromAttribute attrs,
-                       devActuators    = mapMaybe getActuatorFromAttribute attrs,
+                       devSensors      = mapMaybe getSensorFromAttribute (toList attrs),
+                       devActuators    = mapMaybe getActuatorFromAttribute (toList attrs),
                        devKeycloakId   = ResourceId <$> O.fromSimpleAttribute (AttributeId "keycloak_id") attrs}
   else Nothing
 
-getLocation :: [O.Attribute] -> Maybe Location
+getLocation :: Map O.AttributeId O.Attribute -> Maybe Location
 getLocation attrs = do 
-    (O.Attribute _ _ mval _) <- L.find (\(O.Attribute attId _ _ _) -> attId == (AttributeId "location")) attrs
+    (O.Attribute _ mval _) <- attrs !? "location"
     (Object o) <- mval
     (Array a) <- lookup "coordinates" $ H.toList o
     let [Number lon, Number lat] = V.toList a
     return $ Location (Latitude $ toRealFloat lat) (Longitude $ toRealFloat lon)
 
-getSensorFromAttribute :: O.Attribute -> Maybe Sensor
-getSensorFromAttribute (O.Attribute (AttributeId name) aType val mets) =
+getSensorFromAttribute :: (O.AttributeId, O.Attribute) -> Maybe Sensor
+getSensorFromAttribute (AttributeId name, O.Attribute aType val mets) =
   if (aType == "Sensor") 
     then Just $ Sensor { senId            = SensorId name,
                          senName          = fromSimpleMetadata (MetadataId "name") mets,
@@ -202,8 +203,8 @@ getSensorFromAttribute (O.Attribute (AttributeId name) aType val mets) =
                          senCalib         = getSensorCalib mets}
     else Nothing
 
-getActuatorFromAttribute :: O.Attribute -> Maybe Actuator
-getActuatorFromAttribute (O.Attribute (AttributeId name) aType val mets) =
+getActuatorFromAttribute :: (AttributeId, O.Attribute) -> Maybe Actuator
+getActuatorFromAttribute (AttributeId name, O.Attribute aType val mets) =
   if (aType == "Actuator") 
     then Just $ Actuator { actId                = ActuatorId name,
                            actName              = fromSimpleMetadata (MetadataId "name") mets,
@@ -212,7 +213,7 @@ getActuatorFromAttribute (O.Attribute (AttributeId name) aType val mets) =
                            actValue             = val}
     else Nothing
 
-getSensorValue :: Maybe Value -> [O.Metadata] -> Maybe SensorValue
+getSensorValue :: Maybe Value -> Map O.MetadataId O.Metadata -> Maybe SensorValue
 getSensorValue mval mets = do
    value <- mval
    guard $ not $ isNull value
@@ -220,9 +221,9 @@ getSensorValue mval mets = do
                         (O.fromSimpleMetadata (MetadataId "timestamp")    mets >>= parseISO8601.unpack)
                         (O.fromSimpleMetadata (MetadataId "dateModified") mets >>= parseISO8601.unpack)
 
-getSensorCalib :: [O.Metadata] -> Maybe LinearCalib
+getSensorCalib :: Map O.MetadataId O.Metadata -> Maybe LinearCalib
 getSensorCalib mets = do
-   (Metadata _ _ mval) <- L.find (\(Metadata mid' _ _) -> mid' == (MetadataId "calib") ) mets
+   (Metadata _ mval) <-mets !? "calib"
    val <- mval
    case fromJSON val of
      Success a -> Just a
@@ -237,7 +238,7 @@ isNull _    = False
 
 getEntityFromDevice :: Device -> O.Entity
 getEntityFromDevice (Device (DeviceId sid) sgid sname sloc sdom svis sensors acts sown _ _ skey) = 
-  O.Entity (EntityId sid) "Device" $ catMaybes [getSimpleAttr (AttributeId "name")        <$> sname,
+  O.Entity (EntityId sid) "Device" $ fromList $ catMaybes [getSimpleAttr (AttributeId "name")        <$> sname,
                                                 getSimpleAttr (AttributeId "gateway_id")  <$> (unGatewayId <$> sgid),
                                                 getSimpleAttr (AttributeId "owner")       <$> sown,
                                                 getSimpleAttr (AttributeId "domain")      <$> sdom,
@@ -247,25 +248,25 @@ getEntityFromDevice (Device (DeviceId sid) sgid sname sloc sdom svis sensors act
                                                 map getAttFromSensor sensors <>
                                                 map getAttFromActuator acts
 
-getLocationAttr :: Location -> O.Attribute
-getLocationAttr (Location (Latitude lat) (Longitude lon)) = O.Attribute (AttributeId "location") "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) []
+getLocationAttr :: Location -> (O.AttributeId, O.Attribute)
+getLocationAttr (Location (Latitude lat) (Longitude lon)) = (AttributeId "location", O.Attribute "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) M.empty)
 
-getAttFromSensor :: Sensor -> O.Attribute
+getAttFromSensor :: Sensor -> (O.AttributeId, O.Attribute)
 getAttFromSensor (Sensor (SensorId senId) name sd qk u lv cal) = 
-  (O.Attribute (AttributeId senId) "Sensor"
+  (AttributeId senId, O.Attribute "Sensor"
                      (senValValue <$> lv)
-                     (catMaybes [getTextMetadata (MetadataId "name")           <$> name,
+                     (fromList $ catMaybes [getTextMetadata (MetadataId "name")           <$> name,
                                  getTextMetadata (MetadataId "quantity_kind")  <$> unQuantityKindId <$> qk,
                                  getTextMetadata (MetadataId "sensing_device") <$> unSensorKindId <$> sd,
                                  getTextMetadata (MetadataId "unit")           <$> unUnitId <$> u,
                                  getTimeMetadata (MetadataId "timestamp")      <$> (join $ senValTimestamp <$> lv),
-                                 if (isJust cal) then Just $ Metadata (MetadataId "calib") (Just "Calib") (toJSON <$> cal) else Nothing]))
+                                 if (isJust cal) then Just $ (MetadataId "calib", Metadata  (Just "Calib") (toJSON <$> cal)) else Nothing]))
 
-getAttFromActuator :: Actuator -> O.Attribute
+getAttFromActuator :: Actuator -> (O.AttributeId, O.Attribute)
 getAttFromActuator (Actuator (ActuatorId actId) name ak avt av) = 
-  (O.Attribute (AttributeId actId) "Actuator"
+  (AttributeId actId, O.Attribute "Actuator"
                      av
-                     (catMaybes [getTextMetadata (MetadataId "name")           <$> name,
+                     (fromList $ catMaybes [getTextMetadata (MetadataId "name")           <$> name,
                                  getTextMetadata (MetadataId "actuator_kind")  <$> unActuatorKindId <$> ak,
                                  getTextMetadata (MetadataId "actuator_value_type") <$> convertString.show <$> avt]))
 

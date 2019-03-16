@@ -239,14 +239,14 @@ isNull _    = False
 getEntityFromDevice :: Device -> O.Entity
 getEntityFromDevice (Device (DeviceId sid) sgid sname sloc sdom svis sensors acts sown _ _ skey) = 
   O.Entity (EntityId sid) "Device" $ fromList $ catMaybes [getSimpleAttr (AttributeId "name")        <$> sname,
-                                                getSimpleAttr (AttributeId "gateway_id")  <$> (unGatewayId <$> sgid),
-                                                getSimpleAttr (AttributeId "owner")       <$> sown,
-                                                getSimpleAttr (AttributeId "domain")      <$> sdom,
-                                                getSimpleAttr (AttributeId "keycloak_id") <$> (unResId <$> skey),
-                                                getSimpleAttr (AttributeId "visibility")  <$> ((pack.show) <$> svis),
-                                                getLocationAttr               <$> sloc] <>
-                                                map getAttFromSensor sensors <>
-                                                map getAttFromActuator acts
+                                                           getSimpleAttr (AttributeId "gateway_id")  <$> (unGatewayId <$> sgid),
+                                                           getSimpleAttr (AttributeId "owner")       <$> sown,
+                                                           getSimpleAttr (AttributeId "domain")      <$> sdom,
+                                                           getSimpleAttr (AttributeId "keycloak_id") <$> (unResId <$> skey),
+                                                           getSimpleAttr (AttributeId "visibility")  <$> ((pack.show) <$> svis),
+                                                           getLocationAttr               <$> sloc] <>
+                                                           map getAttFromSensor sensors <>
+                                                           map getAttFromActuator acts
 
 getLocationAttr :: Location -> (O.AttributeId, O.Attribute)
 getLocationAttr (Location (Latitude lat) (Longitude lon)) = (AttributeId "location", O.Attribute "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) M.empty)
@@ -256,19 +256,19 @@ getAttFromSensor (Sensor (SensorId senId) name sd qk u lv cal) =
   (AttributeId senId, O.Attribute "Sensor"
                      (senValValue <$> lv)
                      (fromList $ catMaybes [getTextMetadata (MetadataId "name")           <$> name,
-                                 getTextMetadata (MetadataId "quantity_kind")  <$> unQuantityKindId <$> qk,
-                                 getTextMetadata (MetadataId "sensing_device") <$> unSensorKindId <$> sd,
-                                 getTextMetadata (MetadataId "unit")           <$> unUnitId <$> u,
-                                 getTimeMetadata (MetadataId "timestamp")      <$> (join $ senValTimestamp <$> lv),
-                                 if (isJust cal) then Just $ (MetadataId "calib", Metadata  (Just "Calib") (toJSON <$> cal)) else Nothing]))
+                                            getTextMetadata (MetadataId "quantity_kind")  <$> unQuantityKindId <$> qk,
+                                            getTextMetadata (MetadataId "sensing_device") <$> unSensorKindId <$> sd,
+                                            getTextMetadata (MetadataId "unit")           <$> unUnitId <$> u,
+                                            getTimeMetadata (MetadataId "timestamp")      <$> (join $ senValTimestamp <$> lv),
+                                            if (isJust cal) then Just $ (MetadataId "calib", Metadata  (Just "Calib") (toJSON <$> cal)) else Nothing]))
 
 getAttFromActuator :: Actuator -> (O.AttributeId, O.Attribute)
 getAttFromActuator (Actuator (ActuatorId actId) name ak avt av) = 
   (AttributeId actId, O.Attribute "Actuator"
                      av
                      (fromList $ catMaybes [getTextMetadata (MetadataId "name")           <$> name,
-                                 getTextMetadata (MetadataId "actuator_kind")  <$> unActuatorKindId <$> ak,
-                                 getTextMetadata (MetadataId "actuator_value_type") <$> convertString.show <$> avt]))
+                                            getTextMetadata (MetadataId "actuator_kind")  <$> unActuatorKindId <$> ak,
+                                            getTextMetadata (MetadataId "actuator_value_type") <$> convertString.show <$> avt]))
 
 
 withKCId :: DeviceId -> ((ResourceId, Device) -> Waziup a) -> Waziup a

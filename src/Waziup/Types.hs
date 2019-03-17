@@ -699,7 +699,7 @@ data Notif = Notif
 defaultNotif = Notif
   { notifId          = Nothing 
   , notifDescription = "Test"               
-  , notifSubject     = NotifSubject [DeviceId "MyDevice"] $ NotifCond [SensorId "TC"] "TC>40" 
+  , notifSubject     = NotifSubject [DeviceId "MyDevice"] $ NotifCond [SensorId "TC"] "TC>40"
   , notifNotif       = defaultSocialMessageBatch 
   , notifThrottling  = 3600            
   }
@@ -724,7 +724,7 @@ data NotifCond = NotifCond
 
 --JSON instances
 instance FromJSON NotifCond where
-  parseJSON = genericParseJSON $ aesonDrop 5 snakeCase
+  parseJSON = genericParseJSON $ aesonDrop 9 snakeCase
 
 instance ToJSON NotifCond where
   toJSON = genericToJSON (removeFieldLabelPrefix False "notifCond")

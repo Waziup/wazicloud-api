@@ -47,7 +47,7 @@ getNotifs tok = do
 postNotif :: Maybe Token -> Notif -> Waziup NotifId
 postNotif tok not = do
   info $ "Post notif: " ++ (show not)
-  let sub = getSubFromNotif not
+  sub <- getSubFromNotif not
   debug $ "sub: " ++ (convertString $ (encode sub) :: String)
   (SubId res) <- liftOrion $ O.postSub sub
   return $ NotifId res 
@@ -98,12 +98,14 @@ getNotifNotif (SubNotif (SubHttpCustom _ payload _ _) _ _ ["waziup_notif"] ts ln
   Nothing -> error "Cannot decode payload" where
 getNotifNotif _ = error "not a waziup_notif" 
 
-getSubFromNotif :: Notif -> Subscription
-getSubFromNotif (Notif nid desc sub not throt stat) = Subscription {
+getSubFromNotif :: Notif -> Waziup Subscription
+getSubFromNotif (Notif nid desc sub not throt stat) = do
+  subNot <- getSubNotif not
+  return Subscription {
   subId           = getSubId <$> nid, 
   subDescription  = desc,
   subSubject      = getSubSubject sub, 
-  subNotification = getSubNotif not,
+  subNotification = subNot,
   subThrottling   = throt,
   subStatus       = stat}
 
@@ -113,19 +115,20 @@ getSubSubject (NotifSubject devs (NotifCond sens expr)) =
               subCondition = SubCondition {subCondAttrs      = map (\(SensorId sid) -> AttributeId sid) sens,
                                            subCondExpression = M.singleton "q" expr}}
 
-getSubNotif :: NotifNotif -> SubNotif
-getSubNotif (NotifNotif smb ts ln ls lf)  = SubNotif 
-  {subHttpCustom = SubHttpCustom {subUrl = "http://localhost:3000/api/v2/socials/batch",
-                                  subPayload = convertString $ URI.urlEncode True $ convertString $ JSON.encode smb,
-                                  subMethod = "POST",
-                                  subHeaders = fromList [("Content-Type", "application/json"), ("accept", "application/json")]},
-   subAttrs            = [],
-   subAttrsFormat      = "normalized",
-   subMetadata         = ["waziup_notif"],
-   subTimesSent        = ts, 
-   subLastNotification = ln,
-   subLastSuccess      = ls,
-   subLastFailure      = lf}
+getSubNotif :: NotifNotif -> Waziup SubNotif
+getSubNotif (NotifNotif smb ts ln ls lf) = do
+  host <- view (waziupConfig.serverConf.serverHost)
+  return SubNotif  {subHttpCustom = SubHttpCustom {subUrl = convertString $ host <> "/api/v2/socials/batch",
+                                                   subPayload = convertString $ URI.urlEncode True $ convertString $ JSON.encode smb,
+                                                   subMethod = "POST",
+                                                   subHeaders = fromList [("Content-Type", "application/json"), ("accept", "application/json")]},
+                    subAttrs            = [],
+                    subAttrsFormat      = "normalized",
+                    subMetadata         = ["waziup_notif"],
+                    subTimesSent        = ts, 
+                    subLastNotification = ln,
+                    subLastSuccess      = ls,
+                    subLastFailure      = lf}
 
 getSubId :: NotifId -> SubId
 getSubId (NotifId id) = SubId id

@@ -36,6 +36,7 @@ import           Network.HTTP.Types.Status as HTS
 
 getSocialMessages :: Maybe Token -> Waziup [SocialMessage]
 getSocialMessages tok = runMongo $ do
+  info "Get social messages"
   let sel = (select [] "waziup_social_msgs") 
   cur <- find sel
   docs <- rest cur
@@ -50,6 +51,7 @@ getSocialMessages tok = runMongo $ do
                                               
 postSocialMessage :: Maybe Token -> SocialMessage -> Waziup SocialMessageId
 postSocialMessage tok socMsg@(SocialMessage _ username chan msg) = do
+  info "Post social messages"
   users <- Users.getUsers tok Nothing Nothing (Just username)
   let muser = L.find (\u -> T.userUsername u == username) users
   debug $ (show muser)
@@ -81,7 +83,7 @@ logSocialMessage msg = do
  
 postTwitter :: Text -> Text -> Waziup ()
 postTwitter screenName msg = do
-  debug "Posting Twitter message"
+  info "Posting Twitter message"
   twInfo <- view (waziupConfig.twitterConf)
   mgr <- liftIO $ newManager tlsManagerSettings
   res <- C.try $ do
@@ -99,10 +101,14 @@ postSMS :: Text -> Text -> Waziup ()
 postSMS phone txt = smsPost $ PlivoSMS "+393806412093" phone txt
 
 postSocialMessageBatch :: Maybe Token -> SocialMessageBatch -> Waziup NoContent
-postSocialMessageBatch tok (SocialMessageBatch uns chans msg) = do
+postSocialMessageBatch tok b@(SocialMessageBatch uns chans msg) = do
+  info $ "Post social message batch: " ++(show b)
   forM_ uns $ \un -> do
     forM_ chans $ \chan -> do
-      C.onException (return ()) $ postSocialMessage tok (SocialMessage Nothing un chan msg)
+      res <- C.try $ postSocialMessage tok (SocialMessage Nothing un chan msg)
+      case res of
+        Right _ -> debug "Message success"
+        Left (e :: SomeException) -> warn $ "Message error: " ++ (show e)
   return NoContent 
 
 getSocialMessage :: Maybe Token -> SocialMessageId -> Waziup SocialMessage

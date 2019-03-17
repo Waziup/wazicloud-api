@@ -49,8 +49,8 @@ postNotif tok not = do
   info $ "Post notif: " ++ (show not)
   let sub = getSubFromNotif not
   debug $ "sub: " ++ (convertString $ (encode sub) :: String)
-  res <- liftOrion $ O.postSub sub
-  return $ NotifId "" 
+  (SubId res) <- liftOrion $ O.postSub sub
+  return $ NotifId res 
 
 getNotif :: Maybe Token -> NotifId -> Waziup Notif
 getNotif tok (NotifId id) = do
@@ -67,12 +67,13 @@ deleteNotif tok (NotifId id) = do
 
 
 getNotifFromSub :: Subscription -> Notif
-getNotifFromSub (Subscription subId subDesc subSubject subNotif subThrottling) = 
+getNotifFromSub (Subscription subId subDesc subSubject subNotif subThrottling subStat) = 
   Notif { notifId          = getNotifId <$> subId 
         , notifDescription = subDesc 
         , notifSubject     = getNotifSubject subSubject 
         , notifNotif       = getNotifNotif subNotif
-        , notifThrottling  = subThrottling} 
+        , notifThrottling  = subThrottling
+        , notifStatus      = subStat} 
 
 getNotifId :: SubId -> NotifId
 getNotifId (SubId sid) = NotifId sid
@@ -91,19 +92,20 @@ getDeviceId (EntityId id) = DeviceId id
 getSensorId :: AttributeId -> SensorId
 getSensorId (AttributeId id) = SensorId id
 
-getNotifNotif :: SubNotif -> SocialMessageBatch 
-getNotifNotif (SubNotif (SubHttpCustom _ payload _ _) _ _ ["waziup_notif"]) = case JSON.decode <$> convertString $ urlDecode True $ convertString payload of
-  Just d -> d
+getNotifNotif :: SubNotif -> NotifNotif 
+getNotifNotif (SubNotif (SubHttpCustom _ payload _ _) _ _ ["waziup_notif"] ts ln ls lf) = case JSON.decode <$> convertString $ urlDecode True $ convertString payload of
+  Just d -> NotifNotif d ts ln ls lf
   Nothing -> error "Cannot decode payload" where
 getNotifNotif _ = error "not a waziup_notif" 
 
 getSubFromNotif :: Notif -> Subscription
-getSubFromNotif (Notif nid desc sub socBatch throt) = Subscription {
+getSubFromNotif (Notif nid desc sub not throt stat) = Subscription {
   subId           = getSubId <$> nid, 
   subDescription  = desc,
   subSubject      = getSubSubject sub, 
-  subNotification = getSubNotif socBatch,
-  subThrottling   = throt}
+  subNotification = getSubNotif not,
+  subThrottling   = throt,
+  subStatus       = stat}
 
 getSubSubject :: NotifSubject -> SubSubject
 getSubSubject (NotifSubject devs (NotifCond sens expr)) = 
@@ -111,15 +113,19 @@ getSubSubject (NotifSubject devs (NotifCond sens expr)) =
               subCondition = SubCondition {subCondAttrs      = map (\(SensorId sid) -> AttributeId sid) sens,
                                            subCondExpression = M.singleton "q" expr}}
 
-getSubNotif :: SocialMessageBatch -> SubNotif
-getSubNotif smb = SubNotif 
+getSubNotif :: NotifNotif -> SubNotif
+getSubNotif (NotifNotif smb ts ln ls lf)  = SubNotif 
   {subHttpCustom = SubHttpCustom {subUrl = "http://localhost:3000/api/v2/socials/batch",
                                   subPayload = convertString $ URI.urlEncode True $ convertString $ JSON.encode smb,
                                   subMethod = "POST",
-                                  subHeaders = fromList [("Content-Type", "application/json"), ("accept", "application/js")]},
-   subAttrs = [],
-   subAttrsFormat = "normalized",
-   subMetadata = ["waziup_notif"]}
+                                  subHeaders = fromList [("Content-Type", "application/json"), ("accept", "application/json")]},
+   subAttrs            = [],
+   subAttrsFormat      = "normalized",
+   subMetadata         = ["waziup_notif"],
+   subTimesSent        = ts, 
+   subLastNotification = ln,
+   subLastSuccess      = ls,
+   subLastFailure      = lf}
 
 getSubId :: NotifId -> SubId
 getSubId (NotifId id) = SubId id

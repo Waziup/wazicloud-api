@@ -687,21 +687,24 @@ instance MimeRender PlainText NotifId where
 instance ToSchema NotifId
 instance ToParamSchema NotifId
 
+
 -- | one notification
 data Notif = Notif
   { notifId          :: Maybe NotifId       -- ^ id of the notification (attributed by the server)
   , notifDescription :: Text                -- ^ Description of the notification
-  , notifSubject     :: NotifSubject        -- ^ 
-  , notifNotif       :: SocialMessageBatch  -- ^ 
+  , notifSubject     :: NotifSubject        -- ^ What is looked at and with which condition 
+  , notifNotif       :: NotifNotif          -- ^ Where to send the notification
   , notifThrottling  :: Double              -- ^ minimum interval between two messages in seconds
+  , notifStatus      :: Maybe O.SubStatus   -- ^ current status of the notification 
   } deriving (Show, Eq, Generic)
 
 defaultNotif = Notif
   { notifId          = Nothing 
   , notifDescription = "Test"               
   , notifSubject     = NotifSubject [DeviceId "MyDevice"] $ NotifCond [SensorId "TC"] "TC>40"
-  , notifNotif       = defaultSocialMessageBatch 
-  , notifThrottling  = 3600            
+  , notifNotif       = NotifNotif defaultSocialMessageBatch Nothing Nothing Nothing Nothing 
+  , notifThrottling  = 3600
+  , notifStatus      = Nothing
   }
 
 --JSON instances
@@ -715,6 +718,8 @@ instance ToJSON Notif where
 instance ToSchema Notif where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON defaultNotif 
+
+instance ToSchema O.SubStatus
 
 -- | notification condition
 data NotifCond = NotifCond
@@ -748,6 +753,21 @@ instance ToJSON NotifSubject where
 --Swagger instance
 instance ToSchema NotifSubject
 
+data NotifNotif = NotifNotif {
+    notifSocial      :: SocialMessageBatch
+  , notifTimesSent   :: Maybe Int
+  , notifLastNotif   :: Maybe UTCTime
+  , notifLastSuccess :: Maybe UTCTime
+  , notifLastFailure :: Maybe UTCTime
+  } deriving (Show, Eq, Generic)
+
+instance ToJSON NotifNotif where
+  toJSON = genericToJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 5, omitNothingFields = True}
+
+instance FromJSON NotifNotif where
+  parseJSON = genericParseJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 5, omitNothingFields = True}
+
+instance ToSchema NotifNotif
 
 ---------------
 -- * Socials --

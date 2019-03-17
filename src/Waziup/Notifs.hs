@@ -53,10 +53,17 @@ postNotif tok not = do
   return $ NotifId "" 
 
 getNotif :: Maybe Token -> NotifId -> Waziup Notif
-getNotif tok not = undefined
+getNotif tok (NotifId id) = do
+  info "Get notif"
+  sub <- liftOrion $ O.getSub (SubId id) 
+  let notif = getNotifFromSub sub
+  return notif
 
 deleteNotif :: Maybe Token -> NotifId -> Waziup NoContent
-deleteNotif tok soc = undefined
+deleteNotif tok (NotifId id) = do
+  info "Delete notif"
+  liftOrion $ O.deleteSub (SubId id)
+  return NoContent
 
 
 getNotifFromSub :: Subscription -> Notif

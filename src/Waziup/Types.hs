@@ -47,7 +47,6 @@ import           Web.Twitter.Conduit hiding (map)
 type Limit  = Int
 type Offset = Int
 
-
 --------------------
 -- * Waziup Monad --
 --------------------
@@ -65,7 +64,6 @@ data WaziupInfo = WaziupInfo {
 -- | run a Waziup monad
 runWaziup :: Waziup a -> WaziupInfo -> IO (Either ServantErr a)
 runWaziup w wi = runExceptT $ runHandler' $ runReaderT w wi
-
 
 --------------
 -- * Config --
@@ -129,6 +127,7 @@ defaultPlivoConf = PlivoConfig {
   _plivoHost  = "https://api.plivo.com",
   _plivoID    = "<Your Plivo ID>",
   _plivoToken = "<Your Plivo token>"}
+
 --------------------------------------
 -- * Authentication & authorization --
 --------------------------------------

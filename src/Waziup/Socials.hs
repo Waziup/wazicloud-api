@@ -87,6 +87,7 @@ postTwitter :: Text -> Text -> Waziup ()
 postTwitter screenName msg = do
   info "Posting Twitter message"
   twInfo <- view (waziupConfig.twitterConf)
+  debug $ "Twitter details: " ++ (show twInfo)
   mgr <- liftIO $ newManager tlsManagerSettings
   res <- C.try $ do
     users <- liftIO $ call twInfo mgr $ usersLookup $ ScreenNameListParam [convertString screenName]
@@ -100,7 +101,7 @@ postTwitter screenName msg = do
       throwError err400 {errBody = convertString $ "Twitter error: " ++ (show tms)}
 
 postSMS :: Text -> Text -> Waziup ()
-postSMS phone txt = smsPost $ PlivoSMS "+393806412093" phone txt
+postSMS phone txt = smsPost $ PlivoSMS "+393806412094" phone txt
 
 postSocialMessageBatch :: Maybe Token -> SocialMessageBatch -> Waziup NoContent
 postSocialMessageBatch tok b@(SocialMessageBatch uns chans msg) = do
@@ -159,7 +160,8 @@ data PlivoSMS = PlivoSMS {
   smsDst  :: Text,
   smsText :: Text} deriving (Show, Eq, Generic)
 
-instance ToJSON PlivoSMS
+instance ToJSON PlivoSMS where
+  toJSON = genericToJSON $ defaultOptions {fieldLabelModifier = T.unCapitalize . L.drop 3, omitNothingFields = True}
 
 smsPost :: PlivoSMS -> Waziup ()
 smsPost dat = do

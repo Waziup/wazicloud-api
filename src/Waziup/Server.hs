@@ -129,6 +129,7 @@ notifsServer = getNotifs
           :<|> postNotif
           :<|> getNotif
           :<|> deleteNotif
+          :<|> putNotifStatus
 
 -- projects server
 projectsServer :: ServerT ProjectsAPI Waziup

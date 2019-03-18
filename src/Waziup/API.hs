@@ -15,6 +15,7 @@ import           Servant.API.Flatten
 import           Servant.CSV.Cassava
 import           Servant.Swagger.UI
 import           Keycloak (Token, Username)
+import           Orion
 
 -----------------------------
 -- | Waziup type-level API --
@@ -256,6 +257,9 @@ type NotifsAPI = Flat ( Header "Authorization" Token :>
     :<|> Capture "notif_id" NotifId :> (
            Get '[JSON] Notif
       :<|> DeleteNoContent '[JSON] NoContent
+      :<|> "status" 
+       :> ReqBody '[PlainText] SubStatus 
+       :> PutNoContent '[JSON] NoContent
     )))
 
 

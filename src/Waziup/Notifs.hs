@@ -37,6 +37,8 @@ import           Network.HTTP.Types.Status as HTS
 import           Orion as O hiding (info, warn, debug, err)
 import           Network.HTTP.Types.URI as URI
 
+-- * Notif API
+
 getNotifs :: Maybe Token -> Waziup [Notif]
 getNotifs tok = do 
   info "Get notifs"
@@ -78,6 +80,7 @@ putNotifStatus tok (NotifId id) status = do
   liftOrion $ O.patchSub (SubId id) (M.singleton "status" stat)
   return NoContent
 
+-- * Helpers
 
 getNotifFromSub :: Subscription -> Maybe Notif
 getNotifFromSub (Subscription subId subDesc subSubject subNotif subThrottling subStat subExp) = 

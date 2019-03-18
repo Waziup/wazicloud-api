@@ -16,7 +16,7 @@ import           Data.Aeson as JSON
 import           Data.Bson as BSON
 import           Data.AesonBson
 
--- * Projects
+-- * Projects API
 
 getProjects :: Maybe Token -> Waziup [Project]
 getProjects tok = do
@@ -47,13 +47,6 @@ getProject tok pid = do
     Just p -> return p
     Nothing -> throwError err404 {errBody = "Cannot get project: id not found"}
 
-getProjectMongo :: ProjectId -> Action IO (Maybe Project)
-getProjectMongo (ProjectId pid) = do
-  mdoc <- findOne (select ["_id" =: (ObjId $ read $ convertString pid)] "projects")
-  case (fromJSON . Object . aesonify <$> mdoc) of
-     Just (JSON.Success a) -> return $ Just a
-     _ -> return Nothing
-
 deleteProject :: Maybe Token -> ProjectId -> Waziup NoContent
 deleteProject tok pid = do
   info "Delete project"
@@ -61,6 +54,31 @@ deleteProject tok pid = do
   if res
     then return NoContent
     else throwError err404 {errBody = "Cannot delete project: id not found"}
+
+putProjectDevices :: Maybe Token -> ProjectId -> [DeviceId] -> Waziup NoContent
+putProjectDevices tok pid ids = do
+  info "Put project devices"
+  res <- runMongo $ putProjectDevicesMongo pid ids
+  if res
+    then return NoContent
+    else throwError err404 {errBody = "Cannot update project: id not found"}
+
+putProjectGateways :: Maybe Token -> ProjectId -> [GatewayId] -> Waziup NoContent
+putProjectGateways tok pid ids = do
+  info "Put project gateways"
+  res <- runMongo $ putProjectGatewaysMongo pid ids
+  if res
+    then return NoContent
+    else throwError err404 {errBody = "Cannot update project: id not found"}
+
+-- * Helpers
+
+getProjectMongo :: ProjectId -> Action IO (Maybe Project)
+getProjectMongo (ProjectId pid) = do
+  mdoc <- findOne (select ["_id" =: (ObjId $ read $ convertString pid)] "projects")
+  case (fromJSON . Object . aesonify <$> mdoc) of
+     Just (JSON.Success a) -> return $ Just a
+     _ -> return Nothing
 
 deleteProjectMongo :: ProjectId -> Action IO Bool 
 deleteProjectMongo (ProjectId pid) = do
@@ -72,14 +90,6 @@ deleteProjectMongo (ProjectId pid) = do
        return True
      _ -> return False 
 
-putProjectDevices :: Maybe Token -> ProjectId -> [DeviceId] -> Waziup NoContent
-putProjectDevices tok pid ids = do
-  info "Put project devices"
-  res <- runMongo $ putProjectDevicesMongo pid ids
-  if res
-    then return NoContent
-    else throwError err404 {errBody = "Cannot update project: id not found"}
-
 putProjectGatewaysMongo :: ProjectId -> [GatewayId] -> Action IO Bool
 putProjectGatewaysMongo (ProjectId pid) gids = do
   let sel = ["_id" =: (ObjId $ read $ convertString pid)]
@@ -90,13 +100,6 @@ putProjectGatewaysMongo (ProjectId pid) gids = do
        return True
      _ -> return False 
 
-putProjectGateways :: Maybe Token -> ProjectId -> [GatewayId] -> Waziup NoContent
-putProjectGateways tok pid ids = do
-  info "Put project gateways"
-  res <- runMongo $ putProjectGatewaysMongo pid ids
-  if res
-    then return NoContent
-    else throwError err404 {errBody = "Cannot update project: id not found"}
 
 putProjectDevicesMongo :: ProjectId -> [DeviceId] -> Action IO Bool
 putProjectDevicesMongo (ProjectId pid) ids = do
@@ -104,7 +107,7 @@ putProjectDevicesMongo (ProjectId pid) ids = do
   mdoc <- findOne (select sel "projects")
   case mdoc of
      Just _ -> do
-       modify (select sel "projects") ["devices" := (val $ map unDeviceId ids)]
+       modify (select sel "projects") [ "$set" := Doc ["devices" := (val $ map unDeviceId ids)]]
        return True
      _ -> return False 
 

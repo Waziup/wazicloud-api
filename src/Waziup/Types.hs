@@ -585,7 +585,7 @@ defaultActuator = Actuator
   } 
 
 instance FromJSON Actuator where
-  parseJSON = genericParseJSON $ aesonDrop 3 snakeCase 
+  parseJSON = genericParseJSON (aesonDrop 3 snakeCase) {omitNothingFields = True}
 
 instance ToJSON Actuator where
   toJSON = genericToJSON (aesonDrop 3 snakeCase) {omitNothingFields = True}
@@ -810,17 +810,21 @@ instance ToSchema Channel
 
 -- | One social network message
 data SocialMessage = SocialMessage
-  { socId       :: Maybe SocialMessageId
-  , socUsername :: Username          -- ^ User name in Keycloak
-  , socChannel  :: Channel           -- ^ Channel for the notification 
-  , socText     :: SocialMessageText -- ^ Text of the message
+  { socId        :: Maybe SocialMessageId
+  , socUsername  :: Username          -- ^ User name in Keycloak
+  , socChannel   :: Channel           -- ^ Channel for the notification 
+  , socMessage   :: SocialMessageText -- ^ Text of the message
+  , socTimestamp :: Maybe UTCTime
+  , socSuccess   :: Maybe Bool
   } deriving (Show, Eq, Generic)
 
 defaultSocialMessage = SocialMessage
-  { socId       = Nothing 
-  , socUsername = "cdupont" 
-  , socChannel  = Twitter
-  , socText     = "Test message"
+  { socId        = Nothing 
+  , socUsername  = "cdupont" 
+  , socChannel   = Twitter
+  , socMessage   = "Test message"
+  , socTimestamp = Nothing
+  , socSuccess   = Nothing
   }
 
 --JSON instances
@@ -829,7 +833,9 @@ instance FromJSON SocialMessage where
         <$> v .:? "_id"
         <*> v .: "username" 
         <*> v .: "channel" 
-        <*> v .: "text" 
+        <*> v .: "message" 
+        <*> v .:? "timestamp" 
+        <*> v .:? "success" 
 
 instance ToJSON SocialMessage where
   toJSON = genericToJSON $ defaultOptions {AT.fieldLabelModifier = unCapitalize . drop 3, omitNothingFields = True} 
@@ -1054,15 +1060,23 @@ instance ToSchema ActuatorKind
 
 -- Actuator value type denote the kind of data needed to control the actuator
 -- TODO: find better name
-data ActuatorValueTypeId =  ActString | ActNumber | ActBool | ActNull | ActObject | ActArray deriving (Show, Eq, Generic)
+data ActuatorValueTypeId =  ActString | ActNumber | ActBool | ActNull | ActObject | ActArray deriving (Eq, Generic)
+
+instance Show ActuatorValueTypeId where
+  show ActString = "string"
+  show ActNumber = "number"
+  show ActBool   = "bool"
+  show ActNull   = "null"
+  show ActObject = "object"
+  show ActArray  = "array"
 
 readValueType :: Text -> Maybe ActuatorValueTypeId
-readValueType "String" = Just ActString 
-readValueType "Number" = Just ActNumber 
-readValueType "Bool"   = Just ActBool 
-readValueType "Null"   = Just ActNull 
-readValueType "Object" = Just ActObject 
-readValueType "Array"  = Just ActArray 
+readValueType "string" = Just ActString 
+readValueType "number" = Just ActNumber 
+readValueType "bool"   = Just ActBool 
+readValueType "null"   = Just ActNull 
+readValueType "object" = Just ActObject 
+readValueType "array"  = Just ActArray 
 readValueType _        = Nothing
 
 instance ToJSON ActuatorValueTypeId where

@@ -243,7 +243,7 @@ getEntityFromDevice (Device (DeviceId sid) sgid sname sloc sdom svis sensors act
                                                            getSimpleAttr (AttributeId "owner")       <$> sown,
                                                            getSimpleAttr (AttributeId "domain")      <$> sdom,
                                                            getSimpleAttr (AttributeId "keycloak_id") <$> (unResId <$> skey),
-                                                           getSimpleAttr (AttributeId "visibility")  <$> ((pack.show) <$> svis),
+                                                           getSimpleAttr (AttributeId "visibility")  <$> ((convertString.show) <$> svis),
                                                            getLocationAttr               <$> sloc] <>
                                                            map getAttFromSensor sensors <>
                                                            map getAttFromActuator acts

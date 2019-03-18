@@ -50,7 +50,7 @@ getSocialMessages tok = runMongo $ do
       return []
                                               
 postSocialMessage :: Maybe Token -> SocialMessage -> Waziup SocialMessageId
-postSocialMessage tok socMsg@(SocialMessage _ username chan msg) = do
+postSocialMessage tok socMsg@(SocialMessage _ username chan msg _ _) = do
   info "Post social messages"
   users <- Users.getUsers tok Nothing Nothing (Just username)
   let muser = L.find (\u -> T.userUsername u == username) users
@@ -72,6 +72,8 @@ postSocialMessage tok socMsg@(SocialMessage _ username chan msg) = do
 logSocialMessage :: SocialMessage -> Action IO SocialMessageId 
 logSocialMessage msg = do
   debug "Post msg to Mongo"
+  time <- liftIO getCurrentTime
+  let msg' = msg {socTimestamp = Just time}
   let ob = case toJSON msg of
        JSON.Object o -> o
        _ -> error "Wrong object format"
@@ -102,10 +104,10 @@ postSMS phone txt = smsPost $ PlivoSMS "+393806412093" phone txt
 
 postSocialMessageBatch :: Maybe Token -> SocialMessageBatch -> Waziup NoContent
 postSocialMessageBatch tok b@(SocialMessageBatch uns chans msg) = do
-  info $ "Post social message batch: " ++(show b)
+  info $ "Post social message batch: " ++ (show b)
   forM_ uns $ \un -> do
     forM_ chans $ \chan -> do
-      res <- C.try $ postSocialMessage tok (SocialMessage Nothing un chan msg)
+      res <- C.try $ postSocialMessage tok (SocialMessage Nothing un chan msg Nothing Nothing)
       case res of
         Right _ -> debug "Message success"
         Left (e :: SomeException) -> warn $ "Message error: " ++ (show e)

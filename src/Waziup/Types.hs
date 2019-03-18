@@ -77,12 +77,13 @@ data WaziupConfig = WaziupConfig {
   _keycloakConf  :: KCConfig,
   _orionConf     :: O.OrionConfig,
   _mqttConf      :: MQTTConfig,
-  _twitterConf   :: TWInfo
+  _twitterConf   :: TWInfo,
+  _plivoConf     :: PlivoConfig
   } deriving (Eq, Show)
 
 -- | Server or client configuration, specifying the host and port to query or serve on.
 data ServerConfig = ServerConfig {
-  _serverHost     :: String,   -- ^ Hostname to serve on, e.g. "127.0.0.1"
+  _serverHost     :: Text,     -- ^ Hostname to serve on, e.g. "127.0.0.1"
   _serverPort     :: Int,      -- ^ Port to serve on, e.g. 8080
   _serverPortMQTT :: Int,      -- ^ Port to serve on, e.g. 2883 
   _guestLogin     :: Username,
@@ -119,6 +120,15 @@ defaultTwitterConf =
                                       ("oauth_token_secret", "<Your OAuth token secret>")]},
         twProxy = Nothing}
 
+data PlivoConfig = PlivoConfig {
+  _plivoHost  :: Text,
+  _plivoID    :: Text,
+  _plivoToken :: Text} deriving (Show, Eq)
+
+defaultPlivoConf = PlivoConfig {
+  _plivoHost  = "https://api.plivo.com",
+  _plivoID    = "<Your Plivo ID>",
+  _plivoToken = "<Your Plivo token>"}
 --------------------------------------
 -- * Authentication & authorization --
 --------------------------------------
@@ -687,24 +697,33 @@ instance MimeRender PlainText NotifId where
 instance ToSchema NotifId
 instance ToParamSchema NotifId
 
-
 -- | one notification
 data Notif = Notif
   { notifId          :: Maybe NotifId       -- ^ id of the notification (attributed by the server)
   , notifDescription :: Text                -- ^ Description of the notification
-  , notifSubject     :: NotifSubject        -- ^ What is looked at and with which condition 
-  , notifNotif       :: NotifNotif          -- ^ Where to send the notification
+  , notifCondition   :: NotifCondition      -- ^ What is looked at and with which condition 
+  , notifAction      :: SocialMessageBatch  -- ^ Where to send the notification
   , notifThrottling  :: Double              -- ^ minimum interval between two messages in seconds
   , notifStatus      :: Maybe O.SubStatus   -- ^ current status of the notification 
+  , notifTimesSent   :: Maybe Int
+  , notifLastNotif   :: Maybe UTCTime
+  , notifLastSuccess :: Maybe UTCTime
+  , notifLastFailure :: Maybe UTCTime
+  , notifExpires     :: Maybe UTCTime
   } deriving (Show, Eq, Generic)
 
 defaultNotif = Notif
   { notifId          = Nothing 
   , notifDescription = "Test"               
-  , notifSubject     = NotifSubject [DeviceId "MyDevice"] $ NotifCond [SensorId "TC"] "TC>40"
-  , notifNotif       = NotifNotif defaultSocialMessageBatch Nothing Nothing Nothing Nothing 
+  , notifCondition   = NotifCondition [DeviceId "MyDevice"] [SensorId "TC"] "TC>40"
+  , notifAction      = defaultSocialMessageBatch
   , notifThrottling  = 3600
   , notifStatus      = Nothing
+  , notifTimesSent   = Nothing
+  , notifLastNotif   = Nothing
+  , notifLastSuccess = Nothing
+  , notifLastFailure = Nothing
+  , notifExpires     = Nothing
   }
 
 --JSON instances
@@ -719,55 +738,36 @@ instance ToSchema Notif where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON defaultNotif 
 
-instance ToSchema O.SubStatus
+
+instance MimeUnrender PlainText O.SubStatus where
+  mimeUnrender _ "active"   = Right O.SubActive
+  mimeUnrender _ "inactive" = Right O.SubInactive
+  mimeUnrender _ _ = Left "cannot decode subscription status. Valid values are \"active\" and \"inactive\""
+
+--Swagger instances
+instance ToParamSchema O.SubStatus 
+
+instance ToSchema O.SubStatus where
+  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ "inactive" 
 
 -- | notification condition
-data NotifCond = NotifCond
-  { notifCondSensors :: [SensorId]   -- ^ Ids of the sensors to watch 
-  , notifCondExpr    :: Text         -- ^ Expression for the condition, such as TC>40
+data NotifCondition = NotifCondition
+  { notifDevices    :: [DeviceId]   -- ^ Ids of the devices to watch
+  , notifSensors    :: [SensorId]   -- ^ Ids of the sensors to watch 
+  , notifExpression :: Text         -- ^ Expression for the condition, such as TC>40
   } deriving (Show, Eq, Generic)
 
 --JSON instances
-instance FromJSON NotifCond where
-  parseJSON = genericParseJSON $ aesonDrop 9 snakeCase
-
-instance ToJSON NotifCond where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "notifCond")
-
---Swagger instance
-instance ToSchema NotifCond
-
--- | notification subject
-data NotifSubject = NotifSubject
-  { notifSubjectDevices :: [DeviceId]   -- ^ Ids of the devices to watch
-  , notifSubjectCond    :: NotifCond    -- ^ Condition of the notification
-  } deriving (Show, Eq, Generic)
-
--- JSON instances
-instance FromJSON NotifSubject where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "notifSubject")
-
-instance ToJSON NotifSubject where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "notifSubject")
-
---Swagger instance
-instance ToSchema NotifSubject
-
-data NotifNotif = NotifNotif {
-    notifSocial      :: SocialMessageBatch
-  , notifTimesSent   :: Maybe Int
-  , notifLastNotif   :: Maybe UTCTime
-  , notifLastSuccess :: Maybe UTCTime
-  , notifLastFailure :: Maybe UTCTime
-  } deriving (Show, Eq, Generic)
-
-instance ToJSON NotifNotif where
-  toJSON = genericToJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 5, omitNothingFields = True}
-
-instance FromJSON NotifNotif where
+instance FromJSON NotifCondition where
   parseJSON = genericParseJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 5, omitNothingFields = True}
 
-instance ToSchema NotifNotif
+instance ToJSON NotifCondition where
+  toJSON = genericToJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 5, omitNothingFields = True}
+
+--Swagger instance
+instance ToSchema NotifCondition
+
 
 ---------------
 -- * Socials --
@@ -800,8 +800,12 @@ instance ToParamSchema SocialMessageId
 -- channel where the message is sent
 data Channel = Twitter | SMS | Voice deriving (Show, Eq, Generic)
 
-instance ToJSON Channel
-instance FromJSON Channel
+instance ToJSON Channel where
+  toJSON = genericToJSON $ defaultOptions {AT.constructorTagModifier = map toLower, AT.allNullaryToStringTag = True}
+
+instance FromJSON Channel where
+  parseJSON = genericParseJSON $ defaultOptions {AT.constructorTagModifier = map toLower, AT.allNullaryToStringTag = True}
+
 instance ToSchema Channel
 
 -- | One social network message
@@ -1219,3 +1223,4 @@ makeLenses ''WaziupConfig
 makeLenses ''MQTTConfig
 makeLenses ''WaziupInfo
 makeLenses ''MongoConfig
+makeLenses ''PlivoConfig

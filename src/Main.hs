@@ -53,6 +53,8 @@ main = do
   envTwitSec    <- lookupEnv "TWITTER_CONSUMER_SECRET"
   envTwitTok    <- lookupEnv "TWITTER_ACCESS_TOKEN"
   envTwitTokSec <- lookupEnv "TWITTER_ACCESS_TOKEN_SECRET"
+  envPlivoID    <- lookupEnv "PLIVO_ID"
+  envPlivoToken <- lookupEnv "PLIVO_TOKEN"
   let kcConfig     = defaultKCConfig     & baseUrl        .~? (convertString <$> envKCUrl)
   let orionConfig  = defaultOrionConfig  & orionUrl       .~? (convertString <$> envOrUrl)
   let mongoConfig  = defaultMongoConfig  & mongoUrl       .~? (convertString <$> envMongUrl)
@@ -70,8 +72,9 @@ main = do
                                                    ("oauth_token_secret", convertString $ fromJust envTwitTokSec)]},
                       twProxy = Nothing}
           else defaultTwitterConf
-
-  conf <- execParser $ opts serverConfig mongoConfig kcConfig orionConfig mqttConfig twitterConf 
+  let plivoConf = defaultPlivoConf & plivoID    .~? (convertString <$> envPlivoID)
+                                   & plivoToken .~? (convertString <$> envPlivoToken)
+  conf <- execParser $ opts serverConfig mongoConfig kcConfig orionConfig mqttConfig twitterConf plivoConf 
   let mongUrl = conf ^. mongoConf.mongoUrl
   pool <- createPool (DB.connect $ readHostPort (convertString mongUrl)) DB.close 1 300 5
   ontologies <- loadOntologies
@@ -85,21 +88,21 @@ main = do
   forkIO $ mqttProxy waziupInfo
   run port $ logStdoutDev $ waziupServer waziupInfo
 
-opts :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> MQTTConfig -> TWInfo -> ParserInfo WaziupConfig
-opts serv m kc o mqtt tw = Opts.info ((waziupConfigParser serv m kc o mqtt tw) <**> helper) parserInfo
+opts :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> MQTTConfig -> TWInfo -> PlivoConfig -> ParserInfo WaziupConfig
+opts serv m kc o mqtt tw pliv = Opts.info ((waziupConfigParser serv m kc o mqtt tw pliv) <**> helper) parserInfo
 
 parserInfo :: InfoMod WaziupConfig
 parserInfo = fullDesc
   <> progDesc "Create a server for Waziup API based on backend components Mongo, Orion and Keycloak"
   <> header "Waziup API server"
 
-waziupConfigParser :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> MQTTConfig -> TWInfo -> Parser WaziupConfig
-waziupConfigParser servDef mDef kcDef oDef mqttDef twittDef = do
+waziupConfigParser :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> MQTTConfig -> TWInfo -> PlivoConfig -> Parser WaziupConfig
+waziupConfigParser servDef mDef kcDef oDef mqttDef twittDef plivoDef = do
   serv <- serverConfigParser servDef
   m    <- mongoConfigParser mDef
   kc   <- kcConfigParser kcDef
   o    <- orionConfigParser oDef
-  return $ WaziupConfig serv m kc o mqttDef twittDef
+  return $ WaziupConfig serv m kc o mqttDef twittDef plivoDef
 
 serverConfigParser :: ServerConfig -> Parser ServerConfig
 serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass) = do

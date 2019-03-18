@@ -153,16 +153,17 @@ deleteSocialMessageMongo tok (SocialMessageId id) = do
   return $ not $ failed res 
 
 data PlivoSMS = PlivoSMS {
-  smsSrc :: Text,
-  smsDst :: Text,
+  smsSrc  :: Text,
+  smsDst  :: Text,
   smsText :: Text} deriving (Show, Eq, Generic)
 
 instance ToJSON PlivoSMS
 
 smsPost :: PlivoSMS -> Waziup ()
-smsPost dat = do 
-  let opts = W.defaults & W.auth ?~ W.basicAuth "MAMDA5ZDJIMDM1NZVMZD" "NzRlNWJiNmU2MmFjYWJlODhlNTk3MTkyZGEzNzIy"
-  let path = "https://api.plivo.com/v1/Account/" ++ "MAMDA5ZDJIMDM1NZVMZD" ++ "/Message/"
+smsPost dat = do
+  (PlivoConfig host id token) <- view (waziupConfig.plivoConf)
+  let opts = W.defaults & W.auth ?~ W.basicAuth (convertString id) (convertString token)
+  let path = convertString $ host <> "/v1/Account/" <> id <> "/Message/"
   info $ "Issuing Plivo POST " ++ (show path) 
   debug $ "  data: " ++ (show dat) 
   debug $ "  headers: " ++ (show $ opts ^. W.headers) 

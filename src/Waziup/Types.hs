@@ -366,7 +366,7 @@ data Sensor = Sensor
   , senQuantityKind  :: Maybe QuantityKindId   -- ^ quantity measured, from https://github.com/Waziup/waziup-js/blob/master/src/model/QuantityKinds.js
   , senUnit          :: Maybe UnitId           -- ^ unit of the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/Units.js
   , senValue         :: Maybe SensorValue      -- ^ last value received by the platform
-  , senCalib         :: Maybe LinearCalib
+  , senCalib         :: Maybe Calib
   } deriving (Show, Eq, Generic)
 
 defaultSensor = Sensor
@@ -422,27 +422,42 @@ instance ToSchema Value where
 
 -- * Calibration
 
-data LinearCalib = LinearCalib 
-  { calValueMin :: CalibValue
+data Calib = Linear CalibLinear | Function CalibFunction deriving (Show, Eq, Generic)
+
+instance FromJSON Calib where
+  parseJSON = genericParseJSON $ defaultOptions {AT.constructorTagModifier = unCapitalize, sumEncoding = ObjectWithSingleField} 
+
+instance ToJSON Calib where
+  toJSON = genericToJSON $ defaultOptions {AT.constructorTagModifier = unCapitalize, sumEncoding = ObjectWithSingleField} 
+
+--Swagger instance
+instance ToSchema Calib where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ (toJSON $ Linear defaultCalibLinear)
+
+data CalibLinear = CalibLinear 
+  { calEnabled  :: Bool
+  , calValueMin :: CalibValue
   , calValueMax :: CalibValue
   } deriving (Show, Eq, Generic)
 
-defaultLinearCalib = LinearCalib 
-  { calValueMin = CalibValue (Number 900) (Number 100)
+defaultCalibLinear = CalibLinear
+  { calEnabled  = True
+  , calValueMin = CalibValue (Number 900) (Number 100)
   , calValueMax = CalibValue (Number 300) (Number 0)
   }
 
 --JSON instances
-instance FromJSON LinearCalib where
+instance FromJSON CalibLinear where
   parseJSON = genericParseJSON $ aesonDrop 3 snakeCase
 
-instance ToJSON LinearCalib where
+instance ToJSON CalibLinear where
   toJSON = genericToJSON (aesonDrop 3 snakeCase)
 
 --Swagger instance
-instance ToSchema LinearCalib where
+instance ToSchema CalibLinear where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
-        & mapped.schema.example ?~ toJSON defaultLinearCalib
+        & mapped.schema.example ?~ toJSON defaultCalibLinear
 
 
 data CalibValue = CalibValue
@@ -458,6 +473,20 @@ instance ToJSON CalibValue where
   toJSON = genericToJSON (aesonDrop 3 snakeCase)
 
 instance ToSchema CalibValue
+
+data CalibFunction = FunctionCalib
+  { calFuncEnabled :: Bool
+  , calFuncFunc    :: Text
+  } deriving (Show, Eq, Generic) 
+
+--JSON instances
+instance FromJSON CalibFunction where
+  parseJSON = genericParseJSON $ aesonDrop 7 snakeCase
+
+instance ToJSON CalibFunction where
+  toJSON = genericToJSON (aesonDrop 7 snakeCase)
+
+instance ToSchema CalibFunction
 
 -------------------
 -- * Data points --
@@ -759,7 +788,7 @@ data NotifCondition = NotifCondition
 
 --JSON instances
 instance FromJSON NotifCondition where
-  parseJSON = genericParseJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 5, omitNothingFields = True}
+ parseJSON = genericParseJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 5, omitNothingFields = True}
 
 instance ToJSON NotifCondition where
   toJSON = genericToJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 5, omitNothingFields = True}

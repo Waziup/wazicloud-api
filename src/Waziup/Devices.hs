@@ -221,7 +221,7 @@ getSensorValue mval mets = do
                         (O.fromSimpleMetadata (MetadataId "timestamp")    mets >>= parseISO8601.unpack)
                         (O.fromSimpleMetadata (MetadataId "dateModified") mets >>= parseISO8601.unpack)
 
-getSensorCalib :: Map O.MetadataId O.Metadata -> Maybe LinearCalib
+getSensorCalib :: Map O.MetadataId O.Metadata -> Maybe Calib
 getSensorCalib mets = do
    (Metadata _ mval) <-mets !? "calib"
    val <- mval

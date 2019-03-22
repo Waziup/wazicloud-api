@@ -85,7 +85,7 @@ putSensorUnit mtok did sid u = do
   updateSensorField mtok did sid $ \sensor -> do 
     liftOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senUnit = Just u})
 
-putSensorCalib :: Maybe Token -> DeviceId -> SensorId -> LinearCalib -> Waziup NoContent
+putSensorCalib :: Maybe Token -> DeviceId -> SensorId -> Calib -> Waziup NoContent
 putSensorCalib mtok did sid cal = do
   info $ "Put sensor cal: " ++ (show cal)
   updateSensorField mtok did sid $ \sensor -> do 

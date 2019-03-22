@@ -116,7 +116,7 @@ type SensorsAPI = Flat ( Header "Authorization" Token :>
            :> ReqBody '[PlainText] UnitId
            :> PutNoContent '[JSON] NoContent
         :<|> "calib"
-           :> ReqBody '[JSON] LinearCalib
+           :> ReqBody '[JSON] Calib
            :> PutNoContent    '[JSON] NoContent
         :<|> "value"
            :> ReqBody '[JSON] SensorValue

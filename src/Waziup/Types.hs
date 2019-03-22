@@ -443,8 +443,8 @@ data CalibLinear = CalibLinear
 
 defaultCalibLinear = CalibLinear
   { calEnabled  = True
-  , calValueMin = CalibValue (Number 900) (Number 100)
-  , calValueMax = CalibValue (Number 300) (Number 0)
+  , calValueMin = CalibValue 900 100
+  , calValueMax = CalibValue 300 0
   }
 
 --JSON instances
@@ -461,8 +461,8 @@ instance ToSchema CalibLinear where
 
 
 data CalibValue = CalibValue
-  { calSensorValue :: Value
-  , calRealValue   :: Value
+  { calSensorValue :: Double 
+  , calRealValue   :: Double
   } deriving (Show, Eq, Generic)
 
 --JSON instances

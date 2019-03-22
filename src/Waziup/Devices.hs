@@ -193,15 +193,18 @@ getLocation attrs = do
 
 getSensorFromAttribute :: (O.AttributeId, O.Attribute) -> Maybe Sensor
 getSensorFromAttribute (AttributeId name, O.Attribute aType val mets) =
+  
   if (aType == "Sensor") 
     then Just $ Sensor { senId            = SensorId name,
                          senName          = fromSimpleMetadata (MetadataId "name") mets,
                          senQuantityKind  = QuantityKindId <$> fromSimpleMetadata (MetadataId "quantity_kind") mets,
                          senSensorKind    = SensorKindId   <$> fromSimpleMetadata (MetadataId "sensing_device") mets,
                          senUnit          = UnitId         <$> fromSimpleMetadata (MetadataId "unit") mets,
-                         senValue         = getSensorValue val mets,
-                         senCalib         = getSensorCalib mets}
-    else Nothing
+                         senValue         = getSensorValue val mets cal,
+                         senCalib         = cal}
+    else Nothing where
+      cal = getSensorCalib mets
+
 
 getActuatorFromAttribute :: (AttributeId, O.Attribute) -> Maybe Actuator
 getActuatorFromAttribute (AttributeId name, O.Attribute aType val mets) =
@@ -213,11 +216,12 @@ getActuatorFromAttribute (AttributeId name, O.Attribute aType val mets) =
                            actValue             = val}
     else Nothing
 
-getSensorValue :: Maybe Value -> Map O.MetadataId O.Metadata -> Maybe SensorValue
-getSensorValue mval mets = do
+getSensorValue :: Maybe Value -> Map O.MetadataId O.Metadata -> Maybe Calib -> Maybe SensorValue
+getSensorValue mval mets cal = do
    value <- mval
    guard $ not $ isNull value
-   return $ SensorValue value 
+   let valueCalib = getCalibratedValue value cal
+   return $ SensorValue valueCalib 
                         (O.fromSimpleMetadata (MetadataId "timestamp")    mets >>= parseISO8601.unpack)
                         (O.fromSimpleMetadata (MetadataId "dateModified") mets >>= parseISO8601.unpack)
 
@@ -228,6 +232,16 @@ getSensorCalib mets = do
    case fromJSON val of
      Success a -> Just a
      JSON.Error _ -> Nothing
+
+getCalibratedValue :: Value -> Maybe Calib -> Value
+getCalibratedValue (Number val) (Just cal) = Number $ fromFloatDigits $ getCalibratedValue' (toRealFloat val) cal
+getCalibratedValue a _ = a
+
+getCalibratedValue' :: Double -> Calib -> Double
+getCalibratedValue' val (Linear (CalibLinear enabled (CalibValue maxSen maxReal) (CalibValue minSen minReal))) = 
+  if enabled 
+    then (val - minSen) * (maxReal - minReal) / (maxSen - minSen) + minReal 
+    else val
 
 isNull :: Value -> Bool
 isNull Null = True

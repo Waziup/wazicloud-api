@@ -125,7 +125,6 @@ updateSensorField mtok did sid w = do
 toAttributeId :: SensorId -> AttributeId
 toAttributeId (SensorId sid) = AttributeId sid
 
-
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()
 debug s = liftIO $ debugM   "Sensors" s

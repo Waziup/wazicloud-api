@@ -7,6 +7,8 @@ module Main where
 
 import           Network.Wai.Handler.Warp
 import           Network.Wai.Middleware.RequestLogger (logStdoutDev)
+import           Network.Wai.Middleware.Cors
+import           Network.Wai.Middleware.Servant.Options
 import           Waziup.Server
 import           Waziup.Types 
 import           Waziup.Utils 
@@ -36,6 +38,7 @@ import           System.Environment
 import           Paths_Waziup_Servant
 import           MQTT
 import           Web.Twitter.Conduit hiding (map)
+
 
 main :: IO ()
 main = do
@@ -86,7 +89,10 @@ main = do
   Main.info $ convertString $ "MQTT is running on port " <> (show mqttPort)
   Main.info $ convertString $ "Documentation is on " <> host <> "/docs"
   forkIO $ mqttProxy waziupInfo
-  run port $ logStdoutDev $ waziupServer waziupInfo
+  run port $ logStdoutDev 
+           $ simpleCors
+           $ provideOptions waziupAPI
+           $ waziupServer waziupInfo
 
 opts :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> MQTTConfig -> TWInfo -> PlivoConfig -> ParserInfo WaziupConfig
 opts serv m kc o mqtt tw pliv = Opts.info ((waziupConfigParser serv m kc o mqtt tw pliv) <**> helper) parserInfo

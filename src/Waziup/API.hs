@@ -56,7 +56,7 @@ type AuthAPI =
           :> Get  '[JSON]      [Perm]
     :<|> "token"
           :> ReqBody '[JSON] AuthBody
-          :> Post '[PlainText] Token
+          :> Post '[PlainText, JSON] Token
     )
 
 
@@ -76,16 +76,16 @@ type DevicesAPI = Flat (Header "Authorization" Token :>
             Get             '[JSON] Device
       :<|>  DeleteNoContent '[JSON] NoContent
       :<|> "name"       
-           :> ReqBody '[PlainText] DeviceName
+           :> ReqBody '[PlainText, JSON] DeviceName
            :> PutNoContent    '[JSON] NoContent
       :<|> "location"
            :> ReqBody '[JSON] Location
            :> PutNoContent    '[JSON] NoContent
       :<|> "gateway_id"
-           :> ReqBody '[PlainText] GatewayId
+           :> ReqBody '[PlainText, JSON] GatewayId
            :> PutNoContent    '[JSON] NoContent
       :<|> "visibility"
-           :> ReqBody '[PlainText] Visibility
+           :> ReqBody '[PlainText, JSON] Visibility
            :> PutNoContent    '[JSON] NoContent
       )))
 
@@ -104,16 +104,16 @@ type SensorsAPI = Flat ( Header "Authorization" Token :>
              Get '[JSON] Sensor
         :<|> DeleteNoContent '[JSON] NoContent
         :<|> "name"          
-           :> ReqBody '[PlainText] SensorName
+           :> ReqBody '[PlainText, JSON] SensorName
            :> PutNoContent '[JSON] NoContent
         :<|> "sensor_kind"  
-           :> ReqBody '[PlainText] SensorKindId
+           :> ReqBody '[PlainText, JSON] SensorKindId
            :> PutNoContent '[JSON] NoContent
         :<|> "quantity_kind"
-           :> ReqBody '[PlainText] QuantityKindId
+           :> ReqBody '[PlainText, JSON] QuantityKindId
            :> PutNoContent '[JSON] NoContent
         :<|> "unit"
-           :> ReqBody '[PlainText] UnitId
+           :> ReqBody '[PlainText, JSON] UnitId
            :> PutNoContent '[JSON] NoContent
         :<|> "calib"
            :> ReqBody '[JSON] Calib
@@ -157,13 +157,13 @@ type ActuatorsAPI = Flat ( Header "Authorization" Token :>
              Get '[JSON] Actuator 
         :<|> DeleteNoContent '[JSON] NoContent
         :<|> "name"
-          :> ReqBody '[PlainText] ActuatorName
+          :> ReqBody '[PlainText, JSON] ActuatorName
           :> PutNoContent '[JSON] NoContent
         :<|> "actuator_kind"
-          :> ReqBody '[PlainText] ActuatorKindId
+          :> ReqBody '[PlainText, JSON] ActuatorKindId
           :> PutNoContent '[JSON] NoContent
         :<|> "value_type"
-          :> ReqBody '[PlainText] ActuatorValueTypeId
+          :> ReqBody '[PlainText, JSON] ActuatorValueTypeId
           :> PutNoContent '[JSON] NoContent
         :<|> "value"
           :> ReqBody '[JSON] Value
@@ -179,12 +179,12 @@ type GatewaysAPI = Flat ( Header "Authorization" Token :>
   "gateways" :> (
           Get  '[JSON] [Gateway]
     :<|>  ReqBody '[JSON] Gateway
-       :> Post '[PlainText] GatewayId
+       :> Post '[PlainText, JSON] GatewayId
     :<|> Capture "gw_id" GatewayId :> (
            Get '[JSON] Gateway
       :<|> DeleteNoContent '[JSON] NoContent
       :<|> "tunnel"
-        :> ReqBody '[PlainText] Int
+        :> ReqBody '[PlainText, JSON] Int
         :> PutNoContent '[JSON] NoContent
       :<|> "tunnel"
         :> DeleteNoContent '[JSON] NoContent
@@ -199,7 +199,7 @@ type ProjectsAPI = Flat ( Header "Authorization" Token :>
   "projects" :> (
           Get  '[JSON]      [Project]
     :<|>  ReqBody '[JSON] Project
-       :> Post '[PlainText] ProjectId
+       :> Post '[PlainText, JSON] ProjectId
     :<|> Capture "id" ProjectId :> (
            Get '[JSON] Project
       :<|> DeleteNoContent '[JSON] NoContent
@@ -234,7 +234,7 @@ type SocialsAPI = Flat ( Header "Authorization" Token :>
   "socials" :> (
           Get  '[JSON] [SocialMessage]
     :<|>  ReqBody '[JSON] SocialMessage
-       :> Post '[PlainText] SocialMessageId
+       :> Post '[PlainText, JSON] SocialMessageId
     :<|>  "batch"
        :> ReqBody '[JSON] SocialMessageBatch
        :> PostNoContent '[JSON] NoContent
@@ -253,12 +253,12 @@ type NotifsAPI = Flat ( Header "Authorization" Token :>
   "notifications" :> (
           Get  '[JSON] [Notif]
     :<|>  ReqBody '[JSON] Notif
-       :> Post '[PlainText] NotifId
+       :> Post '[PlainText, JSON] NotifId
     :<|> Capture "notif_id" NotifId :> (
            Get '[JSON] Notif
       :<|> DeleteNoContent '[JSON] NoContent
       :<|> "status" 
-       :> ReqBody '[PlainText] SubStatus 
+       :> ReqBody '[PlainText, JSON] SubStatus 
        :> PutNoContent '[JSON] NoContent
     )))
 

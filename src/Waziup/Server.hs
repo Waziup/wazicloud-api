@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Waziup.Server where
 
@@ -149,7 +150,7 @@ ontologiesServer = getSensorKinds
 
 -- final server
 waziupServer :: WaziupInfo -> Application
-waziupServer conf = serve waziupAPI $ Servant.Server.hoistServer waziupAPI (getHandler conf) server
+waziupServer conf = serve fullAPI $ Servant.Server.hoistServer fullAPI (getHandler conf) server
 
 -- Swagger docs
 swaggerDoc :: S.Swagger
@@ -188,8 +189,11 @@ swaggerDoc = toSwagger (Proxy :: Proxy WaziupAPI)
 
 -- * helpers
 
-waziupAPI :: Proxy API
+waziupAPI :: Proxy ("api" :> "v2" :> WaziupAPI)
 waziupAPI = Proxy
+
+fullAPI :: Proxy API
+fullAPI = Proxy
 
 getHandler :: WaziupInfo -> Waziup a -> Servant.Handler a
 getHandler s x = runReaderT x s

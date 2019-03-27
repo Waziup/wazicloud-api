@@ -43,6 +43,7 @@ Executable waziup-servant
                      , servant-swagger-ui
                      , servant-swagger-ui-core
                      , servant-cassava
+                     , servant-options
                      , swagger2
                      , warp
                      , transformers
@@ -51,6 +52,7 @@ Executable waziup-servant
                      , http-types
                      , wai
                      , wai-extra
+                     , wai-cors
                      , wreq
                      , lens
                      , lens-aeson

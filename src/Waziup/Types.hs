@@ -45,6 +45,7 @@ import qualified Database.MongoDB as DB
 import qualified Orion.Types as O
 import           Web.Twitter.Conduit hiding (map)
 import           Debug.Trace
+import           Safe
 
 type Limit  = Int
 type Offset = Int
@@ -113,12 +114,12 @@ defaultMQTTConfig = MQTTConfig {
 
 defaultTwitterConf :: TWInfo
 defaultTwitterConf = 
-  def { twToken = def { 
+  def { twProxy = Nothing,
+        twToken = def { 
           twOAuth = twitterOAuth { oauthConsumerKey = "<Your consumer key>", 
                                    oauthConsumerSecret = "<Your consumer secret>"}, 
           twCredential = Credential [ ("oauth_token", "<Your OAuth token>"), 
-                                      ("oauth_token_secret", "<Your OAuth token secret>")]},
-        twProxy = Nothing}
+                                      ("oauth_token_secret", "<Your OAuth token secret>")]}}
 
 data PlivoConfig = PlivoConfig {
   _plivoHost  :: Text,
@@ -140,10 +141,10 @@ data AuthBody = AuthBody
   } deriving (Show, Eq, Generic)
 
 instance ToJSON AuthBody where
-  toJSON = genericToJSON defaultOptions {fieldLabelModifier = snakeCase . drop 8}
+  toJSON = genericToJSON $ snakeDrop 8
 
 instance FromJSON AuthBody where
-  parseJSON = genericParseJSON defaultOptions {fieldLabelModifier = snakeCase . drop 8}
+  parseJSON = genericParseJSON $ snakeDrop 8
 
 instance ToSchema AuthBody where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.fieldLabelModifier = snakeCase . drop 8} proxy
@@ -155,9 +156,8 @@ data Perm = Perm
   , permScopes :: [Scope] -- ^ 
   } deriving (Show, Eq, Generic)
 
-
 instance ToJSON Perm where
-  toJSON = genericToJSON defaultOptions {fieldLabelModifier = snakeCase . drop 4}
+  toJSON = genericToJSON $ snakeDrop 4
 
 instance ToSchema Perm where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.fieldLabelModifier = snakeCase . drop 4} proxy
@@ -168,29 +168,45 @@ data Scope = DevicesCreate
            | DevicesDelete
            | DevicesDataCreate
            | DevicesDataView
-   deriving (Show, Eq, Generic)
+   deriving (Show, Read, Eq, Generic)
 
 instance ToJSON Scope where
-  toJSON = toJSON . show
-instance FromJSON Scope
-instance ToSchema Scope
+  toJSON = genericToJSON defaultOptions {AT.constructorTagModifier = fromScope'}
 
-readScope :: Text -> Maybe Scope
-readScope "devices:create"      = Just DevicesCreate    
-readScope "devices:update"      = Just DevicesUpdate    
-readScope "devices:view"        = Just DevicesView      
-readScope "devices:delete"      = Just DevicesDelete    
-readScope "devices-data:create" = Just DevicesDataCreate
-readScope "devices-data:view"   = Just DevicesDataView  
-readScope _                     = Nothing
+instance FromJSON Scope where
+  parseJSON = genericParseJSON defaultOptions {AT.constructorTagModifier = toScope'}
 
-instance Show Scope where
-  show DevicesCreate     = "devices:create"       
-  show DevicesUpdate     = "devices:update"       
-  show DevicesView       = "devices:view"         
-  show DevicesDelete     = "devices:delete"       
-  show DevicesDataCreate = "devices-data:create"  
-  show DevicesDataView   = "devices-data:view"    
+instance ToSchema Scope where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.constructorTagModifier = fromScope'} proxy
+
+toScope :: Text -> Maybe Scope
+toScope "devices:create"      = Just DevicesCreate    
+toScope "devices:update"      = Just DevicesUpdate    
+toScope "devices:view"        = Just DevicesView      
+toScope "devices:delete"      = Just DevicesDelete    
+toScope "devices-data:create" = Just DevicesDataCreate
+toScope "devices-data:view"   = Just DevicesDataView  
+toScope _                     = Nothing
+
+-- Convert KC representation to Scope , e.g. "devices:create" to "DeviceCreate"
+toScope' :: String -> String
+toScope' a = case toScope $ convertString a of
+  Just s -> show s
+  Nothing -> a
+
+fromScope :: Scope -> Text
+fromScope DevicesCreate     = "devices:create"       
+fromScope DevicesUpdate     = "devices:update"       
+fromScope DevicesView       = "devices:view"         
+fromScope DevicesDelete     = "devices:delete"       
+fromScope DevicesDataCreate = "devices-data:create"  
+fromScope DevicesDataView   = "devices-data:view"   
+
+-- Convert Scope to KC representation, e.g. "DeviceCreate" to "devices:create"
+fromScope' :: String -> String
+fromScope' a = case readMay a of
+  Just s -> convertString $ fromScope s
+  Nothing -> a
 
 
 ---------------
@@ -217,7 +233,7 @@ instance FromHttpApiData DeviceId where
 
 -- Rendering in Swagger
 instance ToSchema DeviceId where
-  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.unwrapUnaryRecords = True} proxy
         & mapped.schema.example ?~ toJSON (DeviceId "MyDevice")
 
 instance ToParamSchema DeviceId
@@ -254,10 +270,10 @@ defaultDevice = Device
   }
 
 instance ToJSON Device where
-  toJSON = genericToJSON defaultOptions {fieldLabelModifier = snakeCase . drop 3, omitNothingFields = True}
+  toJSON = genericToJSON $ snakeDrop 3
 
 instance FromJSON Device where
-  parseJSON = genericParseJSON defaultOptions {fieldLabelModifier = snakeCase . drop 3, omitNothingFields = True}
+  parseJSON = genericParseJSON $ snakeDrop 3
 
 instance ToSchema Device where
   declareNamedSchema proxy = genericDeclareNamedSchema (defaultSchemaOptions {SW.fieldLabelModifier = snakeCase . drop 3}) proxy
@@ -267,7 +283,7 @@ instance ToSchema Device where
 -- * Visibility
 
 data Visibility = Public | Private
-  deriving (Eq, Generic)
+  deriving (Show, Eq, Generic)
 
 --JSON instances
 instance ToJSON Visibility where
@@ -286,18 +302,17 @@ instance MimeUnrender PlainText Visibility where
 instance ToParamSchema Visibility
 
 instance ToSchema Visibility where
-  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.constructorTagModifier = unCapitalize} proxy
         & mapped.schema.example ?~ "public" 
 
-instance Show Visibility where
-  show Public = "public"
-  show Private = "private"
+toVisibility :: Text -> Maybe Visibility
+toVisibility "public" = Just Public
+toVisibility "private" = Just Private
+toVisibility _ = Nothing
 
-readVisibility :: Text -> Maybe Visibility
-readVisibility "public" = Just Public
-readVisibility "private" = Just Private
-readVisibility _ = Nothing
-
+fromVisibility :: Visibility -> Text
+fromVisibility Public  = "public"
+fromVisibility Private = "private"
 
 -- * Location
 
@@ -353,7 +368,7 @@ instance FromHttpApiData SensorId where
 
 --Swagger instances
 instance ToSchema SensorId where
-  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.unwrapUnaryRecords = True} proxy
         & mapped.schema.example ?~ toJSON (SensorId "TC") 
 
 instance ToParamSchema SensorId
@@ -381,13 +396,13 @@ defaultSensor = Sensor
   } 
 
 instance FromJSON Sensor where
-  parseJSON = genericParseJSON $ aesonDrop 3 snakeCase 
+  parseJSON = genericParseJSON $ snakeDrop 3
 
 instance ToJSON Sensor where
-  toJSON = genericToJSON (aesonDrop 3 snakeCase) {omitNothingFields = True}
+  toJSON = genericToJSON $ snakeDrop 3
 
 instance ToSchema Sensor where
-   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.fieldLabelModifier = snakeCase . drop 3} proxy
         & mapped.schema.example ?~ toJSON defaultSensor 
 
 -- * sensor value 
@@ -406,14 +421,14 @@ defaultSensorValue = SensorValue
 
 --JSON instances
 instance FromJSON SensorValue where
-  parseJSON = genericParseJSON $ aesonDrop 6 snakeCase
+  parseJSON = genericParseJSON $ snakeDrop 6
 
 instance ToJSON SensorValue where
-  toJSON = genericToJSON (aesonDrop 6 snakeCase) {omitNothingFields = True}
+  toJSON = genericToJSON $ snakeDrop 6
 
 --Swagger instance
 instance ToSchema SensorValue where
-   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.fieldLabelModifier = snakeCase . drop 6} proxy
         & mapped.schema.example ?~ toJSON defaultSensorValue 
 
 --Swagger instance for any JSON value
@@ -433,7 +448,7 @@ instance ToJSON Calib where
 
 --Swagger instance
 instance ToSchema Calib where
-   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.constructorTagModifier = unCapitalize} proxy
         & mapped.schema.example ?~ (toJSON $ Linear defaultCalibLinear)
 
 data CalibLinear = CalibLinear 
@@ -450,14 +465,14 @@ defaultCalibLinear = CalibLinear
 
 --JSON instances
 instance FromJSON CalibLinear where
-  parseJSON = genericParseJSON $ aesonDrop 3 snakeCase
+  parseJSON = genericParseJSON $ snakeDrop 3
 
 instance ToJSON CalibLinear where
-  toJSON = genericToJSON (aesonDrop 3 snakeCase)
+  toJSON = genericToJSON $ snakeDrop 3
 
 --Swagger instance
 instance ToSchema CalibLinear where
-   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.fieldLabelModifier = snakeCase . drop 3} proxy
         & mapped.schema.example ?~ toJSON defaultCalibLinear
 
 
@@ -468,10 +483,10 @@ data CalibValue = CalibValue
 
 --JSON instances
 instance FromJSON CalibValue where
-  parseJSON = genericParseJSON $ aesonDrop 3 snakeCase
+  parseJSON = genericParseJSON $ snakeDrop 3
 
 instance ToJSON CalibValue where
-  toJSON = genericToJSON (aesonDrop 3 snakeCase)
+  toJSON = genericToJSON $ snakeDrop 3
 
 instance ToSchema CalibValue
 
@@ -482,16 +497,20 @@ data CalibFunction = FunctionCalib
 
 --JSON instances
 instance FromJSON CalibFunction where
-  parseJSON = genericParseJSON $ aesonDrop 7 snakeCase
+  parseJSON = genericParseJSON $ snakeDrop 7
 
 instance ToJSON CalibFunction where
-  toJSON = genericToJSON (aesonDrop 7 snakeCase)
+  toJSON = genericToJSON $ snakeDrop 7
 
-instance ToSchema CalibFunction
+instance ToSchema CalibFunction where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.fieldLabelModifier = snakeCase . drop 7} proxy
+        & mapped.schema.example ?~ ""
 
 -------------------
 -- * Data points --
 -------------------
+
+data CalibEn = CalibCalib | CalibRaw
 
 -- | one datapoint 
 data Datapoint = Datapoint
@@ -512,10 +531,10 @@ defaultDatapoint = Datapoint
 
 -- JSON instances
 instance FromJSON Datapoint where
-  parseJSON = genericParseJSON $ aesonDrop 4 snakeCase
+  parseJSON = genericParseJSON $ snakeDrop 4
 
 instance ToJSON Datapoint where
-  toJSON = genericToJSON (aesonDrop 4 snakeCase) {omitNothingFields = True}
+  toJSON = genericToJSON $ snakeDrop 4
 
 -- CSV instances
 instance CSV.ToField DeviceId where
@@ -614,10 +633,10 @@ defaultActuator = Actuator
   } 
 
 instance FromJSON Actuator where
-  parseJSON = genericParseJSON (aesonDrop 3 snakeCase) {omitNothingFields = True}
+  parseJSON = genericParseJSON $ snakeDrop 3
 
 instance ToJSON Actuator where
-  toJSON = genericToJSON (aesonDrop 3 snakeCase) {omitNothingFields = True}
+  toJSON = genericToJSON $ snakeDrop 3
 
 instance ToSchema Actuator where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
@@ -673,10 +692,10 @@ defaultGateway = Gateway
 
 --JSON instances
 instance FromJSON Gateway where
-  parseJSON = genericParseJSON $ aesonDrop 2 snakeCase 
+  parseJSON = genericParseJSON $ snakeDrop 2 
 
 instance ToJSON Gateway where
-  toJSON = genericToJSON (aesonDrop 2 snakeCase) {omitNothingFields = True}
+  toJSON = genericToJSON $ snakeDrop 2
 
 instance ToSchema Gateway where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
@@ -689,10 +708,10 @@ data GatewayTunnel = GatewayTunnel
 
 --JSON instances
 instance FromJSON GatewayTunnel where
-  parseJSON = genericParseJSON $ aesonDrop 2 snakeCase 
+  parseJSON = genericParseJSON $ snakeDrop 2 
 
 instance ToJSON GatewayTunnel where
-  toJSON = genericToJSON (aesonDrop 2 snakeCase) {omitNothingFields = True}
+  toJSON = genericToJSON $ snakeDrop 2
 
 instance ToSchema GatewayTunnel where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
@@ -752,15 +771,15 @@ defaultNotif = Notif
   , notifLastNotif   = Nothing
   , notifLastSuccess = Nothing
   , notifLastFailure = Nothing
-  , notifExpires     = Nothing
+  , notifExpires     = parseISO8601 "2016-06-08T18:20:27.873Z"
   }
 
 --JSON instances
 instance FromJSON Notif where
-  parseJSON = genericParseJSON $ aesonDrop 5 snakeCase
+  parseJSON = genericParseJSON $ snakeDrop 5
 
 instance ToJSON Notif where
-  toJSON = genericToJSON (aesonDrop 5 snakeCase) {omitNothingFields = True}
+  toJSON = genericToJSON $ snakeDrop 5
 
 --Swagger instances
 instance ToSchema Notif where
@@ -789,10 +808,10 @@ data NotifCondition = NotifCondition
 
 --JSON instances
 instance FromJSON NotifCondition where
- parseJSON = genericParseJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 5, omitNothingFields = True}
+ parseJSON = genericParseJSON $ snakeDrop 5
 
 instance ToJSON NotifCondition where
-  toJSON = genericToJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 5, omitNothingFields = True}
+  toJSON = genericToJSON $ snakeDrop 5
 
 --Swagger instance
 instance ToSchema NotifCondition
@@ -867,7 +886,7 @@ instance FromJSON SocialMessage where
         <*> v .:? "success" 
 
 instance ToJSON SocialMessage where
-  toJSON = genericToJSON $ defaultOptions {AT.fieldLabelModifier = unCapitalize . drop 3, omitNothingFields = True} 
+  toJSON = genericToJSON $ snakeDrop 3 
 
 --Swagger instances
 instance ToSchema SocialMessage where
@@ -891,12 +910,12 @@ defaultSocialMessageBatch = SocialMessageBatch
 
 --JSON instances
 instance FromJSON SocialMessageBatch where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "socBatch")
+  parseJSON = genericParseJSON $ snakeDrop 8
 
 instance ToJSON SocialMessageBatch where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "socBatch")
-
---Swagger instances
+  toJSON = genericToJSON $ snakeDrop 8
+  
+  --Swagger instances
 instance ToSchema SocialMessageBatch where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON defaultSocialMessageBatch 
@@ -933,7 +952,8 @@ data User = User
   , userEmail     :: Maybe Text     -- ^ Email 
   , userPhone     :: Maybe Text     -- ^ Phone with international code: +39... 
   , userFacebook  :: Maybe Text     -- ^ Facebook account
-  , userTwitter   :: Maybe Text     -- ^ Twitter account, without the @ 
+  , userTwitter   :: Maybe Text     -- ^ Twitter account, without the @
+  , userSmsCredit :: Maybe Int
   } deriving (Show, Eq, Generic)
 
 defaultUser = User
@@ -945,14 +965,15 @@ defaultUser = User
   , userPhone     = Nothing
   , userFacebook  = Nothing
   , userTwitter   = Nothing
+  , userSmsCredit = Just 100
   }
 
 
 instance FromJSON User where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "user")
+  parseJSON = genericParseJSON $ snakeDrop 4
 
 instance ToJSON User where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "user") {omitNothingFields = True}
+  toJSON = genericToJSON $ snakeDrop 4
 
 --Swagger instances
 instance ToSchema User where
@@ -1209,6 +1230,9 @@ instance ToSchema Error
 unCapitalize :: String -> String
 unCapitalize (c:cs) = toLower c : cs
 unCapitalize [] = []
+
+snakeDrop :: Int -> Options
+snakeDrop n = defaultOptions {fieldLabelModifier = snakeCase . drop n, omitNothingFields = True}
 
 instance ToSchema ResourceId
 

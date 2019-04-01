@@ -23,7 +23,7 @@ getActuators tok did = do
   info "Get actuators"
   withKCId did $ \(keyId, device) -> do
     debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (pack $ show DevicesView)
+    liftKeycloak tok $ checkPermission keyId (fromScope DevicesView)
     debug "Permission granted, returning actuators"
     return $ devActuators device
 
@@ -32,7 +32,7 @@ postActuator tok did actuator = do
   info $ "Post actuator: " ++ (show actuator)
   withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (pack $ show DevicesUpdate)
+    liftKeycloak tok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Permission granted, creating actuator"
     let att = getAttFromActuator actuator
     liftOrion $ O.postAttribute (toEntityId did) att 
@@ -43,7 +43,7 @@ getActuator tok did aid = do
   info "Get actuator"
   withKCId did $ \(keyId, device) -> do
      debug "Check permissions"
-     liftKeycloak tok $ checkPermission keyId (pack $ show DevicesView)
+     liftKeycloak tok $ checkPermission keyId (fromScope DevicesView)
      debug "Permission granted, returning actuator"
      case L.find (\s -> actId s == aid) (devActuators device) of
        Just act -> return act
@@ -56,7 +56,7 @@ deleteActuator tok did aid = do
   info "Delete actuator"
   withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (pack $ show DevicesUpdate)
+    liftKeycloak tok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Permission granted, deleting actuator"
     liftOrion $ O.deleteAttribute (toEntityId did) (toAttributeId aid)
     return NoContent
@@ -84,7 +84,7 @@ putActuatorValue mtok did aid actVal = do
   info $ "Put actuator value: " ++ (show actVal)
   withKCId did $ \(keyId, device) -> do
      debug "Check permissions"
-     liftKeycloak mtok $ checkPermission keyId (pack $ show DevicesUpdate)
+     liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
      debug "Permission granted, returning actuator"
      case L.find (\s -> actId s == aid) (devActuators device) of
        Just act -> do
@@ -99,7 +99,7 @@ updateActuatorField :: Maybe Token -> DeviceId -> ActuatorId -> (Actuator -> Waz
 updateActuatorField mtok did aid w = do
   withKCId did $ \(keyId, device) -> do
     debug "Check permissions"
-    liftKeycloak mtok $ checkPermission keyId (pack $ show DevicesUpdate)
+    liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Permission granted, updating actuator"
     case L.find (\s -> (actId s) == aid) (devActuators device) of
       Just act -> do

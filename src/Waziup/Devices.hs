@@ -37,9 +37,9 @@ getPerms tok = do
                    DevicesDelete,
                    DevicesDataCreate,
                    DevicesDataView]
-  ps <- liftKeycloak tok $ getAllPermissions (map (convertString.show) allScopes)
+  ps <- liftKeycloak tok $ getAllPermissions (map fromScope allScopes)
   let getP :: KC.Permission -> Perm
-      getP (KC.Permission rsname _ scopes) = Perm rsname (mapMaybe readScope scopes)
+      getP (KC.Permission rsname _ scopes) = Perm rsname (mapMaybe toScope scopes)
   return $ map getP ps 
 
 -- | get a token
@@ -68,7 +68,7 @@ getDevice tok did = do
   info "Get device"
   withKCId did $ \(keyId, device) -> do
     debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (pack $ show DevicesView)
+    liftKeycloak tok $ checkPermission keyId (fromScope DevicesView)
     debug "Permission granted, returning device"
     return device
 
@@ -76,7 +76,7 @@ postDevice :: Maybe Token -> Device -> Waziup NoContent
 postDevice tok d@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
   info $ "Post device: " ++ (show d)
   debug "Check permissions"
-  liftKeycloak tok $ checkPermission (ResourceId "Devices") (pack $ show DevicesCreate)
+  liftKeycloak tok $ checkPermission (ResourceId "Devices") (fromScope DevicesCreate)
   debug "Create entity"
   let username = case tok of
        Just t -> getUsername t
@@ -91,10 +91,10 @@ postDevice tok d@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
          resName    = did,
          resType    = Nothing,
          resUris    = [],
-         resScopes  = map (\s -> Scope Nothing (pack $ show s)) [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView],
+         resScopes  = map (\s -> Scope Nothing (fromScope s)) [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView],
          resOwner   = Owner Nothing "cdupont",
          resOwnerManagedAccess = True,
-         resAttributes = if (isJust vis) then [KC.Attribute "visibility" [pack $ show $ fromJust vis]] else []}
+         resAttributes = if (isJust vis) then [KC.Attribute "visibility" [fromVisibility $ fromJust vis]] else []}
       keyRes <- C.try $ liftKeycloak tok $ createResource res
       case keyRes of
         Right (ResourceId resId) -> do
@@ -113,7 +113,7 @@ deleteDevice tok did = do
   info "Delete device"
   withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (pack $ show DevicesDelete)
+    liftKeycloak tok $ checkPermission keyId (fromScope DevicesDelete)
     debug "Delete Keycloak resource"
     liftKeycloak tok $ deleteResource keyId
     debug "Delete Orion resource"
@@ -127,7 +127,7 @@ putDeviceLocation mtok did loc = do
   info $ "Put device location: " ++ (show loc)
   withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
-    liftKeycloak mtok $ checkPermission keyId (pack $ show DevicesUpdate)
+    liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
 
     debug "Update Orion resource"
     let att = getLocationAttr loc
@@ -139,7 +139,7 @@ putDeviceName mtok did name = do
   info $ "Put device name: " ++ (show name)
   withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
-    liftKeycloak mtok $ checkPermission keyId (pack $ show DevicesUpdate)
+    liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Update Orion resource"
     liftOrion $ O.postTextAttributeOrion (toEntityId did) (AttributeId "name") name
   return NoContent
@@ -149,7 +149,7 @@ putDeviceGatewayId mtok did (GatewayId gid) = do
   info $ "Put device gateway ID: " ++ (show gid)
   withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
-    liftKeycloak mtok $ checkPermission keyId (pack $ show DevicesUpdate)
+    liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Update Orion resource"
     liftOrion $ O.postTextAttributeOrion (toEntityId did) (AttributeId "gateway_id") gid
   return NoContent
@@ -159,9 +159,9 @@ putDeviceVisibility mtok did vis = do
   info $ "Put device visibility: " ++ (show vis)
   withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
-    liftKeycloak mtok $ checkPermission keyId (pack $ show DevicesUpdate)
+    liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Update Orion resource"
-    liftOrion $ O.postTextAttributeOrion (toEntityId did) (AttributeId "visibility") (convertString $ show vis)
+    liftOrion $ O.postTextAttributeOrion (toEntityId did) (AttributeId "visibility") (fromVisibility vis)
   return NoContent
 
 -- * From Orion to Waziup types
@@ -175,7 +175,7 @@ getDeviceFromEntity (O.Entity (EntityId eId) eType attrs) =
                        devOwner        = fromSimpleAttribute (AttributeId "owner") attrs,
                        devLocation     = getLocation attrs,
                        devDomain       = fromSimpleAttribute (AttributeId "domain") attrs,
-                       devVisibility   = fromSimpleAttribute (AttributeId "visibility") attrs >>= readVisibility,
+                       devVisibility   = fromSimpleAttribute (AttributeId "visibility") attrs >>= toVisibility,
                        devDateCreated  = fromSimpleAttribute (AttributeId "dateCreated") attrs >>= parseISO8601.unpack,
                        devDateModified = fromSimpleAttribute (AttributeId "dateModified") attrs >>= parseISO8601.unpack,
                        devSensors      = mapMaybe getSensorFromAttribute (toList attrs),
@@ -227,7 +227,7 @@ getSensorValue mval mets cal = do
 
 getSensorCalib :: Map O.MetadataId O.Metadata -> Maybe Calib
 getSensorCalib mets = do
-   (Metadata _ mval) <-mets !? "calib"
+   (Metadata _ mval) <- mets !? "calib"
    val <- mval
    case fromJSON val of
      Success a -> Just a
@@ -257,7 +257,7 @@ getEntityFromDevice (Device (DeviceId sid) sgid sname sloc sdom svis sensors act
                                                            getSimpleAttr (AttributeId "owner")       <$> sown,
                                                            getSimpleAttr (AttributeId "domain")      <$> sdom,
                                                            getSimpleAttr (AttributeId "keycloak_id") <$> (unResId <$> skey),
-                                                           getSimpleAttr (AttributeId "visibility")  <$> ((convertString.show) <$> svis),
+                                                           getSimpleAttr (AttributeId "visibility")  <$> (fromVisibility <$> svis),
                                                            getLocationAttr               <$> sloc] <>
                                                            map getAttFromSensor sensors <>
                                                            map getAttFromActuator acts

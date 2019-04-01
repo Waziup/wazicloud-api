@@ -21,7 +21,7 @@ getSensors tok did = do
   info "Get sensors"
   withKCId did $ \(keyId, device) -> do
     debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (pack $ show DevicesView)
+    liftKeycloak tok $ checkPermission keyId (fromScope DevicesView)
     debug "Permission granted, returning sensors"
     return $ devSensors device
 
@@ -30,7 +30,7 @@ postSensor tok did sensor = do
   info $ "Post sensor: " ++ (show sensor)
   withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (pack $ show DevicesUpdate)
+    liftKeycloak tok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Permission granted, creating sensor"
     let att = getAttFromSensor sensor
     liftOrion $ O.postAttribute (toEntityId did) att 
@@ -41,7 +41,7 @@ getSensor tok did sid = do
   info "Get sensor"
   withKCId did $ \(keyId, device) -> do
      debug "Check permissions"
-     liftKeycloak tok $ checkPermission keyId (pack $ show DevicesView)
+     liftKeycloak tok $ checkPermission keyId (fromScope DevicesView)
      debug "Permission granted, returning sensor"
      case L.find (\s -> senId s == sid) (devSensors device) of
        Just sensor -> return sensor
@@ -54,7 +54,7 @@ deleteSensor tok did sid = do
   info "Delete sensor"
   withKCId did $ \(keyId, _) -> do
     debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (pack $ show DevicesUpdate)
+    liftKeycloak tok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Permission granted, deleting sensor"
     liftOrion $ O.deleteAttribute (toEntityId did) (toAttributeId sid)
     debug "Deleting Mongo datapoints"
@@ -96,7 +96,7 @@ putSensorValue mtok did sid senVal@(SensorValue v ts dr) = do
   info $ "Put sensor value: " ++ (show senVal)
   withKCId did $ \(keyId, device) -> do
     debug "Check permissions"
-    liftKeycloak mtok $ checkPermission keyId (pack $ show DevicesDataCreate)
+    liftKeycloak mtok $ checkPermission keyId (fromScope DevicesDataCreate)
     debug "Permission granted, updating sensor"
     case L.find (\s -> (senId s) == sid) (devSensors device) of
       Just sensor -> do
@@ -112,7 +112,7 @@ updateSensorField :: Maybe Token -> DeviceId -> SensorId -> (Sensor -> Waziup ()
 updateSensorField mtok did sid w = do
   withKCId did $ \(keyId, device) -> do
     debug "Check permissions"
-    liftKeycloak mtok $ checkPermission keyId (pack $ show DevicesUpdate)
+    liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Permission granted, updating sensor"
     case L.find (\s -> (senId s) == sid) (devSensors device) of
       Just sensor -> do

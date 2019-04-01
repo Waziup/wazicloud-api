@@ -8,7 +8,6 @@ module Main where
 import           Network.Wai.Handler.Warp
 import           Network.Wai.Middleware.RequestLogger (logStdoutDev)
 import           Network.Wai.Middleware.Cors
-import           Network.Wai.Middleware.Servant.Options
 import           Waziup.Server
 import           Waziup.Types 
 import           Waziup.Utils 
@@ -68,12 +67,11 @@ main = do
                                          & mqttPort       .~? (read          <$> envMosqPort)
   let twitterConf = 
         if isJust envTwitKey && isJust envTwitSec && isJust envTwitTok && isJust envTwitTokSec 
-          then def { twToken = def { 
-                       twOAuth = twitterOAuth { oauthConsumerKey    = convertString $ fromJust envTwitKey, 
-                                                oauthConsumerSecret = convertString $ fromJust envTwitSec}, 
-                       twCredential = Credential [ ("oauth_token",        convertString $ fromJust envTwitTok),
-                                                   ("oauth_token_secret", convertString $ fromJust envTwitTokSec)]},
-                      twProxy = Nothing}
+          then def { twProxy = Nothing,
+                     twToken = def { twOAuth = twitterOAuth { oauthConsumerKey    = convertString $ fromJust envTwitKey, 
+                                                              oauthConsumerSecret = convertString $ fromJust envTwitSec}, 
+                                     twCredential = Credential [ ("oauth_token",        convertString $ fromJust envTwitTok),
+                                                                 ("oauth_token_secret", convertString $ fromJust envTwitTokSec)]}}
           else defaultTwitterConf
   let plivoConf = defaultPlivoConf & plivoID    .~? (convertString <$> envPlivoID)
                                    & plivoToken .~? (convertString <$> envPlivoToken)
@@ -90,9 +88,13 @@ main = do
   Main.info $ convertString $ "Documentation is on " <> host <> "/docs"
   forkIO $ mqttProxy waziupInfo
   run port $ logStdoutDev 
-           $ simpleCors
-           $ provideOptions waziupAPI
+           $ cors (const $ Just corsPolicy)
            $ waziupServer waziupInfo
+
+corsPolicy :: CorsResourcePolicy
+corsPolicy = simpleCorsResourcePolicy
+           { corsRequestHeaders = ["Access-Control-Allow-Origin", "Authorization", "Content-Type"],
+             corsMethods        = ["OPTIONS", "HEAD", "POST", "PUT", "GET", "DELETE"]}
 
 opts :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> MQTTConfig -> TWInfo -> PlivoConfig -> ParserInfo WaziupConfig
 opts serv m kc o mqtt tw pliv = Opts.info ((waziupConfigParser serv m kc o mqtt tw pliv) <**> helper) parserInfo

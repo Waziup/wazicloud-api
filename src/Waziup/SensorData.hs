@@ -32,14 +32,23 @@ getDatapoints :: Maybe Token
               -> Maybe Sort
               -> Maybe UTCTime
               -> Maybe UTCTime
+              -> Maybe Bool
               -> Waziup [Datapoint]
-getDatapoints tok did sid limit offset sort dateFrom dateTo = do
+getDatapoints tok did sid limit offset sort dateFrom dateTo calibEn = do
   info "Get datapoints"
-  withKCId (fromJust did) $ \(keyId, _) -> do
+  withKCId (fromJust did) $ \(keyId, device) -> do
     debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (pack $ show DevicesDataView)
+    liftKeycloak tok $ checkPermission keyId (fromScope DevicesDataView)
     debug "Permission granted, returning datapoints"
-    runMongo $ getDatapointsMongo did sid limit offset sort dateFrom dateTo
+    res <- runMongo $ getDatapointsMongo did sid limit offset sort dateFrom dateTo
+    let calib = if (isJust sid) 
+        then case L.find (\s -> (senId s) == fromJust sid) (devSensors device) of
+           Just sen -> senCalib sen
+           Nothing -> Nothing
+        else Nothing
+    if calibEn == Just False -- by default, values are calibrated
+       then return res -- return raw values
+       else return $ map (calibrateDatapoint calib) res -- return calibrated values
     
 getDatapointsMongo :: Maybe DeviceId 
                    -> Maybe SensorId
@@ -83,6 +92,10 @@ getDatapointsMongo did sid limit offset sort dateFrom dateTo = do
 isSuccess :: Result a -> Bool
 isSuccess (JSON.Success _) = True
 isSuccess (JSON.Error _) = False
+
+calibrateDatapoint :: Maybe Calib -> Datapoint -> Datapoint
+calibrateDatapoint cal d@(Datapoint _ _ val _ _) = d {dataValue = getCalibratedValue val cal}
+
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

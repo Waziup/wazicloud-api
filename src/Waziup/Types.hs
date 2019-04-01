@@ -12,7 +12,7 @@ import           Data.List (stripPrefix)
 import           Data.Maybe (fromMaybe)
 import           Data.Aeson as Aeson
 import           Data.Aeson.Types as AT (Options(..), defaultOptions, Pair)
-import           Data.Aeson.Casing
+import           Data.Aeson.Casing (snakeCase, aesonDrop)
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Map as Map
@@ -25,6 +25,7 @@ import           Data.Char
 import           Data.Monoid
 import           Data.Time.ISO8601
 import           Data.Swagger hiding (fieldLabelModifier)
+import qualified Data.Swagger as SW
 import           Data.Swagger.Internal
 import           Data.Swagger.Lens
 import           Data.String.Conversions
@@ -43,6 +44,7 @@ import           GHC.Generics (Generic)
 import qualified Database.MongoDB as DB
 import qualified Orion.Types as O
 import           Web.Twitter.Conduit hiding (map)
+import           Debug.Trace
 
 type Limit  = Int
 type Offset = Int
@@ -138,13 +140,13 @@ data AuthBody = AuthBody
   } deriving (Show, Eq, Generic)
 
 instance ToJSON AuthBody where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "authBody")
+  toJSON = genericToJSON defaultOptions {fieldLabelModifier = snakeCase . drop 8}
+
 instance FromJSON AuthBody where
-  parseJSON (Object v) = AuthBody <$> v .: "username" <*> v .: "password"
-  parseJSON _          = mzero 
+  parseJSON = genericParseJSON defaultOptions {fieldLabelModifier = snakeCase . drop 8}
 
 instance ToSchema AuthBody where
-   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.fieldLabelModifier = snakeCase . drop 8} proxy
         & mapped.schema.example ?~ toJSON (AuthBody "cdupont" "password")
 
 -- | Permission
@@ -153,13 +155,12 @@ data Perm = Perm
   , permScopes :: [Scope] -- ^ 
   } deriving (Show, Eq, Generic)
 
-instance FromJSON Perm where
-  parseJSON = genericParseJSON (removeFieldLabelPrefix True "perm")
 
 instance ToJSON Perm where
-  toJSON = genericToJSON (removeFieldLabelPrefix False "perm")
+  toJSON = genericToJSON defaultOptions {fieldLabelModifier = snakeCase . drop 4}
 
-instance ToSchema Perm
+instance ToSchema Perm where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.fieldLabelModifier = snakeCase . drop 4} proxy
 
 data Scope = DevicesCreate
            | DevicesUpdate
@@ -167,7 +168,7 @@ data Scope = DevicesCreate
            | DevicesDelete
            | DevicesDataCreate
            | DevicesDataView
-   deriving (Generic, Eq)
+   deriving (Show, Eq, Generic)
 
 instance ToJSON Scope where
   toJSON = toJSON . show
@@ -253,13 +254,13 @@ defaultDevice = Device
   }
 
 instance ToJSON Device where
-  toJSON = genericToJSON (aesonDrop 3 snakeCase) {omitNothingFields = True}
+  toJSON = genericToJSON defaultOptions {fieldLabelModifier = snakeCase . drop 3, omitNothingFields = True}
 
 instance FromJSON Device where
-  parseJSON = genericParseJSON (aesonDrop 3 snakeCase) {omitNothingFields = True}
+  parseJSON = genericParseJSON defaultOptions {fieldLabelModifier = snakeCase . drop 3, omitNothingFields = True}
 
 instance ToSchema Device where
-  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+  declareNamedSchema proxy = genericDeclareNamedSchema (defaultSchemaOptions {SW.fieldLabelModifier = snakeCase . drop 3}) proxy
         & mapped.schema.example ?~ toJSON defaultDevice 
 
 

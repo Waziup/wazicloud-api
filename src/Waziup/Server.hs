@@ -114,7 +114,9 @@ actuatorsServer = getActuators
 -- users server
 usersServer :: ServerT UsersAPI Waziup
 usersServer = getUsers
+         :<|> postUser
          :<|> getUser
+         :<|> putUserCredit
 
 -- socials server
 socialsServer :: ServerT SocialsAPI Waziup

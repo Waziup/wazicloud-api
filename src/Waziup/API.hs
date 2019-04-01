@@ -130,13 +130,14 @@ type SensorsAPI = Flat ( Header "Authorization" Token :>
 
 type SensorDataAPI = Flat (
   "sensors_data" :> Header "Authorization" Token 
-  :> QueryParam "device_id" DeviceId
-  :> QueryParam "sensor_id" SensorId
-  :> QueryParam "limit"     Int
-  :> QueryParam "offset"    Int
-  :> QueryParam "sort"      Sort
-  :> QueryParam "dateFrom"  UTCTime
-  :> QueryParam "dataTo"    UTCTime
+  :> QueryParam "device_id"  DeviceId
+  :> QueryParam "sensor_id"  SensorId
+  :> QueryParam "limit"      Int
+  :> QueryParam "offset"     Int
+  :> QueryParam "sort"       Sort
+  :> QueryParam "dateFrom"   UTCTime
+  :> QueryParam "dataTo"     UTCTime
+  :> QueryParam "calibrated" Bool
   :> Get '[JSON, CSV' 'HasHeader CSVOpts] [Datapoint])
 
 data CSVOpts
@@ -222,8 +223,13 @@ type UsersAPI = Flat ( Header "Authorization" Token :>
       :> QueryParam "offset" Offset
       :> QueryParam "username" Username
       :> Get '[JSON] [User]
-    :<|> Capture "user_id" UserId
-      :> Get '[JSON] User))
+    :<|> ReqBody '[JSON] User
+      :> Post '[JSON] UserId
+    :<|> Capture "user_id" UserId :> (
+           Get '[JSON] User
+      :<|> "sms_credit" 
+        :> ReqBody '[JSON] Int
+        :> PutNoContent '[JSON] NoContent)))
 
 
 ---------------

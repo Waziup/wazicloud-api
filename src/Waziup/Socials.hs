@@ -62,9 +62,7 @@ postSocialMessage tok socMsg@(SocialMessage _ username chan msg _ _) = do
           case (userTwitter user) of
             Just screenName -> postTwitter screenName msg
             Nothing -> throwError err400 {errBody = "Twitter ID not found in user profile"}
-        SMS -> case (userPhone user) of
-            Just phone -> postSMS phone msg
-            Nothing -> throwError err400 {errBody = "Twitter ID not found in user profile"}
+        SMS -> postSMS tok user msg
         Voice -> undefined
       runMongo $ logSocialMessage socMsg
     Nothing -> throwError err400 {errBody = "User not found"}
@@ -100,8 +98,20 @@ postTwitter screenName msg = do
       debug $ "Twitter Error: " ++ (show code) ++ " " ++ (show msg) ++ " " ++ (show tms)
       throwError err400 {errBody = convertString $ "Twitter error: " ++ (show tms)}
 
-postSMS :: Text -> Text -> Waziup ()
-postSMS phone txt = smsPost $ PlivoSMS "+393806412094" phone txt
+postSMS :: Maybe Token -> T.User -> Text -> Waziup ()
+postSMS tok user@(T.User _ _ _ _ _ (Just phone) _ _ (Just c)) txt = do
+  res <- C.try $ smsPost $ PlivoSMS "+393806412094" phone txt
+  case res of 
+    Right _ -> do
+      debug $ "Removing one SMS credit, remaining: " ++ (show (c -1))
+      Users.putUserCredit tok (fromJust $ T.userId user) (c - 1)
+    Left (err :: SomeException) -> throwError err400 {errBody = convertString $ "Could not send SMS: " ++ (show err)}
+  return ()
+postSMS _ _ _ = do
+  warn "Cannot find phone or SMS credit"
+  throwError err400 {errBody = "phone ID not found in user profile"}
+
+
 
 postSocialMessageBatch :: Maybe Token -> SocialMessageBatch -> Waziup NoContent
 postSocialMessageBatch tok b@(SocialMessageBatch uns chans msg) = do

@@ -35,8 +35,12 @@ postUser tok user = do
   return $ UserId $ KC.unUserId uid
 
 putUserCredit :: Maybe KC.Token -> UserId -> Int -> Waziup NoContent
-putUserCredit tok uid c = undefined
-
+putUserCredit tok uid@(UserId id) c = do
+  info "Put user credit"
+  u <- getUser tok uid 
+  let u' = u {userSmsCredit = Just c}
+  liftKeycloak tok $ KC.putUser (KC.UserId id) (fromUser u')
+  return NoContent
 
 toUser :: KC.User -> User
 toUser (KC.User id un fn ln mail subs) = 

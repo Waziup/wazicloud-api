@@ -13,5 +13,5 @@ import           Data.AesonBson
 instance ToJSON BSON.Value where
   toJSON = aesonifyValue
 
-instance ToJSON BSON.Document where
-  toJSON = Object . aesonify
+--instance ToJSON BSON.Document where
+--  toJSON = Object . aesonify

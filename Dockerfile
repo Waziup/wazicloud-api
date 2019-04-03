@@ -4,7 +4,6 @@ FROM fpco/stack-build:lts-13.5 as build
 COPY stack.yaml   /opt/waziup/stack.yaml
 COPY waziup.cabal /opt/waziup/waziup.cabal
 COPY aesonbson/ /opt/waziup/aesonbson
-COPY servant-flatten/ /opt/waziup/servant-flatten
 COPY keycloak-hs/ /opt/waziup/keycloak-hs
 COPY orion-hs/ /opt/waziup/orion-hs
 COPY twitter-conduit/ /opt/waziup/twitter-conduit

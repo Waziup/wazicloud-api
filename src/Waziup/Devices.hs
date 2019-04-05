@@ -80,9 +80,9 @@ postDevice tok d@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
   debug "Create entity"
   let username = case tok of
        Just t -> getUsername t
-       Nothing -> Just "guest"
+       Nothing -> "guest"
   debug $ "Owner: " <> (show username)
-  let entity = getEntityFromDevice (d {devOwner = username})
+  let entity = getEntityFromDevice (d {devOwner = Just username})
   res2 <- C.try $ liftOrion $ O.postEntity entity 
   case res2 of
     Right _ -> do 
@@ -92,7 +92,7 @@ postDevice tok d@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
          resType    = Nothing,
          resUris    = [],
          resScopes  = map (\s -> Scope Nothing (fromScope s)) [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView],
-         resOwner   = Owner Nothing "cdupont",
+         resOwner   = Owner Nothing username,
          resOwnerManagedAccess = True,
          resAttributes = if (isJust vis) then [KC.Attribute "visibility" [fromVisibility $ fromJust vis]] else []}
       keyRes <- C.try $ liftKeycloak tok $ createResource res

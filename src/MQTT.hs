@@ -30,28 +30,36 @@ import           Data.Attoparsec.ByteString
 import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
 import           Servant.Server.Internal.Handler
 
-
+-- | the MQTT proxy
 mqttProxy :: WaziupInfo -> IO ()
 mqttProxy wi = do
   let port = _serverPortMQTT $ _serverConf $ _waziupConfig wi
-  runTCPServer (serverSettings port "*") handleClient where
-    handleClient :: AppData -> IO ()
-    handleClient client = do
-      let (MQTTConfig mosqUrl mosqPort) = _mqttConf $ _waziupConfig wi
-      runTCPClient (clientSettings mosqPort (convertString mosqUrl)) (handleServer wi client)
+  let settings = serverSettings port "*"
+  -- Run a TCP Server to handle incoming requests
+  runTCPServer settings (handleExternalStream wi)
 
-handleServer :: WaziupInfo -> AppData -> AppData -> IO ()
-handleServer wi clientData serverData = do
+-- | Handle external client stream.
+handleExternalStream :: WaziupInfo -> AppData -> IO ()
+handleExternalStream wi extClient = do
+  let (MQTTConfig mosqUrl mosqPort) = _mqttConf $ _waziupConfig wi
+  let settings = clientSettings mosqPort (convertString mosqUrl)
+  -- connect to the internal MQTT server
+  runTCPClient settings (handleStreams wi extClient)
+
+-- connect both up and down streams together
+handleStreams :: WaziupInfo -> AppData -> AppData -> IO ()
+handleStreams wi extClient intServer = do
   permst <- atomically $ newTVar []
   void $ concurrently
-              (runConduit $ appSource serverData .| filterMQTTout wi permst .| appSink clientData)
-              (runConduit $ appSource clientData .| filterMQTTin wi permst .| appSink serverData)
+              (runConduit $ appSource intServer .| filterMQTTout wi permst .| appSink extClient)
+              (runConduit $ appSource extClient .| filterMQTTin wi permst extClient .| appSink intServer)
 
 data MQTTData = MQTTSen DeviceId SensorId SensorValue | 
                 MQTTAct DeviceId ActuatorId JSON.Value |
                 MQTTError String |
                 MQTTOther
 
+-- | traffic going upstream (from internal MQTT server to external client)
 filterMQTTout :: WaziupInfo -> TVar [Perm] -> ConduitT B.ByteString B.ByteString IO ()
 filterMQTTout wi tperms = awaitForever $ \p -> do
   let res = parse T.parsePacket p
@@ -78,8 +86,9 @@ filterMQTTout wi tperms = awaitForever $ \p -> do
     _ -> yield p
   
 
-filterMQTTin :: WaziupInfo -> TVar [Perm] -> ConduitT B.ByteString B.ByteString IO ()
-filterMQTTin wi tperms = awaitForever $ \p -> do
+-- | traffic going downstream (from external client to internal MQTT server)
+filterMQTTin :: WaziupInfo -> TVar [Perm] -> AppData -> ConduitT B.ByteString B.ByteString IO ()
+filterMQTTin wi tperms extClient = awaitForever $ \p -> do
   let res = parse T.parsePacket p
   debug $ "Received: " ++ (show res)
   case res of
@@ -97,7 +106,7 @@ filterMQTTin wi tperms = awaitForever $ \p -> do
           err $ "Could not get Waziup permissions: " ++ (show e)
           return ()
     -- Decode Publish
-    Done _ (T.PublishPkt (T.PublishRequest _ _ _ topic _ body)) -> do
+    Done _ (T.PublishPkt (T.PublishRequest _ _ _ topic id body)) -> do
       -- Get the permissions
       perms <- liftIO $ atomically $ readTVar tperms
       -- Decode MQTT message
@@ -106,11 +115,16 @@ filterMQTTin wi tperms = awaitForever $ \p -> do
           -- check authorization
           let auth = checkPermDevice DevicesDataCreate perms devId
           debug $ "Perm check: " ++ (show auth)
-          when auth $ do
-            -- Store the value
-            lift $ runWaziup (postSensorValue devId senId senVal) wi
-            -- pass value to MQTT server
-            yield p
+          if auth 
+            then do
+              -- Store the value
+              lift $ runWaziup (postSensorValue devId senId senVal) wi
+              -- pass value to MQTT server
+              yield p
+            else do
+              -- return PUBACK directly to client (MQTT offers no way to inform the client about the failure)
+              yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink extClient
+
         MQTTAct devId actId actVal -> do 
           let auth = checkPermDevice DevicesDataCreate perms devId
           debug $ "Perm check: " ++ (show auth)

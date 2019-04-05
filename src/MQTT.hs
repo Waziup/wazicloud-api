@@ -51,41 +51,13 @@ handleStreams :: WaziupInfo -> AppData -> AppData -> IO ()
 handleStreams wi extClient intServer = do
   permst <- atomically $ newTVar []
   void $ concurrently
-              (runConduit $ appSource intServer .| filterMQTTout wi permst .| appSink extClient)
-              (runConduit $ appSource extClient .| filterMQTTin wi permst extClient .| appSink intServer)
+    (runConduit $ appSource extClient .| filterMQTTin  wi permst extClient .| appSink intServer) --traffic downstream
+    (runConduit $ appSource intServer .| filterMQTTout wi permst intServer .| appSink extClient) --traffic upstream
 
 data MQTTData = MQTTSen DeviceId SensorId SensorValue | 
                 MQTTAct DeviceId ActuatorId JSON.Value |
                 MQTTError String |
                 MQTTOther
-
--- | traffic going upstream (from internal MQTT server to external client)
-filterMQTTout :: WaziupInfo -> TVar [Perm] -> ConduitT B.ByteString B.ByteString IO ()
-filterMQTTout wi tperms = awaitForever $ \p -> do
-  let res = parse T.parsePacket p
-  debug $ "Received downstream: " ++ (show res)
-  case res of
-    -- Decode Publish
-    Done _ (T.PublishPkt (T.PublishRequest _ _ _ topic _ body)) -> do
-      -- Get the permissions
-      perms <- liftIO $ atomically $ readTVar tperms
-      -- Decode MQTT message
-      case decodePub topic body of
-        MQTTSen devId senId senVal -> do
-          -- check authorization
-          let auth = checkPermDevice DevicesDataView perms devId
-          debug $ "Perm check downstream: " ++ (show auth)
-          when auth $ yield p
-        MQTTAct devId actId actVal -> do 
-          let auth = checkPermDevice DevicesDataCreate perms devId
-          debug $ "Perm check downstream: " ++ (show auth)
-          when auth $ yield p
-        MQTTError e -> do
-          err e
-        MQTTOther -> yield p
-    _ -> yield p
-  
-
 -- | traffic going downstream (from external client to internal MQTT server)
 filterMQTTin :: WaziupInfo -> TVar [Perm] -> AppData -> ConduitT B.ByteString B.ByteString IO ()
 filterMQTTin wi tperms extClient = awaitForever $ \p -> do
@@ -128,14 +100,47 @@ filterMQTTin wi tperms extClient = awaitForever $ \p -> do
         MQTTAct devId actId actVal -> do 
           let auth = checkPermDevice DevicesDataCreate perms devId
           debug $ "Perm check: " ++ (show auth)
-          when auth $ do
-            lift $ runWaziup (putActuatorValue devId actId actVal) wi
-            yield p
+          if auth 
+            then do
+              lift $ runWaziup (putActuatorValue devId actId actVal) wi
+              yield p
+            else do
+              yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink extClient
         MQTTError e -> do
           err e
         MQTTOther -> yield p
     _ -> yield p
       
+-- | traffic going upstream (from internal MQTT server to external client)
+filterMQTTout :: WaziupInfo -> TVar [Perm] -> AppData -> ConduitT B.ByteString B.ByteString IO ()
+filterMQTTout wi tperms intServer = awaitForever $ \p -> do
+  let res = parse T.parsePacket p
+  debug $ "Received downstream: " ++ (show res)
+  case res of
+    -- Decode Publish
+    Done _ (T.PublishPkt (T.PublishRequest _ _ _ topic id body)) -> do
+      -- Get the permissions
+      perms <- liftIO $ atomically $ readTVar tperms
+      -- Decode MQTT message
+      case decodePub topic body of
+        MQTTSen devId senId senVal -> do
+          -- check authorization
+          let auth = checkPermDevice DevicesDataView perms devId
+          debug $ "Perm check downstream: " ++ (show auth)
+          if auth 
+            then yield p
+            else yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink intServer
+        MQTTAct devId actId actVal -> do 
+          let auth = checkPermDevice DevicesDataCreate perms devId
+          debug $ "Perm check downstream: " ++ (show auth)
+          if auth 
+            then yield p
+            else yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink intServer
+        MQTTError e -> do
+          err e
+        MQTTOther -> yield p
+    _ -> yield p
+  
   
 getPerms' :: Maybe T.Text -> Maybe T.Text -> Waziup [Perm]
 getPerms' user pass = do

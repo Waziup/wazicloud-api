@@ -846,7 +846,7 @@ instance ToSchema SocialMessageId
 instance ToParamSchema SocialMessageId
 
 -- channel where the message is sent
-data Channel = Twitter | SMS | Voice deriving (Show, Eq, Generic)
+data Channel = Twitter | SMS | Voice | None deriving (Show, Eq, Generic)
 
 instance ToJSON Channel where
   toJSON = genericToJSON $ defaultOptions {AT.constructorTagModifier = map toLower, AT.allNullaryToStringTag = True}

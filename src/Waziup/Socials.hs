@@ -34,6 +34,7 @@ import           Data.Bson as BSON
 import           Servant
 import           Network.HTTP.Types.Status as HTS
 
+-- | get all logged social messages
 getSocialMessages :: Maybe Token -> Waziup [SocialMessage]
 getSocialMessages tok = runMongo $ do
   info "Get social messages"
@@ -48,7 +49,8 @@ getSocialMessages tok = runMongo $ do
     JSON.Error e -> do
       err $ "Error from Mongo:" ++ (show e)
       return []
-                                              
+
+-- | post a social message
 postSocialMessage :: Maybe Token -> SocialMessage -> Waziup SocialMessageId
 postSocialMessage tok socMsg@(SocialMessage _ username chan msg _ _) = do
   info "Post social messages"
@@ -58,12 +60,10 @@ postSocialMessage tok socMsg@(SocialMessage _ username chan msg _ _) = do
   case muser of
     Just user -> do
       case chan of
-        Twitter -> do
-          case (userTwitter user) of
-            Just screenName -> postTwitter screenName msg
-            Nothing -> throwError err400 {errBody = "Twitter ID not found in user profile"}
-        SMS -> postSMS tok user msg
-        Voice -> undefined
+        Twitter -> postTwitter user msg
+        SMS     -> postSMS tok user msg
+        Voice   -> undefined
+        None    -> return () 
       runMongo $ logSocialMessage socMsg
     Nothing -> throwError err400 {errBody = "User not found"}
 
@@ -81,22 +81,25 @@ logSocialMessage msg = do
     BSON.ObjId a -> return $ SocialMessageId $ convertString $ show a
     _ -> error "bad mongo ID"
  
-postTwitter :: Text -> Text -> Waziup ()
-postTwitter screenName msg = do
+postTwitter :: T.User -> Text -> Waziup ()
+postTwitter user msg = do
   info "Posting Twitter message"
-  twInfo <- view (waziupConfig.twitterConf)
-  debug $ "Twitter details: " ++ (show twInfo)
-  mgr <- liftIO $ newManager tlsManagerSettings
-  res <- C.try $ do
-    users <- liftIO $ call twInfo mgr $ usersLookup $ ScreenNameListParam [convertString screenName]
-    let usrId = TWT.userId $ L.head users
-    liftIO $ call twInfo mgr $ directMessagesNew (UserIdParam usrId) msg
-  case res of
-    Right _ -> return () 
-    Left (FromJSONError e) -> debug $ "Twitter FromJSONError: " ++ (show e) 
-    Left (TwitterErrorResponse (HTS.Status code msg) _ tms) -> do
-      debug $ "Twitter Error: " ++ (show code) ++ " " ++ (show msg) ++ " " ++ (show tms)
-      throwError err400 {errBody = convertString $ "Twitter error: " ++ (show tms)}
+  case (userTwitter user) of
+    Nothing -> throwError err400 {errBody = "Twitter ID not found in user profile"}
+    Just screenName -> do 
+      twInfo <- view (waziupConfig.twitterConf)
+      debug $ "Twitter details: " ++ (show twInfo)
+      mgr <- liftIO $ newManager tlsManagerSettings
+      res <- C.try $ do
+        users <- liftIO $ call twInfo mgr $ usersLookup $ ScreenNameListParam [convertString screenName]
+        let usrId = TWT.userId $ L.head users
+        liftIO $ call twInfo mgr $ directMessagesNew (UserIdParam usrId) msg
+      case res of
+        Right _ -> return () 
+        Left (FromJSONError e) -> debug $ "Twitter FromJSONError: " ++ (show e) 
+        Left (TwitterErrorResponse (HTS.Status code msg) _ tms) -> do
+          debug $ "Twitter Error: " ++ (show code) ++ " " ++ (show msg) ++ " " ++ (show tms)
+          throwError err400 {errBody = convertString $ "Twitter error: " ++ (show tms)}
 
 postSMS :: Maybe Token -> T.User -> Text -> Waziup ()
 postSMS tok user@(T.User _ _ _ _ _ (Just phone) _ _ (Just c)) txt = do
@@ -110,8 +113,6 @@ postSMS tok user@(T.User _ _ _ _ _ (Just phone) _ _ (Just c)) txt = do
 postSMS _ _ _ = do
   warn "Cannot find phone or SMS credit"
   throwError err400 {errBody = "phone ID not found in user profile"}
-
-
 
 postSocialMessageBatch :: Maybe Token -> SocialMessageBatch -> Waziup NoContent
 postSocialMessageBatch tok b@(SocialMessageBatch uns chans msg) = do

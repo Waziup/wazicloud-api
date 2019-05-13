@@ -52,10 +52,10 @@ getSocialMessages tok = runMongo $ do
 
 -- | post a social message
 postSocialMessage :: Maybe Token -> SocialMessage -> Waziup SocialMessageId
-postSocialMessage tok socMsg@(SocialMessage _ username chan msg _ _) = do
+postSocialMessage tok socMsg@(SocialMessage _ dest chan msg _ _) = do
   info "Post social messages"
-  users <- Users.getUsers tok Nothing Nothing (Just username)
-  let muser = L.find (\u -> T.userUsername u == username) users
+  users <- Users.getUsers tok Nothing Nothing (Just dest)
+  let muser = L.find (\u -> T.userUsername u == dest) users
   debug $ (show muser)
   case muser of
     Just user -> do

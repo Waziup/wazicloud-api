@@ -36,6 +36,7 @@ import           Control.Monad
 import           Control.Monad.Except (ExceptT, throwError, runExceptT)
 import           Control.Monad.Catch as C
 import           Control.Monad.Reader
+import           Control.Applicative
 import           Servant
 import           Servant.Swagger
 import           Servant.API.Flatten
@@ -168,6 +169,14 @@ data Scope = DevicesCreate
            | DevicesDelete
            | DevicesDataCreate
            | DevicesDataView
+           | ProjectsCreate
+           | ProjectsUpdate
+           | ProjectsView
+           | ProjectsDelete
+           | GatewaysCreate
+           | GatewaysUpdate
+           | GatewaysView
+           | GatewaysDelete
    deriving (Show, Read, Eq, Generic)
 
 instance ToJSON Scope where
@@ -186,6 +195,14 @@ toScope "devices:view"        = Just DevicesView
 toScope "devices:delete"      = Just DevicesDelete    
 toScope "devices-data:create" = Just DevicesDataCreate
 toScope "devices-data:view"   = Just DevicesDataView  
+toScope "projects:create"     = Just ProjectsCreate    
+toScope "projects:update"     = Just ProjectsUpdate    
+toScope "projects:view"       = Just ProjectsView      
+toScope "projects:delete"     = Just ProjectsDelete    
+toScope "gateways:create"     = Just GatewaysCreate    
+toScope "gateways:update"     = Just GatewaysUpdate    
+toScope "gateways:view"       = Just GatewaysView      
+toScope "gateways:delete"     = Just GatewaysDelete    
 toScope _                     = Nothing
 
 -- Convert KC representation to Scope , e.g. "devices:create" to "DeviceCreate"
@@ -201,6 +218,14 @@ fromScope DevicesView       = "devices:view"
 fromScope DevicesDelete     = "devices:delete"       
 fromScope DevicesDataCreate = "devices-data:create"  
 fromScope DevicesDataView   = "devices-data:view"   
+fromScope ProjectsCreate    = "projects:create"       
+fromScope ProjectsUpdate    = "projects:update"       
+fromScope ProjectsView      = "projects:view"         
+fromScope ProjectsDelete    = "projects:delete"       
+fromScope GatewaysCreate    = "gateways:create"       
+fromScope GatewaysUpdate    = "gateways:update"       
+fromScope GatewaysView      = "gateways:view"         
+fromScope GatewaysDelete    = "gateways:delete"       
 
 -- Convert Scope to KC representation, e.g. "DeviceCreate" to "devices:create"
 fromScope' :: String -> String
@@ -679,23 +704,23 @@ instance ToParamSchema GatewayId
 
 -- | one gateway 
 data Gateway = Gateway
-  { gwId     :: GatewayId           -- ^ ID of the gateway
-  , gwName   :: Maybe GatewayName   -- ^ name of the gateway
+  { gwId     :: Maybe GatewayId     -- ^ ID of the gateway
+  , gwName   :: GatewayName         -- ^ name of the gateway
   , gwTunnel :: Maybe GatewayTunnel -- ^ gateway tunnel with platform 
   } deriving (Show, Eq, Generic)
 
 defaultGateway = Gateway 
-  { gwId      = GatewayId "MyGW"
-  , gwName    = Just "My gateway"
+  { gwId      = Nothing 
+  , gwName    = "My gateway"
   , gwTunnel  = Nothing
   }
 
 --JSON instances
 instance FromJSON Gateway where
-  parseJSON = genericParseJSON $ snakeDrop 2 
+  parseJSON = genericParseJSON $ defaultOptions {fieldLabelModifier = mapMongoId . unCapitalize . drop 2, AT.omitNothingFields = True}
 
 instance ToJSON Gateway where
-  toJSON = genericToJSON $ snakeDrop 2
+  toJSON = genericToJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 2, AT.omitNothingFields = True}
 
 instance ToSchema Gateway where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
@@ -1011,31 +1036,48 @@ instance ToParamSchema ProjectId
 
 -- * A project
 data Project = Project
-  { pId       :: Maybe ProjectId,
-    pName     :: Text,
-    pDevices  :: [DeviceId],
-    pGateways :: [GatewayId] 
+  { pId         :: Maybe ProjectId,
+    pName       :: Text,
+    pOwner      :: Maybe Username,
+    pDevices    :: Either [DeviceId] [Device],
+    pGateways   :: Either [GatewayId] [Gateway],
+    pKeycloakId :: Maybe ResourceId
   } deriving (Show, Eq, Generic)
 
 defaultProject = Project
-  { pId       = Nothing,
-    pName     = "MyProject",
-    pDevices  = [],
-    pGateways = [] 
+  { pId         = Nothing,
+    pName       = "MyProject",
+    pOwner      = Nothing,
+    pDevices    = Left [],
+    pGateways   = Left [],
+    pKeycloakId = Nothing
   }
 
 instance ToJSON Project where
-   toJSON (Project pId pName pDev pGate) = 
+   toJSON (Project pId pName pOwner (Left pDev) (Left pGate) pKeycloakId) = 
      object $ (maybe [] (\id -> [("id", toJSON id)]) pId) ++
                ["name"     .= pName,
+                "owner"    .= pOwner,
                 "devices"  .= pDev,
-                "gateways" .= pGate] 
+                "gateways" .= pGate,
+                "keycloak_id" .= pKeycloakId] 
+   toJSON (Project pId pName pOwner (Right pDev) (Right pGate) pKeycloakId) = 
+     object $ (maybe [] (\id -> [("id", toJSON id)]) pId) ++
+               ["name"     .= pName,
+                "owner"    .= pOwner,
+                "devices"  .= pDev,
+                "gateways" .= pGate,
+                "keycloak_id" .= pKeycloakId] 
 
 instance FromJSON Project where
   parseJSON (Object v) = Project <$> v .:? "_id" 
                                  <*> v .:  "name"
-                                 <*> v .:  "devices"
-                                 <*> v .:  "gateways"
+                                 <*> v .:? "owner"
+                                 <*> (   (Left  <$> v .: "devices")
+                                     <|> (Right <$> v .: "devices"))
+                                 <*> (   (Left  <$> v .: "gateways")
+                                     <|> (Right <$> v .: "gateways"))
+                                 <*> v .:? "keycloak_id"
   parseJSON _          = mzero 
 
 instance ToSchema Project where
@@ -1284,6 +1326,10 @@ removeFieldLabelPrefix forParsing prefix =
       if forParsing
         then flip T.replace
         else T.replace
+
+mapMongoId :: String -> String
+mapMongoId "id" = "_id"
+mapMongoId a = a
 
 makeLenses ''ServerConfig
 makeLenses ''WaziupConfig

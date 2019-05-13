@@ -18,6 +18,7 @@ import           Control.Lens
 import           System.Log.Logger
 import           Waziup.Types
 import           Waziup.Utils
+import           Waziup.Auth hiding (info, warn, debug, err)
 import           Orion as O hiding (info, warn, debug, err)
 import           Waziup.Devices hiding (info, warn, debug, err)
 import           Network.MQTT.Client hiding (info, warn, debug, err, MQTTConfig)
@@ -148,9 +149,9 @@ getPerms' user pass = do
   if isJust user && isJust pass
     then do
       tok <- liftKeycloak' $ getUserAuthToken (fromJust user) (fromJust pass)
-      getPerms (Just tok)
+      getPermsDevices (Just tok)
     else do
-      getPerms Nothing 
+      getPermsDevices Nothing 
 
 decodePub :: LB.ByteString -> LB.ByteString -> MQTTData
 decodePub topic body = do

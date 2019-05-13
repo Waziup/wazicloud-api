@@ -49,15 +49,22 @@ type WaziupDocs = SwaggerSchemaUI "docs" "swagger.json"
 -- * Authentication --
 ----------------------
 
-type AuthAPI = 
+type AuthAPI = Flat ( 
   "auth" :>  (
-         "permissions"
+         "permissions" :> (
+          "devices"
           :> Header "Authorization" Token
           :> Get  '[JSON]      [Perm]
+          :<|> "projects"
+          :> Header "Authorization" Token
+          :> Get  '[JSON]      [Perm]
+          :<|> "gateways"
+          :> Header "Authorization" Token
+          :> Get  '[JSON]      [Perm])
     :<|> "token"
           :> ReqBody '[JSON] AuthBody
           :> Post '[PlainText, JSON] Token
-    )
+    ))
 
 
 ---------------
@@ -198,11 +205,13 @@ type GatewaysAPI = Flat ( Header "Authorization" Token :>
 
 type ProjectsAPI = Flat ( Header "Authorization" Token :> 
   "projects" :> (
-          Get  '[JSON]      [Project]
+          QueryParam "full" Bool
+       :> Get '[JSON] [Project]
     :<|>  ReqBody '[JSON] Project
        :> Post '[PlainText, JSON] ProjectId
     :<|> Capture "id" ProjectId :> (
-           Get '[JSON] Project
+           QueryParam "full" Bool
+        :> Get '[JSON] Project
       :<|> DeleteNoContent '[JSON] NoContent
       :<|> "devices"
         :> ReqBody '[JSON] [DeviceId]
@@ -210,6 +219,9 @@ type ProjectsAPI = Flat ( Header "Authorization" Token :>
       :<|> "gateways"
         :> ReqBody '[JSON] [GatewayId]
         :> PutNoContent '[JSON] NoContent
+      :<|> "name"
+         :> ReqBody '[JSON] Text 
+         :> PutNoContent '[JSON] NoContent
     )))
 
 

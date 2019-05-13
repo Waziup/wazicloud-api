@@ -5,6 +5,7 @@ module Waziup.Devices where
 
 import           Waziup.Types as W
 import           Waziup.Utils
+import           Waziup.Auth hiding (info, warn, debug, err) 
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
 import           Control.Monad.Catch as C
@@ -28,34 +29,13 @@ import           Database.MongoDB as DB hiding (value, Limit, Array, lookup, Val
 import           Data.AesonBson
 
 
--- | Get all permissions. If no toekn is passed, the guest token will be used.
-getPerms :: Maybe Token -> Waziup [Perm]
-getPerms tok = do
-  info "Get Permissions"
-  let allScopes = [DevicesUpdate,
-                   DevicesView,
-                   DevicesDelete,
-                   DevicesDataCreate,
-                   DevicesDataView]
-  ps <- liftKeycloak tok $ getAllPermissions (map fromScope allScopes)
-  let getP :: KC.Permission -> Perm
-      getP (KC.Permission rsname _ scopes) = Perm rsname (mapMaybe toScope scopes)
-  return $ map getP ps 
-
--- | get a token
-postAuth :: AuthBody -> Waziup Token
-postAuth (AuthBody username password) = do
-  info "Post authentication"
-  tok <- liftKeycloak' $ getUserAuthToken username password
-  return tok
-
 -- | Get devices, given a query, limits and offsets
 getDevices :: Maybe Token -> Maybe DevicesQuery -> Maybe Limit -> Maybe Offset -> Waziup [Device]
 getDevices tok mq mlimit moffset = do
   info "Get devices"
   entities <- liftOrion $ O.getEntities mq
   let devices = catMaybes $ map getDeviceFromEntity entities
-  ps <- getPerms tok
+  ps <- getPermsDevices tok
   let devices2 = filter (checkPermDevice DevicesView ps . devId) devices -- TODO limits
   return devices2
 
@@ -89,7 +69,7 @@ postDevice tok d@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
       let res = KC.Resource {
          resId      = Nothing,
          resName    = did,
-         resType    = Nothing,
+         resType    = Just "device",
          resUris    = [],
          resScopes  = map (\s -> Scope Nothing (fromScope s)) [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView],
          resOwner   = Owner Nothing username,

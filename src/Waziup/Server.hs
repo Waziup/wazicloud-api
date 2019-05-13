@@ -16,6 +16,8 @@ import           Waziup.Actuators
 import           Waziup.Users
 import           Waziup.Socials
 import           Waziup.Notifs
+import           Waziup.Gateways
+import           Waziup.Auth
 import qualified Keycloak.Types as KC
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
@@ -65,7 +67,9 @@ serverDocs = hoistDocs $ swaggerSchemaUIServer swaggerDoc
 
 -- Authentication server
 authServer :: ServerT AuthAPI Waziup
-authServer = getPerms
+authServer = getPermsDevices
+        :<|> getPermsProjects
+        :<|> getPermsGateways
         :<|> postAuth
 
 -- Devices servers
@@ -98,7 +102,13 @@ sensorDataServer = getDatapoints
 
 -- Gateways server
 gatewaysServer :: ServerT GatewaysAPI Waziup
-gatewaysServer = error "Not yet implemented"
+gatewaysServer = getGateways
+            :<|> postGateway
+            :<|> getGateway
+            :<|> deleteGateway
+            :<|> putGatewayTunnel
+            :<|> deleteGatewayTunnel
+            
 
 -- Actuators server
 actuatorsServer :: ServerT ActuatorsAPI Waziup
@@ -142,6 +152,7 @@ projectsServer = getProjects
             :<|> deleteProject
             :<|> putProjectDevices
             :<|> putProjectGateways
+            :<|> putProjectName
 
 -- ontologies server
 ontologiesServer :: ServerT OntologiesAPI Waziup

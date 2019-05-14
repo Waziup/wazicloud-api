@@ -173,7 +173,7 @@ postSensorValue did sid senVal@(SensorValue v ts dr) = do
   info $ convertString $ "Post device " <> (unDeviceId did) <> ", sensor " <> (unSensorId sid) <> ", value: " <> (convertString $ show senVal)
   ent <- liftOrion (O.getEntity $ toEntityId did)
   let mdevice = getDeviceFromEntity ent
-  case L.find (\s -> (senId s) == sid) (devSensors $ fromJust mdevice) of
+  case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors $ fromJust mdevice) of
       Just sensor -> do
         liftOrion (O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senValue = Just senVal}))
         runMongo (postDatapoint $ Datapoint did sid v ts dr)
@@ -186,7 +186,7 @@ putActuatorValue did aid actVal = do
   info $ convertString $ "Post device " <> (unDeviceId did) <> ", actuator " <> (unActuatorId aid) <> ", value: " <> (convertString $ show actVal)
   ent <- liftOrion (O.getEntity $ toEntityId did)
   let mdevice = getDeviceFromEntity ent
-  case L.find (\a -> (actId a) == aid) (devActuators $ fromJust mdevice) of
+  case L.find (\a -> (actId a) == aid) (maybeToList' $ devActuators $ fromJust mdevice) of
       Just act -> do
         liftOrion (O.postAttribute (toEntityId did) $ getAttFromActuator (act {actValue = Just actVal}))
         return ()

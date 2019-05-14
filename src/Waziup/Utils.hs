@@ -86,4 +86,6 @@ fromKCError KC.EmptyError = err500 {errBody = "EmptyError"}
 (.~?) :: Setter s t b b -> Maybe b -> s -> t
 (.~?) x y =  x %~ (\v -> fromMaybe v y)
 
-
+maybeToList' :: Maybe [a] -> [a]
+maybeToList' (Just a) = a
+maybeToList' Nothing = []

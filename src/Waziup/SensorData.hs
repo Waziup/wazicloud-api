@@ -42,7 +42,7 @@ getDatapoints tok did sid limit offset sort dateFrom dateTo calibEn = do
     debug "Permission granted, returning datapoints"
     res <- runMongo $ getDatapointsMongo did sid limit offset sort dateFrom dateTo
     let calib = if (isJust sid) 
-        then case L.find (\s -> (senId s) == fromJust sid) (devSensors device) of
+        then case L.find (\s -> (senId s) == fromJust sid) (maybeToList' $ devSensors device) of
            Just sen -> senCalib sen
            Nothing -> Nothing
         else Nothing

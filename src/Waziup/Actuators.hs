@@ -25,7 +25,7 @@ getActuators tok did = do
     debug "Check permissions"
     liftKeycloak tok $ checkPermission keyId (fromScope DevicesView)
     debug "Permission granted, returning actuators"
-    return $ devActuators device
+    return $ maybeToList' $ devActuators device
 
 postActuator :: Maybe Token -> DeviceId -> Actuator -> Waziup NoContent
 postActuator tok did actuator = do
@@ -45,7 +45,7 @@ getActuator tok did aid = do
      debug "Check permissions"
      liftKeycloak tok $ checkPermission keyId (fromScope DevicesView)
      debug "Permission granted, returning actuator"
-     case L.find (\s -> actId s == aid) (devActuators device) of
+     case L.find (\s -> actId s == aid) (maybeToList' $ devActuators device) of
        Just act -> return act
        Nothing -> do 
          warn "Actuator not found"
@@ -86,7 +86,7 @@ putActuatorValue mtok did aid actVal = do
      debug "Check permissions"
      liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
      debug "Permission granted, returning actuator"
-     case L.find (\s -> actId s == aid) (devActuators device) of
+     case L.find (\s -> actId s == aid) (maybeToList' $ devActuators device) of
        Just act -> do
          liftOrion $ O.postAttribute (toEntityId did) $ getAttFromActuator (act {actValue = Just actVal})
          publishActuatorValue did aid actVal
@@ -101,7 +101,7 @@ updateActuatorField mtok did aid w = do
     debug "Check permissions"
     liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Permission granted, updating actuator"
-    case L.find (\s -> (actId s) == aid) (devActuators device) of
+    case L.find (\s -> (actId s) == aid) (maybeToList' $ devActuators device) of
       Just act -> do
         w act
         return NoContent

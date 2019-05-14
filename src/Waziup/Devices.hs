@@ -158,8 +158,8 @@ getDeviceFromEntity (O.Entity (EntityId eId) eType attrs) =
                        devVisibility   = fromSimpleAttribute (AttributeId "visibility") attrs >>= toVisibility,
                        devDateCreated  = fromSimpleAttribute (AttributeId "dateCreated") attrs >>= parseISO8601.unpack,
                        devDateModified = fromSimpleAttribute (AttributeId "dateModified") attrs >>= parseISO8601.unpack,
-                       devSensors      = mapMaybe getSensorFromAttribute (toList attrs),
-                       devActuators    = mapMaybe getActuatorFromAttribute (toList attrs),
+                       devSensors      = Just $ mapMaybe getSensorFromAttribute (toList attrs),
+                       devActuators    = Just $ mapMaybe getActuatorFromAttribute (toList attrs),
                        devKeycloakId   = ResourceId <$> O.fromSimpleAttribute (AttributeId "keycloak_id") attrs}
   else Nothing
 
@@ -239,8 +239,8 @@ getEntityFromDevice (Device (DeviceId sid) sgid sname sloc sdom svis sensors act
                                                            getSimpleAttr (AttributeId "keycloak_id") <$> (unResId <$> skey),
                                                            getSimpleAttr (AttributeId "visibility")  <$> (fromVisibility <$> svis),
                                                            getLocationAttr               <$> sloc] <>
-                                                           map getAttFromSensor sensors <>
-                                                           map getAttFromActuator acts
+                                                           map getAttFromSensor (maybeToList' sensors) <>
+                                                           map getAttFromActuator (maybeToList' acts)
 
 getLocationAttr :: Location -> (O.AttributeId, O.Attribute)
 getLocationAttr (Location (Latitude lat) (Longitude lon)) = (AttributeId "location", O.Attribute "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) M.empty)
@@ -297,7 +297,7 @@ postDatapointFromSensor did (Sensor sid _ _ _ _ (Just (SensorValue v t rt)) _) =
 postDatapointFromSensor did _ = return ()
 
 postDatapointsFromDevice :: Device -> Action IO ()
-postDatapointsFromDevice (Device did _ _ _ _ _ ss _ _ _ _ _) = void $ forM ss $ postDatapointFromSensor did
+postDatapointsFromDevice (Device did _ _ _ _ _ ss _ _ _ _ _) = void $ forM (maybeToList' ss) $ postDatapointFromSensor did
 postDatapointsFromDevice _ = return ()
 
 deleteSensorDatapoints :: DeviceId -> SensorId -> Action IO ()

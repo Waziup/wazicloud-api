@@ -23,7 +23,7 @@ getSensors tok did = do
     debug "Check permissions"
     liftKeycloak tok $ checkPermission keyId (fromScope DevicesView)
     debug "Permission granted, returning sensors"
-    return $ devSensors device
+    return $ maybeToList' $ devSensors device
 
 postSensor :: Maybe Token -> DeviceId -> Sensor -> Waziup NoContent
 postSensor tok did sensor = do
@@ -43,7 +43,7 @@ getSensor tok did sid = do
      debug "Check permissions"
      liftKeycloak tok $ checkPermission keyId (fromScope DevicesView)
      debug "Permission granted, returning sensor"
-     case L.find (\s -> senId s == sid) (devSensors device) of
+     case L.find (\s -> senId s == sid) (maybeToList' $ devSensors device) of
        Just sensor -> return sensor
        Nothing -> do 
          warn "Sensor not found"
@@ -98,7 +98,7 @@ putSensorValue mtok did sid senVal@(SensorValue v ts dr) = do
     debug "Check permissions"
     liftKeycloak mtok $ checkPermission keyId (fromScope DevicesDataCreate)
     debug "Permission granted, updating sensor"
-    case L.find (\s -> (senId s) == sid) (devSensors device) of
+    case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors device) of
       Just sensor -> do
         liftOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senValue = Just senVal})
         runMongo $ postDatapoint $ Datapoint did sid v ts dr
@@ -114,7 +114,7 @@ updateSensorField mtok did sid w = do
     debug "Check permissions"
     liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Permission granted, updating sensor"
-    case L.find (\s -> (senId s) == sid) (devSensors device) of
+    case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors device) of
       Just sensor -> do
         w sensor
         return NoContent

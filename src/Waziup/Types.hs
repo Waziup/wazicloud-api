@@ -271,8 +271,8 @@ data Device = Device
   , devLocation     :: Maybe Location
   , devDomain       :: Maybe Domain     -- ^ the domain of this device.
   , devVisibility   :: Maybe Visibility
-  , devSensors      :: [Sensor]
-  , devActuators    :: [Actuator]
+  , devSensors      :: Maybe [Sensor]
+  , devActuators    :: Maybe [Actuator]
   , devOwner        :: Maybe Username   -- ^ owner of the device node (output only)
   , devDateCreated  :: Maybe UTCTime    -- ^ creation date of the device (output only)
   , devDateModified :: Maybe UTCTime    -- ^ last update date of the device node (output only)
@@ -286,8 +286,8 @@ defaultDevice = Device
   , devLocation     = Just defaultLocation 
   , devDomain       = Just "waziup" 
   , devVisibility   = Just Public
-  , devSensors      = [defaultSensor]
-  , devActuators    = [defaultActuator]
+  , devSensors      = Just [defaultSensor]
+  , devActuators    = Just [defaultActuator]
   , devOwner        = Nothing
   , devDateCreated  = Nothing
   , devDateModified = Nothing

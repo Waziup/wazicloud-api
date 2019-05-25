@@ -83,7 +83,7 @@ main = do
   let port = conf ^. serverConf.serverPort
   let mqttPort = conf ^. serverConf.serverPortMQTT
   let waziupInfo = WaziupInfo pool conf ontologies
-  Main.info $ convertString $ "HTTP API is running on " <> host <> "/api/v1"
+  Main.info $ convertString $ "HTTP API is running on " <> host <> "/api/v2"
   Main.info $ convertString $ "MQTT is running on port " <> (show mqttPort)
   Main.info $ convertString $ "Documentation is on " <> host <> "/docs"
   forkIO $ mqttProxy waziupInfo

@@ -33,7 +33,7 @@ import           Data.AesonBson
 getDevices :: Maybe Token -> Maybe DevicesQuery -> Maybe Limit -> Maybe Offset -> Waziup [Device]
 getDevices tok mq mlimit moffset = do
   info "Get devices"
-  entities <- liftOrion $ O.getEntities mq
+  entities <- liftOrion $ O.getEntities mq (Just "Device")
   let devices = catMaybes $ map getDeviceFromEntity entities
   ps <- getPermsDevices tok
   let devices2 = filter (checkPermDevice DevicesView ps . devId) devices -- TODO limits
@@ -82,7 +82,7 @@ postDevice tok d@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
           return NoContent
         Left e -> do
           err $ "Keycloak error: " ++ (show e) ++ " deleting device"
-          (_ :: Either ServantErr ()) <- C.try $ liftOrion $ O.deleteEntity (EntityId did)
+          (_ :: Either ServantErr ()) <- C.try $ liftOrion $ O.deleteEntity (EntityId did) (Just "Device")
           throwError e
     Left (err :: ServantErr)  -> do
       warn "Orion error"
@@ -97,7 +97,7 @@ deleteDevice tok did = do
     debug "Delete Keycloak resource"
     liftKeycloak tok $ deleteResource keyId
     debug "Delete Orion resource"
-    liftOrion $ O.deleteEntity (toEntityId did)
+    liftOrion $ O.deleteEntity (toEntityId did) (Just "Device")
     debug "Delete Mongo resources"
     runMongo $ deleteDeviceDatapoints did
     return NoContent
@@ -267,7 +267,7 @@ getAttFromActuator (Actuator (ActuatorId actId) name ak avt av) =
 
 withKCId :: DeviceId -> ((ResourceId, Device) -> Waziup a) -> Waziup a
 withKCId (DeviceId did) f = do
-  mdevice <- getDeviceFromEntity <$> liftOrion (O.getEntity $ EntityId did)
+  mdevice <- getDeviceFromEntity <$> (liftOrion $ O.getEntity (EntityId did) (Just "Device"))
   case mdevice of
     Just device -> do
       case (devKeycloakId device) of
@@ -275,7 +275,9 @@ withKCId (DeviceId did) f = do
         Nothing -> do
           error "Device: KC Id not present"
           throwError err500 {errBody = "Device: KC Id not present"}
-    Nothing -> throwError err500 {errBody = "Device: wrong entity type"}
+    Nothing -> do
+      err "Device: wrong entity type"
+      throwError err500 {errBody = "Device: wrong entity type"}
 
 toEntityId :: DeviceId -> EntityId
 toEntityId (DeviceId did) = EntityId did

@@ -37,16 +37,19 @@ import           Debug.Trace
 
 -- * Entities
 
-getEntities :: Maybe Text -> Orion [Entity]
-getEntities mq = do
+getEntities :: Maybe Text -> Maybe EntityType -> Orion [Entity]
+getEntities mq mtyp = do
   let qq = case mq of
        Just q -> [("q", Just $ encodeUtf8 q)]
        Nothing -> []
-  let (query :: Query) = qq ++ [("limit", Just $ encodeUtf8 "1000")]
+  let typ = case mtyp of
+       Just t -> [("type", Just $ encodeUtf8 t)]
+       Nothing -> []
+  let (query :: Query) = typ ++ qq ++ [("limit", Just $ encodeUtf8 "1000")]
   body <- orionGet (decodeUtf8 $ "/v2/entities" <> (renderQuery True query))
   case eitherDecode body of
     Right ret -> do
-      debug $ "Orion success: " ++ (show ret) 
+      --debug $ "Orion success: " ++ (show ret) 
       return ret
     Left (e :: String) -> do
       debug $ "Orion parse error: " ++ (show e) 
@@ -59,9 +62,12 @@ postEntity e = do
   res <- orionPost "/v2/entities" (toJSON e)
   return $ SubId $ convertString res
 
-getEntity :: EntityId -> Orion Entity
-getEntity (EntityId eid) = do
-  body <- orionGet ("/v2/entities/" <> eid)
+getEntity :: EntityId -> Maybe EntityType -> Orion Entity
+getEntity (EntityId eid) mtyp = do
+  let typ = case mtyp of
+       Just t -> [("type", Just $ encodeUtf8 t)]
+       Nothing -> []
+  body <- orionGet ("/v2/entities/" <> eid <> (convertString $ renderQuery True typ))
   case eitherDecode body of
     Right ret -> do
       debug $ "Orion success: " ++ (show ret) 
@@ -70,8 +76,12 @@ getEntity (EntityId eid) = do
       debug $ "Orion parse error: " ++ (show e) 
       throwError $ ParseError $ pack (show e)
 
-deleteEntity :: EntityId -> Orion ()
-deleteEntity (EntityId eid) = orionDelete ("/v2/entities/" <> eid)
+deleteEntity :: EntityId -> Maybe EntityType -> Orion ()
+deleteEntity (EntityId eid) mtyp = do
+  let typ = case mtyp of
+       Just t -> [("type", Just $ encodeUtf8 t)]
+       Nothing -> []
+  orionDelete ("/v2/entities/" <> eid <> (convertString $ renderQuery True typ))
 
 postAttribute :: EntityId -> (AttributeId, Attribute) -> Orion ()
 postAttribute (EntityId eid) (attId, att) = do

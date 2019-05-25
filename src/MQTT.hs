@@ -171,7 +171,7 @@ decodePub topic body = do
 postSensorValue :: DeviceId -> SensorId -> SensorValue -> Waziup ()
 postSensorValue did sid senVal@(SensorValue v ts dr) = do 
   info $ convertString $ "Post device " <> (unDeviceId did) <> ", sensor " <> (unSensorId sid) <> ", value: " <> (convertString $ show senVal)
-  ent <- liftOrion (O.getEntity $ toEntityId did)
+  ent <- liftOrion $ O.getEntity (toEntityId did) (Just "Device")
   let mdevice = getDeviceFromEntity ent
   case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors $ fromJust mdevice) of
       Just sensor -> do
@@ -184,7 +184,7 @@ postSensorValue did sid senVal@(SensorValue v ts dr) = do
 putActuatorValue :: DeviceId -> ActuatorId -> JSON.Value -> Waziup ()
 putActuatorValue did aid actVal = do
   info $ convertString $ "Post device " <> (unDeviceId did) <> ", actuator " <> (unActuatorId aid) <> ", value: " <> (convertString $ show actVal)
-  ent <- liftOrion (O.getEntity $ toEntityId did)
+  ent <- liftOrion $ O.getEntity (toEntityId did) (Just "Device")
   let mdevice = getDeviceFromEntity ent
   case L.find (\a -> (actId a) == aid) (maybeToList' $ devActuators $ fromJust mdevice) of
       Just act -> do

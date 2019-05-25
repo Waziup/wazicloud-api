@@ -1040,8 +1040,7 @@ data Project = Project
     pName       :: Text,
     pOwner      :: Maybe Username,
     pDevices    :: Either [DeviceId] [Device],
-    pGateways   :: Either [GatewayId] [Gateway],
-    pKeycloakId :: Maybe ResourceId
+    pGateways   :: Either [GatewayId] [Gateway]
   } deriving (Show, Eq, Generic)
 
 defaultProject = Project
@@ -1049,25 +1048,22 @@ defaultProject = Project
     pName       = "MyProject",
     pOwner      = Nothing,
     pDevices    = Left [],
-    pGateways   = Left [],
-    pKeycloakId = Nothing
+    pGateways   = Left []
   }
 
 instance ToJSON Project where
-   toJSON (Project pId pName pOwner (Left pDev) (Left pGate) pKeycloakId) = 
+   toJSON (Project pId pName pOwner (Left pDev) (Left pGate)) = 
      object $ (maybe [] (\id -> [("id", toJSON id)]) pId) ++
+              (maybe [] (\own -> [("owner", toJSON own)]) pOwner) ++
                ["name"     .= pName,
-                "owner"    .= pOwner,
                 "devices"  .= pDev,
-                "gateways" .= pGate,
-                "keycloak_id" .= pKeycloakId] 
-   toJSON (Project pId pName pOwner (Right pDev) (Right pGate) pKeycloakId) = 
+                "gateways" .= pGate] 
+   toJSON (Project pId pName pOwner (Right pDev) (Right pGate)) = 
      object $ (maybe [] (\id -> [("id", toJSON id)]) pId) ++
+              (maybe [] (\own -> [("owner", toJSON own)]) pOwner) ++
                ["name"     .= pName,
-                "owner"    .= pOwner,
                 "devices"  .= pDev,
-                "gateways" .= pGate,
-                "keycloak_id" .= pKeycloakId] 
+                "gateways" .= pGate] 
 
 instance FromJSON Project where
   parseJSON (Object v) = Project <$> v .:? "_id" 
@@ -1077,7 +1073,6 @@ instance FromJSON Project where
                                      <|> (Right <$> v .: "devices"))
                                  <*> (   (Left  <$> v .: "gateways")
                                      <|> (Right <$> v .: "gateways"))
-                                 <*> v .:? "keycloak_id"
   parseJSON _          = mzero 
 
 instance ToSchema Project where

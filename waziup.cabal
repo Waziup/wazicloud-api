@@ -90,4 +90,5 @@ Executable waziup-servant
                      , twitter-conduit
                      , twitter-types
                      , resource-pool
+                     , extra
   default-language:    Haskell2010

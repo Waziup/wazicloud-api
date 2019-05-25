@@ -14,6 +14,7 @@ import qualified Keycloak as K (Scope(..))
 import           Control.Monad.Except (throwError, catchError, MonadError)
 import           Control.Monad.IO.Class
 import           Control.Monad
+import           Control.Monad.Extra
 import           Data.String.Conversions
 import           Data.Either
 import           Data.Maybe
@@ -43,39 +44,41 @@ getProjects tok mfull = do
     Just True -> mapM (getFullProject tok) pjs 
     _ -> return pjs
   ps <- getPermsProjects tok
-  let projects2 = filter (checkPermProject ProjectsView ps . fromJust . pId) projects -- TODO limits
+  let projects2 = filter (checkPermProject' ProjectsView ps . fromJust . pId) projects -- TODO limits
   return projects2
 
-checkPermProject :: Scope -> [Perm] -> ProjectId -> Bool
-checkPermProject scope perms dev = any (\p -> (permResource p) == (unProjectId $ dev) && scope `elem` (permScopes p)) perms
+checkPermProject :: Maybe Token -> Scope -> ProjectId -> Waziup ()
+checkPermProject tok scope pid = do
+  ps <- getPermsProjects tok
+  debug $ "perms: " ++ (show ps)
+  if checkPermProject' scope ps pid
+     then return ()
+     else throwError err403 {errBody = "Forbidden: Cannot access project"}
 
+checkPermProject' :: Scope -> [Perm] -> ProjectId -> Bool
+checkPermProject' scope perms pId = any (\p -> (permResource p) == (unProjectId $ pId) && scope `elem` (permScopes p)) perms
 
 postProject :: Maybe Token -> Project -> Waziup ProjectId
 postProject tok proj = do
   info "Post project"
+  res <- runMongo $ do
+    let ob = case toJSON $ proj of
+         JSON.Object o -> o
+         _ -> error "Wrong object format"
+    insert "projects" (bsonify ob)
   let username = case tok of
        Just t -> getUsername t
        Nothing -> "guest"
   let kcres = KC.Resource {
          resId      = Nothing,
-         resName    = pName proj,
+         resName    = convertString $ show res,
          resType    = Just "project",
          resUris    = [],
          resScopes  = map (\s -> K.Scope Nothing (fromScope s)) [ProjectsView, ProjectsUpdate, ProjectsDelete],
          resOwner   = Owner Nothing username,
          resOwnerManagedAccess = True,
          resAttributes = []}
-  keyRes <- try $ liftKeycloak tok $ createResource kcres
-  res <- case keyRes of
-    Right (ResourceId resId) -> do
-      runMongo $ do
-        let ob = case toJSON proj of
-             JSON.Object o -> o
-             _ -> error "Wrong object format"
-        insert "projects" (bsonify ob)
-    Left e -> do
-      err $ "Keycloak error: " ++ (show e)
-      throwError e
+  liftKeycloak tok $ createResource kcres
   return $ ProjectId $ convertString $ show res
 
 
@@ -86,8 +89,8 @@ getProject tok pid mfull = do
   p <- case mp of
     Just p -> return p
     Nothing -> throwError err404 {errBody = "Cannot get project: id not found"}
-  debug "Check permissions"
-  liftKeycloak tok $ checkPermission (fromJustNote "" $ pKeycloakId p)  (fromScope ProjectsView)
+  debug $ "Check permissions"
+  checkPermProject tok ProjectsView (fromJust $ pId p) 
   case mfull of
     Just True -> getFullProject tok p 
     _ -> return p
@@ -95,6 +98,7 @@ getProject tok pid mfull = do
 deleteProject :: Maybe Token -> ProjectId -> Waziup NoContent
 deleteProject tok pid = do
   info "Delete project"
+  checkPermProject tok ProjectsDelete pid 
   res <- runMongo $ deleteProjectMongo pid
   if res
     then return NoContent
@@ -103,6 +107,7 @@ deleteProject tok pid = do
 putProjectDevices :: Maybe Token -> ProjectId -> [DeviceId] -> Waziup NoContent
 putProjectDevices tok pid ids = do
   info "Put project devices"
+  checkPermProject tok ProjectsUpdate pid 
   res <- runMongo $ putProjectDevicesMongo pid ids
   if res
     then return NoContent
@@ -111,16 +116,18 @@ putProjectDevices tok pid ids = do
 putProjectGateways :: Maybe Token -> ProjectId -> [GatewayId] -> Waziup NoContent
 putProjectGateways tok pid ids = do
   info "Put project gateways"
+  checkPermProject tok ProjectsUpdate pid 
   res <- runMongo $ putProjectGatewaysMongo pid ids
   if res
     then return NoContent
     else throwError err404 {errBody = "Cannot update project: id not found"}
 
 putProjectName :: Maybe Token -> ProjectId -> Text -> Waziup NoContent
-putProjectName tok (ProjectId pid) name = do
+putProjectName tok pid name = do
   info "Put project name"
+  checkPermProject tok ProjectsUpdate pid
   res <- runMongo $ do 
-    let sel = ["_id" =: (ObjId $ read $ convertString pid)]
+    let sel = ["_id" =: (ObjId $ read $ convertString $ unProjectId pid)]
     mdoc <- findOne (select sel "projects")
     case mdoc of
        Just _ -> do
@@ -134,7 +141,7 @@ putProjectName tok (ProjectId pid) name = do
 -- * Helpers
 
 getFullProject :: Maybe Token -> Project -> Waziup Project
-getFullProject tok p@(Project _ _ _ (Left devids) (Left gtwids) _) = do
+getFullProject tok p@(Project _ _ _ (Left devids) (Left gtwids)) = do
   devs <- mapM (try . getDevice tok) devids
   gtwids <- mapM (try . getGateway tok) gtwids
   return $ p {pDevices = Right $ rights devs, pGateways = Right $ rights gtwids}

@@ -62,7 +62,9 @@ getNotif tok (NotifId id) = do
   let mnotif = getNotifFromSub sub
   case mnotif of
     Just n -> return n
-    Nothing -> throwError err400 {errBody = "Not a Waziup notification"}
+    Nothing -> do
+      warn "Not a Waziup notification"
+      throwError err400 {errBody = "Not a Waziup notification"}
 
 deleteNotif :: Maybe Token -> NotifId -> Waziup NoContent
 deleteNotif tok (NotifId id) = do

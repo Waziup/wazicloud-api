@@ -41,7 +41,9 @@ getPermsDevices tok = do
   info "Get devices permissions"
   getPerms tok [DevicesUpdate,
                 DevicesView,
-                DevicesDelete]
+                DevicesDelete,
+                DevicesDataView,
+                DevicesDataCreate]
 
 -- | Get all permissions. If no token is passed, the guest token will be used.
 getPermsProjects :: Maybe Token -> Waziup [Perm]

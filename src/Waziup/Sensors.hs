@@ -33,7 +33,7 @@ postSensor tok did sensor = do
     liftKeycloak tok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Permission granted, creating sensor"
     let att = getAttFromSensor sensor
-    liftOrion $ O.postAttribute (toEntityId did) att 
+    liftOrion $ O.postAttribute (toEntityId did) (Just "Device") att 
     return NoContent
  
 getSensor :: Maybe Token -> DeviceId -> SensorId -> Waziup Sensor
@@ -56,7 +56,7 @@ deleteSensor tok did sid = do
     debug "Check permissions"
     liftKeycloak tok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Permission granted, deleting sensor"
-    liftOrion $ O.deleteAttribute (toEntityId did) (toAttributeId sid)
+    liftOrion $ O.deleteAttribute (toEntityId did) (Just "Device") (toAttributeId sid)
     debug "Deleting Mongo datapoints"
     runMongo $ deleteSensorDatapoints did sid
     return NoContent
@@ -65,31 +65,31 @@ putSensorName :: Maybe Token -> DeviceId -> SensorId -> SensorName -> Waziup NoC
 putSensorName mtok did sid name = do
   info $ "Put sensor name: " ++ (show name)
   updateSensorField mtok did sid $ \sensor -> do 
-    liftOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senName = Just name})
+    liftOrion $ O.postAttribute (toEntityId did) (Just "Device") (getAttFromSensor (sensor {senName = Just name}))
 
 putSensorSensorKind :: Maybe Token -> DeviceId -> SensorId -> SensorKindId -> Waziup NoContent
 putSensorSensorKind mtok did sid sk = do
   info $ "Put sensor sensor kind: " ++ (show sk)
   updateSensorField mtok did sid $ \sensor -> do 
-    liftOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senSensorKind = Just sk})
+    liftOrion $ O.postAttribute (toEntityId did) (Just "Device") (getAttFromSensor (sensor {senSensorKind = Just sk}))
 
 putSensorQuantityKind :: Maybe Token -> DeviceId -> SensorId -> QuantityKindId -> Waziup NoContent
 putSensorQuantityKind mtok did sid qk = do
   info $ "Put sensor quantity kind: " ++ (show qk)
   updateSensorField mtok did sid $ \sensor -> do 
-    liftOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senQuantityKind = Just qk})
+    liftOrion $ O.postAttribute (toEntityId did) (Just "Device") (getAttFromSensor (sensor {senQuantityKind = Just qk}))
 
 putSensorUnit :: Maybe Token -> DeviceId -> SensorId -> UnitId -> Waziup NoContent
 putSensorUnit mtok did sid u = do
   info $ "Put sensor unit: " ++ (show u)
   updateSensorField mtok did sid $ \sensor -> do 
-    liftOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senUnit = Just u})
+    liftOrion $ O.postAttribute (toEntityId did) (Just "Device") (getAttFromSensor (sensor {senUnit = Just u}))
 
 putSensorCalib :: Maybe Token -> DeviceId -> SensorId -> Calib -> Waziup NoContent
 putSensorCalib mtok did sid cal = do
   info $ "Put sensor cal: " ++ (show cal)
   updateSensorField mtok did sid $ \sensor -> do 
-    liftOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senCalib = Just cal})
+    liftOrion $ O.postAttribute (toEntityId did) (Just "Device") (getAttFromSensor (sensor {senCalib = Just cal}))
 
 putSensorValue :: Maybe Token -> DeviceId -> SensorId -> SensorValue -> Waziup NoContent
 putSensorValue mtok did sid senVal@(SensorValue v ts dr) = do
@@ -100,7 +100,7 @@ putSensorValue mtok did sid senVal@(SensorValue v ts dr) = do
     debug "Permission granted, updating sensor"
     case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors device) of
       Just sensor -> do
-        liftOrion $ O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senValue = Just senVal})
+        liftOrion $ O.postAttribute (toEntityId did) (Just "Device") (getAttFromSensor (sensor {senValue = Just senVal}))
         runMongo $ postDatapoint $ Datapoint did sid v ts dr
         publishSensorValue did sid senVal
         return NoContent

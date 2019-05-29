@@ -83,20 +83,29 @@ deleteEntity (EntityId eid) mtyp = do
        Nothing -> []
   orionDelete ("/v2/entities/" <> eid <> (convertString $ renderQuery True typ))
 
-postAttribute :: EntityId -> (AttributeId, Attribute) -> Orion ()
-postAttribute (EntityId eid) (attId, att) = do
+postAttribute :: EntityId -> Maybe EntityType -> (AttributeId, Attribute) -> Orion ()
+postAttribute (EntityId eid) mtyp (attId, att) = do
   debug $ "Post attribute: " <> (convertString $ JSON.encode att)
-  void $ orionPost ("/v2/entities/" <> eid <> "/attrs") (toJSON $ singleton attId att)
+  let typ = case mtyp of
+       Just t -> [("type", Just $ encodeUtf8 t)]
+       Nothing -> []
+  void $ orionPost ("/v2/entities/" <> eid <> "/attrs" <> (convertString $ renderQuery True typ)) (toJSON $ singleton attId att)
 
-postTextAttributeOrion :: EntityId -> AttributeId -> Text -> Orion ()
-postTextAttributeOrion (EntityId eid) attId val = do
+postTextAttributeOrion :: EntityId -> Maybe EntityType -> AttributeId -> Text -> Orion ()
+postTextAttributeOrion (EntityId eid) mtyp attId val = do
   debug $ convertString $ "put attribute in Orion: " <> val
-  void $ orionPost ("/v2/entities/" <> eid <> "/attrs") (toJSON $ fromList [getSimpleAttr attId val])
+  let typ = case mtyp of
+       Just t -> [("type", Just $ encodeUtf8 t)]
+       Nothing -> []
+  void $ orionPost ("/v2/entities/" <> eid <> "/attrs" <> (convertString $ renderQuery True typ)) (toJSON $ fromList [getSimpleAttr attId val])
 
-deleteAttribute :: EntityId -> AttributeId -> Orion ()
-deleteAttribute (EntityId eid) (AttributeId attId) = do
+deleteAttribute :: EntityId -> Maybe EntityType -> AttributeId -> Orion ()
+deleteAttribute (EntityId eid) mtyp (AttributeId attId) = do
   debug $ "Delete attribute"
-  orionDelete ("/v2/entities/" <> eid <> "/attrs/" <> attId)
+  let typ = case mtyp of
+       Just t -> [("type", Just $ encodeUtf8 t)]
+       Nothing -> []
+  orionDelete ("/v2/entities/" <> eid <> "/attrs/" <> attId <> (convertString $ renderQuery True typ))
 
 
 -- * Subscriptions

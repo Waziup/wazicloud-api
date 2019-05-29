@@ -78,7 +78,7 @@ postDevice tok d@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
       keyRes <- C.try $ liftKeycloak tok $ createResource res
       case keyRes of
         Right (ResourceId resId) -> do
-          liftOrion $ O.postTextAttributeOrion (EntityId did) (AttributeId "keycloak_id") resId
+          liftOrion $ O.postTextAttributeOrion (EntityId did) (Just "Device") (AttributeId "keycloak_id") resId
           return NoContent
         Left e -> do
           err $ "Keycloak error: " ++ (show e) ++ " deleting device"
@@ -111,7 +111,7 @@ putDeviceLocation mtok did loc = do
 
     debug "Update Orion resource"
     let att = getLocationAttr loc
-    liftOrion $ O.postAttribute (toEntityId did) att
+    liftOrion $ O.postAttribute (toEntityId did) (Just "Device") att
   return NoContent
 
 putDeviceName :: Maybe Token -> DeviceId -> DeviceName -> Waziup NoContent
@@ -121,7 +121,7 @@ putDeviceName mtok did name = do
     debug "Check permissions"
     liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Update Orion resource"
-    liftOrion $ O.postTextAttributeOrion (toEntityId did) (AttributeId "name") name
+    liftOrion $ O.postTextAttributeOrion (toEntityId did) (Just "Device") (AttributeId "name") name
   return NoContent
 
 putDeviceGatewayId :: Maybe Token -> DeviceId -> GatewayId -> Waziup NoContent
@@ -131,7 +131,7 @@ putDeviceGatewayId mtok did (GatewayId gid) = do
     debug "Check permissions"
     liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Update Orion resource"
-    liftOrion $ O.postTextAttributeOrion (toEntityId did) (AttributeId "gateway_id") gid
+    liftOrion $ O.postTextAttributeOrion (toEntityId did) (Just "Device") (AttributeId "gateway_id") gid
   return NoContent
 
 putDeviceVisibility :: Maybe Token -> DeviceId -> Visibility -> Waziup NoContent
@@ -141,7 +141,7 @@ putDeviceVisibility mtok did vis = do
     debug "Check permissions"
     liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Update Orion resource"
-    liftOrion $ O.postTextAttributeOrion (toEntityId did) (AttributeId "visibility") (fromVisibility vis)
+    liftOrion $ O.postTextAttributeOrion (toEntityId did) (Just "Device") (AttributeId "visibility") (fromVisibility vis)
   return NoContent
 
 -- * From Orion to Waziup types
@@ -173,7 +173,6 @@ getLocation attrs = do
 
 getSensorFromAttribute :: (O.AttributeId, O.Attribute) -> Maybe Sensor
 getSensorFromAttribute (AttributeId name, O.Attribute aType val mets) =
-  
   if (aType == "Sensor") 
     then Just $ Sensor { senId            = SensorId name,
                          senName          = fromSimpleMetadata (MetadataId "name") mets,

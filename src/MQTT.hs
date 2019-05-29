@@ -175,7 +175,7 @@ postSensorValue did sid senVal@(SensorValue v ts dr) = do
   let mdevice = getDeviceFromEntity ent
   case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors $ fromJust mdevice) of
       Just sensor -> do
-        liftOrion (O.postAttribute (toEntityId did) $ getAttFromSensor (sensor {senValue = Just senVal}))
+        liftOrion $ O.postAttribute (toEntityId did) (Just "Device") (getAttFromSensor (sensor {senValue = Just senVal}))
         runMongo (postDatapoint $ Datapoint did sid v ts dr)
         return ()
       Nothing -> do 
@@ -188,7 +188,7 @@ putActuatorValue did aid actVal = do
   let mdevice = getDeviceFromEntity ent
   case L.find (\a -> (actId a) == aid) (maybeToList' $ devActuators $ fromJust mdevice) of
       Just act -> do
-        liftOrion (O.postAttribute (toEntityId did) $ getAttFromActuator (act {actValue = Just actVal}))
+        liftOrion $ O.postAttribute (toEntityId did) (Just "Device") (getAttFromActuator (act {actValue = Just actVal}))
         return ()
       Nothing -> do 
         err "actuator not found"

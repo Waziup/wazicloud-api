@@ -294,6 +294,9 @@ defaultDevice = Device
   , devKeycloakId   = Nothing 
   }
 
+devTyp :: Maybe Text
+devTyp = Just "Device"
+
 instance ToJSON Device where
   toJSON = genericToJSON $ snakeDrop 3
 

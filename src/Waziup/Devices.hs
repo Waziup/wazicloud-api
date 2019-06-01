@@ -33,7 +33,7 @@ import           Data.AesonBson
 getDevices :: Maybe Token -> Maybe DevicesQuery -> Maybe Limit -> Maybe Offset -> Waziup [Device]
 getDevices tok mq mlimit moffset = do
   info "Get devices"
-  entities <- liftOrion $ O.getEntities mq (Just "Device")
+  entities <- liftOrion $ O.getEntities mq devTyp
   let devices = catMaybes $ map getDeviceFromEntity entities
   ps <- getPermsDevices tok
   let devices2 = filter (checkPermDevice DevicesView ps . devId) devices -- TODO limits
@@ -78,11 +78,11 @@ postDevice tok d@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
       keyRes <- C.try $ liftKeycloak tok $ createResource res
       case keyRes of
         Right (ResourceId resId) -> do
-          liftOrion $ O.postTextAttributeOrion (EntityId did) (Just "Device") (AttributeId "keycloak_id") resId
+          liftOrion $ O.postTextAttributeOrion (EntityId did) devTyp (AttributeId "keycloak_id") resId
           return NoContent
         Left e -> do
           err $ "Keycloak error: " ++ (show e) ++ " deleting device"
-          (_ :: Either ServantErr ()) <- C.try $ liftOrion $ O.deleteEntity (EntityId did) (Just "Device")
+          (_ :: Either ServantErr ()) <- C.try $ liftOrion $ O.deleteEntity (EntityId did) devTyp
           throwError e
     Left (err :: ServantErr)  -> do
       warn "Orion error"
@@ -97,7 +97,7 @@ deleteDevice tok did = do
     debug "Delete Keycloak resource"
     liftKeycloak tok $ deleteResource keyId
     debug "Delete Orion resource"
-    liftOrion $ O.deleteEntity (toEntityId did) (Just "Device")
+    liftOrion $ O.deleteEntity (toEntityId did) devTyp
     debug "Delete Mongo resources"
     runMongo $ deleteDeviceDatapoints did
     return NoContent
@@ -111,7 +111,7 @@ putDeviceLocation mtok did loc = do
 
     debug "Update Orion resource"
     let att = getLocationAttr loc
-    liftOrion $ O.postAttribute (toEntityId did) (Just "Device") att
+    liftOrion $ O.postAttribute (toEntityId did) devTyp att
   return NoContent
 
 putDeviceName :: Maybe Token -> DeviceId -> DeviceName -> Waziup NoContent
@@ -121,7 +121,7 @@ putDeviceName mtok did name = do
     debug "Check permissions"
     liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Update Orion resource"
-    liftOrion $ O.postTextAttributeOrion (toEntityId did) (Just "Device") (AttributeId "name") name
+    liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "name") name
   return NoContent
 
 putDeviceGatewayId :: Maybe Token -> DeviceId -> GatewayId -> Waziup NoContent
@@ -131,7 +131,7 @@ putDeviceGatewayId mtok did (GatewayId gid) = do
     debug "Check permissions"
     liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Update Orion resource"
-    liftOrion $ O.postTextAttributeOrion (toEntityId did) (Just "Device") (AttributeId "gateway_id") gid
+    liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "gateway_id") gid
   return NoContent
 
 putDeviceVisibility :: Maybe Token -> DeviceId -> Visibility -> Waziup NoContent
@@ -141,7 +141,7 @@ putDeviceVisibility mtok did vis = do
     debug "Check permissions"
     liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Update Orion resource"
-    liftOrion $ O.postTextAttributeOrion (toEntityId did) (Just "Device") (AttributeId "visibility") (fromVisibility vis)
+    liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "visibility") (fromVisibility vis)
   return NoContent
 
 -- * From Orion to Waziup types
@@ -266,7 +266,7 @@ getAttFromActuator (Actuator (ActuatorId actId) name ak avt av) =
 
 withKCId :: DeviceId -> ((ResourceId, Device) -> Waziup a) -> Waziup a
 withKCId (DeviceId did) f = do
-  mdevice <- getDeviceFromEntity <$> (liftOrion $ O.getEntity (EntityId did) (Just "Device"))
+  mdevice <- getDeviceFromEntity <$> (liftOrion $ O.getEntity (EntityId did) devTyp)
   case mdevice of
     Just device -> do
       case (devKeycloakId device) of

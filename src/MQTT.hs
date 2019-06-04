@@ -10,24 +10,24 @@ import           Data.Maybe
 import qualified Data.Text as T
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as LB
+import           Data.Conduit.Network
+import           Data.Conduit.Attoparsec (conduitParser, sinkParser)
+import           Data.Attoparsec.ByteString
 import           Control.Concurrent.STM
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 import           Control.Monad.Except (runExceptT)
 import           Control.Lens
+import           Control.Concurrent.Async (concurrently)
 import           System.Log.Logger
 import           Waziup.Types
 import           Waziup.Utils
 import           Waziup.Auth hiding (info, warn, debug, err)
-import           Orion as O hiding (info, warn, debug, err)
 import           Waziup.Devices hiding (info, warn, debug, err)
+import           Orion as O hiding (info, warn, debug, err)
 import           Network.MQTT.Client hiding (info, warn, debug, err, MQTTConfig)
 import qualified Network.MQTT.Types as T
 import           Conduit
-import           Data.Conduit.Network
-import           Control.Concurrent.Async (concurrently)
-import           Data.Conduit.Attoparsec (conduitParser, sinkParser)
-import           Data.Attoparsec.ByteString
 import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
 import           Servant.Server.Internal.Handler
 
@@ -172,8 +172,8 @@ postSensorValue :: DeviceId -> SensorId -> SensorValue -> Waziup ()
 postSensorValue did sid senVal@(SensorValue v ts dr) = do 
   info $ convertString $ "Post device " <> (unDeviceId did) <> ", sensor " <> (unSensorId sid) <> ", value: " <> (convertString $ show senVal)
   ent <- liftOrion $ O.getEntity (toEntityId did) devTyp
-  let mdevice = getDeviceFromEntity ent
-  case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors $ fromJust mdevice) of
+  let device = getDeviceFromEntity ent
+  case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors device) of
       Just sensor -> do
         liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromSensor (sensor {senValue = Just senVal}))
         runMongo (postDatapoint $ Datapoint did sid v ts dr)
@@ -185,8 +185,8 @@ putActuatorValue :: DeviceId -> ActuatorId -> JSON.Value -> Waziup ()
 putActuatorValue did aid actVal = do
   info $ convertString $ "Post device " <> (unDeviceId did) <> ", actuator " <> (unActuatorId aid) <> ", value: " <> (convertString $ show actVal)
   ent <- liftOrion $ O.getEntity (toEntityId did) devTyp
-  let mdevice = getDeviceFromEntity ent
-  case L.find (\a -> (actId a) == aid) (maybeToList' $ devActuators $ fromJust mdevice) of
+  let device = getDeviceFromEntity ent
+  case L.find (\a -> (actId a) == aid) (maybeToList' $ devActuators device) of
       Just act -> do
         liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromActuator (act {actValue = Just actVal}))
         return ()

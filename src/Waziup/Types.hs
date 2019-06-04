@@ -294,9 +294,6 @@ defaultDevice = Device
   , devKeycloakId   = Nothing 
   }
 
-devTyp :: Maybe Text
-devTyp = Just "Device"
-
 instance ToJSON Device where
   toJSON = genericToJSON $ snakeDrop 3
 
@@ -559,7 +556,13 @@ defaultDatapoint = Datapoint
 
 -- JSON instances
 instance FromJSON Datapoint where
-  parseJSON = genericParseJSON $ snakeDrop 4
+  parseJSON (Object v) = do
+    dev <- v .: "device_id"
+    sen <- v .: "sensor_id"
+    val <- v .: "value"
+    tim <- v .:? "timestamp"
+    id_ <- v .: "_id"
+    return $ Datapoint dev sen val tim (Just $ DB.timestamp $ read id_)
 
 instance ToJSON Datapoint where
   toJSON = genericToJSON $ snakeDrop 4

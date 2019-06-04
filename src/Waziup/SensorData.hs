@@ -22,6 +22,7 @@ import           Keycloak as KC hiding (info, warn, debug, err, Scope)
 import           Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
 import           Database.MongoDB as DB hiding (value)
+import           Safe
 
 
 getDatapoints :: Maybe Token
@@ -36,7 +37,7 @@ getDatapoints :: Maybe Token
               -> Waziup [Datapoint]
 getDatapoints tok did sid limit offset sort dateFrom dateTo calibEn = do
   info "Get datapoints"
-  withKCId (fromJust did) $ \(keyId, device) -> do
+  withKCId (fromJustNote "parameter sensor_id is mandatory" did) $ \(keyId, device) -> do
     debug "Check permissions"
     liftKeycloak tok $ checkPermission keyId (fromScope DevicesDataView)
     debug "Permission granted, returning datapoints"

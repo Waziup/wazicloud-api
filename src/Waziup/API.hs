@@ -142,8 +142,8 @@ type SensorDataAPI = Flat (
   :> QueryParam "limit"      Int
   :> QueryParam "offset"     Int
   :> QueryParam "sort"       Sort
-  :> QueryParam "dateFrom"   UTCTime
-  :> QueryParam "dataTo"     UTCTime
+  :> QueryParam "date_from"  UTCTime
+  :> QueryParam "date_to"    UTCTime
   :> QueryParam "calibrated" Bool
   :> Get '[JSON, CSV' 'HasHeader CSVOpts] [Datapoint])
 

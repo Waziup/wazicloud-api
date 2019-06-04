@@ -28,13 +28,16 @@ import           Paths_Waziup_Servant
 import           Database.MongoDB as DB hiding (value, Limit, Array, lookup, Value, Null, (!?))
 import           Data.AesonBson
 
+--Orion entity type for devices
+devTyp :: Maybe Text
+devTyp = Just "Device"
 
 -- | Get devices, given a query, limits and offsets
 getDevices :: Maybe Token -> Maybe DevicesQuery -> Maybe Limit -> Maybe Offset -> Waziup [Device]
 getDevices tok mq mlimit moffset = do
   info "Get devices"
   entities <- liftOrion $ O.getEntities mq devTyp
-  let devices = catMaybes $ map getDeviceFromEntity entities
+  let devices = map getDeviceFromEntity entities
   ps <- getPermsDevices tok
   let devices2 = filter (checkPermDevice DevicesView ps . devId) devices -- TODO limits
   return devices2
@@ -146,22 +149,20 @@ putDeviceVisibility mtok did vis = do
 
 -- * From Orion to Waziup types
 
-getDeviceFromEntity :: O.Entity -> Maybe Device
+getDeviceFromEntity :: O.Entity -> Device
 getDeviceFromEntity (O.Entity (EntityId eId) eType attrs) = 
-  if (eType == "Device") 
-  then Just $ Device { devId           = DeviceId eId,
-                       devGatewayId    = GatewayId <$> O.fromSimpleAttribute (AttributeId "gateway_id") attrs,
-                       devName         = fromSimpleAttribute (AttributeId "name") attrs,
-                       devOwner        = fromSimpleAttribute (AttributeId "owner") attrs,
-                       devLocation     = getLocation attrs,
-                       devDomain       = fromSimpleAttribute (AttributeId "domain") attrs,
-                       devVisibility   = fromSimpleAttribute (AttributeId "visibility") attrs >>= toVisibility,
-                       devDateCreated  = fromSimpleAttribute (AttributeId "dateCreated") attrs >>= parseISO8601.unpack,
-                       devDateModified = fromSimpleAttribute (AttributeId "dateModified") attrs >>= parseISO8601.unpack,
-                       devSensors      = Just $ mapMaybe getSensorFromAttribute (toList attrs),
-                       devActuators    = Just $ mapMaybe getActuatorFromAttribute (toList attrs),
-                       devKeycloakId   = ResourceId <$> O.fromSimpleAttribute (AttributeId "keycloak_id") attrs}
-  else Nothing
+  Device { devId           = DeviceId eId,
+           devGatewayId    = GatewayId <$> O.fromSimpleAttribute (AttributeId "gateway_id") attrs,
+           devName         = fromSimpleAttribute (AttributeId "name") attrs,
+           devOwner        = fromSimpleAttribute (AttributeId "owner") attrs,
+           devLocation     = getLocation attrs,
+           devDomain       = fromSimpleAttribute (AttributeId "domain") attrs,
+           devVisibility   = fromSimpleAttribute (AttributeId "visibility") attrs >>= toVisibility,
+           devDateCreated  = fromSimpleAttribute (AttributeId "dateCreated") attrs >>= parseISO8601.unpack,
+           devDateModified = fromSimpleAttribute (AttributeId "dateModified") attrs >>= parseISO8601.unpack,
+           devSensors      = Just $ mapMaybe getSensorFromAttribute (toList attrs),
+           devActuators    = Just $ mapMaybe getActuatorFromAttribute (toList attrs),
+           devKeycloakId   = ResourceId <$> O.fromSimpleAttribute (AttributeId "keycloak_id") attrs}
 
 getLocation :: Map O.AttributeId O.Attribute -> Maybe Location
 getLocation attrs = do 
@@ -231,7 +232,7 @@ isNull _    = False
 
 getEntityFromDevice :: Device -> O.Entity
 getEntityFromDevice (Device (DeviceId sid) sgid sname sloc sdom svis sensors acts sown _ _ skey) = 
-  O.Entity (EntityId sid) "Device" $ fromList $ catMaybes [getSimpleAttr (AttributeId "name")        <$> sname,
+  O.Entity (EntityId sid) (fromJust devTyp) $ fromList $ catMaybes [getSimpleAttr (AttributeId "name")        <$> sname,
                                                            getSimpleAttr (AttributeId "gateway_id")  <$> (unGatewayId <$> sgid),
                                                            getSimpleAttr (AttributeId "owner")       <$> sown,
                                                            getSimpleAttr (AttributeId "domain")      <$> sdom,
@@ -266,17 +267,12 @@ getAttFromActuator (Actuator (ActuatorId actId) name ak avt av) =
 
 withKCId :: DeviceId -> ((ResourceId, Device) -> Waziup a) -> Waziup a
 withKCId (DeviceId did) f = do
-  mdevice <- getDeviceFromEntity <$> (liftOrion $ O.getEntity (EntityId did) devTyp)
-  case mdevice of
-    Just device -> do
-      case (devKeycloakId device) of
-        Just keyId -> f (keyId, device) 
-        Nothing -> do
-          error "Device: KC Id not present"
-          throwError err500 {errBody = "Device: KC Id not present"}
+  device <- getDeviceFromEntity <$> (liftOrion $ O.getEntity (EntityId did) devTyp)
+  case (devKeycloakId device) of
+    Just keyId -> f (keyId, device) 
     Nothing -> do
-      err "Device: wrong entity type"
-      throwError err500 {errBody = "Device: wrong entity type"}
+      error "Device: KC Id not present"
+      throwError err500 {errBody = "Device: KC Id not present"}
 
 toEntityId :: DeviceId -> EntityId
 toEntityId (DeviceId did) = EntityId did

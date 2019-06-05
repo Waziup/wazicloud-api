@@ -23,6 +23,7 @@ import           Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
 import           Database.MongoDB as DB hiding (value)
 import           Safe
+import           Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 
 
 getDatapoints :: Maybe Token
@@ -63,10 +64,11 @@ getDatapointsMongo did sid limit offset sort dateFrom dateTo = do
   info "Get datapoints from Mongo"
   let filterDev = ["device_id" =: did' | (Just (DeviceId did')) <- [did]]
   let filterSen = ["sensor_id" =: sid' | (Just (SensorId sid')) <- [sid]]
-  let filterDateFrom = ["$gte" =: formatISO8601 dateFrom' | (Just dateFrom') <- [dateFrom]]
-  let filterDateTo   = ["$lte" =: formatISO8601 dateTo' | (Just dateTo') <- [dateTo]]
+  --filter creation date by creating fake ObjectIds
+  let filterDateFrom = ["$gte" =: Oid (truncate $ utcTimeToPOSIXSeconds dateFrom') 0 | (Just dateFrom') <- [dateFrom]]
+  let filterDateTo   = ["$lte" =: Oid (truncate $ utcTimeToPOSIXSeconds dateTo') 0 | (Just dateTo') <- [dateTo]]
   let filterTimestamp = if isJust dateFrom || isJust dateTo 
-                        then ["timestamp" =: filterDateFrom <> filterDateTo] 
+                        then ["_id" =: filterDateFrom <> filterDateTo] 
                         else []
   let filters = filterDev <> filterSen <> filterTimestamp
   let sort' = case sort of
@@ -75,7 +77,7 @@ getDatapointsMongo did sid limit offset sort dateFrom dateTo = do
                Nothing  -> 1 :: Int
   let limit' = if isJust limit  then fromJust limit else 20
   let skip'  = if isJust offset then fromJust offset else 0
-  let sel = (select filters "waziup_history") {sort  = ["timestamp" := val sort'],
+  let sel = (select filters "waziup_history") {sort  = ["_id" := val sort'],
                                                limit = fromIntegral limit',
                                                skip  = fromIntegral skip'}
   debug $ show sel

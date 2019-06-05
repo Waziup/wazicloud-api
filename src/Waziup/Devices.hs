@@ -145,6 +145,7 @@ putDeviceVisibility mtok did vis = do
     liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Update Orion resource"
     liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "visibility") (fromVisibility vis)
+    --TODO: update visibility in KEYCLOAK
   return NoContent
 
 -- * From Orion to Waziup types

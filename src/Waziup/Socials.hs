@@ -72,7 +72,7 @@ logSocialMessage msg = do
   debug "Post msg to Mongo"
   time <- liftIO getCurrentTime
   let msg' = msg {socTimestamp = Just time}
-  let ob = case toJSON msg of
+  let ob = case toJSON msg' of
        JSON.Object o -> o
        _ -> error "Wrong object format"
   res <- insert "waziup_social_msgs" (bsonify ob)

@@ -10,6 +10,7 @@ import           Control.Monad.Except (throwError, runExceptT)
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 import           Control.Lens
+import           Control.Exception.Lifted (throwIO)
 import           Data.String.Conversions
 import           Data.Aeson
 import           Data.Maybe
@@ -55,8 +56,18 @@ liftKeycloak' kc = do
 -- * run Mongo function
 runMongo :: Action IO a -> Waziup a
 runMongo dbAction = do
-  (WaziupInfo dBPool _ _) <- ask
-  liftIO $ withResource dBPool $ \p -> access p DB.master "waziup" dbAction
+  (WaziupInfo dBPool conf _) <- ask
+  dBPool <- view dbPool 
+  muser  <- view $ waziupConfig.mongoConf.mongoUser
+  mpass  <- view $ waziupConfig.mongoConf.mongoPass
+  liftIO $ withResource dBPool $ \p -> DB.access p DB.master "waziup" $ do
+    case (muser, mpass) of
+      (Just user, Just pass) -> do 
+        res <- DB.auth user pass
+        if res 
+          then dbAction
+          else throwIO $ DB.ConnectionFailure $ userError "auth failed."
+      _ -> dbAction
 
 -- * error convertions
 fromOrionError :: O.OrionError -> ServantErr

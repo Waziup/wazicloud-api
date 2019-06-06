@@ -43,14 +43,16 @@ main :: IO ()
 main = do
   (try $ startLog "Waziup-log.xml") :: IO (Either SomeException ())
   Main.info $ "API server starting..."
-  envUrl      <- lookupEnv "HTTP_URL"
-  envPort     <- lookupEnv "HTTP_PORT" 
-  envPortMQTT <- lookupEnv "MQTT_PORT"
-  envKCUrl    <- lookupEnv "KEYCLOAK_URL"
-  envOrUrl    <- lookupEnv "ORION_URL"
-  envMongUrl  <- lookupEnv "MONGODB_URL"
-  envMosqHost <- lookupEnv "MOSQ_HOST"
-  envMosqPort <- lookupEnv "MOSQ_PORT"
+  envUrl        <- lookupEnv "HTTP_URL"
+  envPort       <- lookupEnv "HTTP_PORT" 
+  envPortMQTT   <- lookupEnv "MQTT_PORT"
+  envKCUrl      <- lookupEnv "KEYCLOAK_URL"
+  envOrUrl      <- lookupEnv "ORION_URL"
+  envMongUrl    <- lookupEnv "MONGODB_URL"
+  envMongUser   <- lookupEnv "MONGODB_USER"
+  envMongPass   <- lookupEnv "MONGODB_PASS"
+  envMosqHost   <- lookupEnv "MOSQ_HOST"
+  envMosqPort   <- lookupEnv "MOSQ_PORT"
   envTwitKey    <- lookupEnv "TWITTER_CONSUMER_KEY"
   envTwitSec    <- lookupEnv "TWITTER_CONSUMER_SECRET"
   envTwitTok    <- lookupEnv "TWITTER_ACCESS_TOKEN"
@@ -137,8 +139,10 @@ orionConfigParser (OrionConfig defUrl defServ) = do
 
 mongoConfigParser :: MongoConfig -> Parser MongoConfig
 mongoConfigParser def = do
-  url     <- strOption (long "mongoUrl" <> metavar "<url>" <> help "url of Mongo DB" <> (value $ _mongoUrl def))
-  return $ MongoConfig url
+  url     <- strOption (long "mongoUrl"  <> metavar "<url>"  <> help "url of Mongo DB"            <> (value $ _mongoUrl def))
+  user    <- optional $ strOption (long "mongoUser" <> metavar "<user>" <> help "admin user of Mongo DB")
+  pass    <- optional $ strOption (long "mongoPass" <> metavar "<pass>" <> help "admin password of Mongo DB")
+  return $ MongoConfig url user pass 
 
 startLog :: FilePath -> IO ()
 startLog fp = do

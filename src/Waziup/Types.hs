@@ -100,10 +100,14 @@ defaultServerConfig = ServerConfig {
   _guestPassword  = "guest"}
  
 data MongoConfig = MongoConfig {
-  _mongoUrl :: Text } deriving (Show, Eq)
+  _mongoUrl  :: Text,
+  _mongoUser :: Maybe Text,
+  _mongoPass :: Maybe Text} deriving (Show, Eq)
 
 defaultMongoConfig = MongoConfig {
-  _mongoUrl = "127.0.0.1"}
+  _mongoUrl  = "127.0.0.1",
+  _mongoUser = Nothing,
+  _mongoPass = Nothing}
 
 data MQTTConfig = MQTTConfig {
   _mqttHost :: Text,

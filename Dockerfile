@@ -1,17 +1,21 @@
 #Build stage
 FROM fpco/stack-build:lts-13.5 as build
 
-COPY stack.yaml   /opt/waziup/stack.yaml
-COPY waziup.cabal /opt/waziup/waziup.cabal
-COPY aesonbson/ /opt/waziup/aesonbson
-COPY keycloak-hs/ /opt/waziup/keycloak-hs
-COPY orion-hs/ /opt/waziup/orion-hs
-COPY twitter-conduit/ /opt/waziup/twitter-conduit
+COPY stack.yaml                    /opt/waziup/stack.yaml
+COPY waziup.cabal                  /opt/waziup/waziup.cabal
+COPY keycloak-hs/stack.yaml        /opt/waziup/keycloak-hs/stack.yaml
+COPY keycloak-hs/keycloak-hs.cabal /opt/waziup/keycloak-hs/keycloak-hs.cabal
+COPY orion-hs/stack.yaml           /opt/waziup/orion-hs/stack.yaml
+COPY orion-hs/orion-hs.cabal       /opt/waziup/orion-hs/orion-hs.cabal
+COPY aesonbson/                    /opt/waziup/aesonbson
+COPY twitter-conduit/              /opt/waziup/twitter-conduit
 
 WORKDIR /opt/waziup
 RUN stack build --only-dependencies --system-ghc --fast
 
-COPY src/ /opt/waziup/src
+COPY src/         /opt/waziup/src
+COPY orion-hs/    /opt/waziup/orion-hs/
+COPY keycloak-hs/ /opt/waziup/keycloak-hs
 RUN stack build --system-ghc --fast
 
 # Deploy stage

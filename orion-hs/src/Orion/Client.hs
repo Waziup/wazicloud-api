@@ -114,10 +114,9 @@ getSubs :: Orion [Subscription]
 getSubs = do 
   debug $ "Get subscriptions"
   body <- orionGet ("/v2/subscriptions?limit=1000")
-  debug $ "Orion body : " ++ (show body) 
   case eitherDecode body of
     Right ret -> do
-      debug $ "Orion success: " ++ (show ret) 
+      debug $ "Orion success" 
       return ret
     Left (err2 :: String) -> do
       debug $ "Orion parse error: " ++ (show err2) 

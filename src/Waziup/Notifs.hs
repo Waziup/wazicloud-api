@@ -87,17 +87,19 @@ putNotifStatus tok (NotifId id) status = do
 getNotifFromSub :: Subscription -> Maybe Notif
 getNotifFromSub (Subscription subId subDesc subSubject subNotif subThrottling subStat subExp) = 
   case getNotifAction subNotif of
-    Just action -> Just $ Notif { notifId          = getNotifId <$> subId 
-                                , notifDescription = subDesc 
-                                , notifCondition   = getNotifCondition subSubject 
-                                , notifAction      = action 
-                                , notifThrottling  = subThrottling
-                                , notifStatus      = subStat 
-                                , notifTimesSent   = subTimesSent subNotif 
-                                , notifLastNotif   = subLastNotification subNotif
-                                , notifLastSuccess = subLastSuccess subNotif
-                                , notifLastFailure = subLastFailure subNotif
-                                , notifExpires     = subExp}
+    Just action -> Just $ Notif { notifId                = getNotifId <$> subId 
+                                , notifDescription       = subDesc 
+                                , notifCondition         = getNotifCondition subSubject 
+                                , notifAction            = action 
+                                , notifThrottling        = subThrottling
+                                , notifStatus            = subStat 
+                                , notifTimesSent         = subTimesSent subNotif 
+                                , notifLastNotif         = subLastNotification subNotif
+                                , notifLastSuccess       = subLastSuccess subNotif
+                                , notifLastSuccessCode   = subLastSuccessCode subNotif
+                                , notifLastFailure       = subLastFailure subNotif
+                                , notifLastFailureReason = subLastFailureReason subNotif
+                                , notifExpires           = subExp}
     Nothing -> Nothing
 
 getNotifId :: SubId -> NotifId
@@ -125,12 +127,12 @@ getNotifAction subNot =
     else Nothing
 
 getSubFromNotif :: Notif -> Text -> Waziup Subscription
-getSubFromNotif (Notif nid desc sub not throt stat ts ln ls lf exp) host = do
+getSubFromNotif (Notif nid desc sub not throt stat ts ln ls lsc lf lfr exp) host = do
   return Subscription {
   subId           = getSubId <$> nid, 
   subDescription  = desc,
   subSubject      = getSubSubject sub, 
-  subNotification = getSubNotif not ts ln ls lf host,
+  subNotification = getSubNotif not ts ln ls lsc lf lfr host,
   subThrottling   = throt,
   subStatus       = stat,
   subExpires      = exp}
@@ -141,19 +143,21 @@ getSubSubject (NotifCondition devs sens expr) =
               subCondition = SubCondition {subCondAttrs      = map (\(SensorId sid) -> AttributeId sid) sens,
                                            subCondExpression = M.singleton "q" expr}}
 
-getSubNotif :: SocialMessageBatch -> Maybe Int -> Maybe UTCTime -> Maybe UTCTime -> Maybe UTCTime -> Text -> SubNotif
-getSubNotif smb ts ln ls lf host = do
+getSubNotif :: SocialMessageBatch -> Maybe Int -> Maybe UTCTime -> Maybe UTCTime -> Maybe Int -> Maybe UTCTime -> Maybe String -> Text -> SubNotif
+getSubNotif smb ts ln ls lsc lf lfr host = do
   SubNotif  {subHttpCustom = SubHttpCustom {subUrl = convertString $ host <> "/api/v2/socials/batch",
                                             subPayload = convertString $ URI.urlEncode True $ convertString $ JSON.encode smb,
                                             subMethod = "POST",
                                             subHeaders = fromList [("Content-Type", "application/json"), ("accept", "application/json")]},
-             subAttrs            = [],
-             subAttrsFormat      = "normalized",
-             subMetadata         = ["waziup_notif"],
-             subTimesSent        = ts, 
-             subLastNotification = ln,
-             subLastSuccess      = ls,
-             subLastFailure      = lf}
+             subAttrs             = [],
+             subAttrsFormat       = "normalized",
+             subMetadata          = ["waziup_notif"],
+             subTimesSent         = ts, 
+             subLastNotification  = ln,
+             subLastSuccess       = ls,
+             subLastSuccessCode   = lsc,
+             subLastFailure       = lf,
+             subLastFailureReason = lfr}
 
 getSubId :: NotifId -> SubId
 getSubId (NotifId id) = SubId id

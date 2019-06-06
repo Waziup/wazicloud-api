@@ -778,31 +778,35 @@ instance ToParamSchema NotifId
 
 -- | one notification
 data Notif = Notif
-  { notifId          :: Maybe NotifId       -- ^ id of the notification (attributed by the server)
-  , notifDescription :: Text                -- ^ Description of the notification
-  , notifCondition   :: NotifCondition      -- ^ What is looked at and with which condition 
-  , notifAction      :: SocialMessageBatch  -- ^ Where to send the notification
-  , notifThrottling  :: Double              -- ^ minimum interval between two messages in seconds
-  , notifStatus      :: Maybe O.SubStatus   -- ^ current status of the notification 
-  , notifTimesSent   :: Maybe Int
-  , notifLastNotif   :: Maybe UTCTime
-  , notifLastSuccess :: Maybe UTCTime
-  , notifLastFailure :: Maybe UTCTime
-  , notifExpires     :: Maybe UTCTime
+  { notifId                :: Maybe NotifId       -- ^ id of the notification (attributed by the server)
+  , notifDescription       :: Text                -- ^ Description of the notification
+  , notifCondition         :: NotifCondition      -- ^ What is looked at and with which condition 
+  , notifAction            :: SocialMessageBatch  -- ^ Where to send the notification
+  , notifThrottling        :: Double              -- ^ minimum interval between two messages in seconds
+  , notifStatus            :: Maybe O.SubStatus   -- ^ current status of the notification 
+  , notifTimesSent         :: Maybe Int
+  , notifLastNotif         :: Maybe UTCTime
+  , notifLastSuccess       :: Maybe UTCTime
+  , notifLastSuccessCode   :: Maybe Int
+  , notifLastFailure       :: Maybe UTCTime
+  , notifLastFailureReason :: Maybe String
+  , notifExpires           :: Maybe UTCTime
   } deriving (Show, Eq, Generic)
 
 defaultNotif = Notif
-  { notifId          = Nothing 
-  , notifDescription = "Test"               
-  , notifCondition   = NotifCondition [DeviceId "MyDevice"] [SensorId "TC"] "TC>40"
-  , notifAction      = defaultSocialMessageBatch
-  , notifThrottling  = 3600
-  , notifStatus      = Nothing
-  , notifTimesSent   = Nothing
-  , notifLastNotif   = Nothing
-  , notifLastSuccess = Nothing
-  , notifLastFailure = Nothing
-  , notifExpires     = parseISO8601 "2016-06-08T18:20:27.873Z"
+  { notifId                = Nothing 
+  , notifDescription       = "Test"               
+  , notifCondition         = NotifCondition [DeviceId "MyDevice"] [SensorId "TC"] "TC>40"
+  , notifAction            = defaultSocialMessageBatch
+  , notifThrottling        = 3600
+  , notifStatus            = Nothing
+  , notifTimesSent         = Nothing
+  , notifLastNotif         = Nothing
+  , notifLastSuccess       = Nothing
+  , notifLastSuccessCode   = Nothing
+  , notifLastFailure       = Nothing
+  , notifLastFailureReason = Nothing
+  , notifExpires           = parseISO8601 "2016-06-08T18:20:27.873Z"
   }
 
 --JSON instances

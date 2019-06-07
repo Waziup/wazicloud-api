@@ -89,7 +89,7 @@ postDevice tok d@(Device (DeviceId did) _ _ _ _ vis _ _ _ _ _ _) = do
           throwError e
     Left (err :: ServantErr)  -> do
       warn "Orion error"
-      throwError err 
+      throwError err500 {errBody = "Not a Waziup notification"}
  
 deleteDevice :: Maybe Token -> DeviceId -> Waziup NoContent
 deleteDevice tok did = do

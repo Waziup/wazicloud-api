@@ -28,7 +28,7 @@ import           Keycloak hiding (try)
 import           Orion hiding (try)
 import           Database.MongoDB as DB hiding (value)
 import           Options.Applicative as Opts hiding (Success, Failure)
-import           Control.Exception
+import           Control.Exception as C
 import           Control.Lens
 import           Control.Monad.IO.Class
 import           Control.Concurrent
@@ -41,7 +41,7 @@ import           Web.Twitter.Conduit hiding (map)
 
 main :: IO ()
 main = do
-  (try $ startLog "Waziup-log.xml") :: IO (Either SomeException ())
+  (C.try $ startLog "Waziup-log.xml") :: IO (Either SomeException ())
   Main.info $ "API server starting..."
   envUrl        <- lookupEnv "HTTP_URL"
   envPort       <- lookupEnv "HTTP_PORT" 

@@ -1,20 +1,22 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Waziup.Utils where
 
 import           Waziup.Types
 import qualified Orion as O
-import           Keycloak as KC
-import           Control.Monad.Except (throwError, runExceptT)
+import           Keycloak as KC hiding (try)
+import           Control.Monad.Except (throwError, catchError, runExceptT, MonadError)
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 import           Control.Lens
-import           Control.Exception.Lifted (throwIO)
+import           Control.Exception.Lifted as L (throwIO, catch) 
+import           Control.Exception as C 
 import           Data.String.Conversions
 import           Data.Aeson
 import           Data.Maybe
-import           Data.Pool
+import           Data.Pool as P
 import qualified Data.ByteString.Lazy as BL
 import           Network.HTTP.Types.Status as HTS
 import           Network.HTTP.Client as HC
@@ -60,14 +62,14 @@ runMongo dbAction = do
   dBPool <- view dbPool 
   muser  <- view $ waziupConfig.mongoConf.mongoUser
   mpass  <- view $ waziupConfig.mongoConf.mongoPass
-  liftIO $ withResource dBPool $ \p -> DB.access p DB.master "waziup" $ do
-    case (muser, mpass) of
-      (Just user, Just pass) -> do 
-        res <- DB.auth user pass
-        if res 
-          then dbAction
-          else throwIO $ DB.ConnectionFailure $ userError "auth failed."
-      _ -> dbAction
+  liftIO $ P.withResource dBPool $ \p -> DB.access p DB.master "waziup" $ do
+     case (muser, mpass) of
+       (Just user, Just pass) -> do 
+         res <- DB.auth user pass
+         if res 
+           then dbAction
+           else liftIO $ C.throwIO $ DB.ConnectionFailure $ userError "auth failed."
+       _ -> dbAction
 
 -- * error convertions
 fromOrionError :: O.OrionError -> ServantErr
@@ -100,3 +102,7 @@ fromKCError KC.EmptyError = err500 {errBody = "EmptyError"}
 maybeToList' :: Maybe [a] -> [a]
 maybeToList' (Just a) = a
 maybeToList' Nothing = []
+
+try :: (MonadError a m) => m b -> m (Either a b) 
+try a = catchError (Right `liftM` a) (return . Left) 
+

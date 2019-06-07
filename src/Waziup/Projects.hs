@@ -184,10 +184,6 @@ putProjectDevicesMongo (ProjectId pid) ids = do
        return True
      _ -> return False 
 
-
-try :: (MonadError a m) => m b -> m (Either a b) 
-try a = catchError (Right `liftM` a) (return . Left) 
-
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()
 debug s = liftIO $ debugM   "Project" s

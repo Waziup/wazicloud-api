@@ -62,6 +62,8 @@ main = do
   let kcConfig     = defaultKCConfig     & baseUrl        .~? (convertString <$> envKCUrl)
   let orionConfig  = defaultOrionConfig  & orionUrl       .~? (convertString <$> envOrUrl)
   let mongoConfig  = defaultMongoConfig  & mongoUrl       .~? (convertString <$> envMongUrl)
+                                         & mongoUser      .~  (convertString <$> envMongUser)
+                                         & mongoPass      .~  (convertString <$> envMongPass)
   let serverConfig = defaultServerConfig & serverHost     .~? (convertString <$> envUrl)
                                          & serverPort     .~? (read          <$> envPort)
                                          & serverPortMQTT .~? (read          <$> envPortMQTT)
@@ -77,7 +79,9 @@ main = do
           else defaultTwitterConf
   let plivoConf = defaultPlivoConf & plivoID    .~? (convertString <$> envPlivoID)
                                    & plivoToken .~? (convertString <$> envPlivoToken)
-  conf <- execParser $ opts serverConfig mongoConfig kcConfig orionConfig mqttConfig twitterConf plivoConf 
+  let confParser = waziupConfigParser serverConfig mongoConfig kcConfig orionConfig mqttConfig twitterConf plivoConf 
+  let confParser' = Opts.info (confParser <**> helper) (fullDesc <> progDesc "Create a server for Waziup API" <> header "Waziup API server")
+  conf <- execParser confParser'
   let mongUrl = conf ^. mongoConf.mongoUrl
   pool <- createPool (DB.connect $ readHostPort (convertString mongUrl)) DB.close 1 300 5
   ontologies <- loadOntologies
@@ -97,14 +101,6 @@ corsPolicy :: CorsResourcePolicy
 corsPolicy = simpleCorsResourcePolicy
            { corsRequestHeaders = ["Access-Control-Allow-Origin", "Authorization", "Content-Type"],
              corsMethods        = ["OPTIONS", "HEAD", "POST", "PUT", "GET", "DELETE"]}
-
-opts :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> MQTTConfig -> TWInfo -> PlivoConfig -> ParserInfo WaziupConfig
-opts serv m kc o mqtt tw pliv = Opts.info ((waziupConfigParser serv m kc o mqtt tw pliv) <**> helper) parserInfo
-
-parserInfo :: InfoMod WaziupConfig
-parserInfo = fullDesc
-  <> progDesc "Create a server for Waziup API based on backend components Mongo, Orion and Keycloak"
-  <> header "Waziup API server"
 
 waziupConfigParser :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> MQTTConfig -> TWInfo -> PlivoConfig -> Parser WaziupConfig
 waziupConfigParser servDef mDef kcDef oDef mqttDef twittDef plivoDef = do
@@ -142,7 +138,7 @@ mongoConfigParser def = do
   url     <- strOption (long "mongoUrl"  <> metavar "<url>"  <> help "url of Mongo DB"            <> (value $ _mongoUrl def))
   user    <- optional $ strOption (long "mongoUser" <> metavar "<user>" <> help "admin user of Mongo DB")
   pass    <- optional $ strOption (long "mongoPass" <> metavar "<pass>" <> help "admin password of Mongo DB")
-  return $ MongoConfig url user pass 
+  return $ MongoConfig url (user <|> _mongoUser def) (user <|>  _mongoPass def) 
 
 startLog :: FilePath -> IO ()
 startLog fp = do

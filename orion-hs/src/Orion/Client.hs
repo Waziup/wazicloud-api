@@ -229,6 +229,13 @@ orionPatch path dat = do
       throwError $ HTTPError err
 
 -- * Helpers
+fromBoolAttribute :: AttributeId -> Map AttributeId Attribute -> Maybe Bool
+fromBoolAttribute attId attrs = do
+  (Attribute _ mval _) <- attrs !? attId
+  val <- mval
+  case fromJSON val of
+    Success a -> return a
+    Error _ -> Nothing
 
 fromSimpleAttribute :: AttributeId -> Map AttributeId Attribute -> Maybe Text
 fromSimpleAttribute attId attrs = do

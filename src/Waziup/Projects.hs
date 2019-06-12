@@ -44,19 +44,8 @@ getProjects tok mfull = do
     Just True -> mapM (getFullProject tok) pjs 
     _ -> return pjs
   ps <- getPermsProjects tok
-  let projects2 = filter (checkPermProject' ProjectsView ps . fromJust . pId) projects -- TODO limits
+  let projects2 = filter (checkPermResource' ProjectsView ps . unProjectId . fromJust . pId) projects -- TODO limits
   return projects2
-
-checkPermProject :: Maybe Token -> Scope -> ProjectId -> Waziup ()
-checkPermProject tok scope pid = do
-  ps <- getPermsProjects tok
-  debug $ "perms: " ++ (show ps)
-  if checkPermProject' scope ps pid
-     then return ()
-     else throwError err403 {errBody = "Forbidden: Cannot access project"}
-
-checkPermProject' :: Scope -> [Perm] -> ProjectId -> Bool
-checkPermProject' scope perms pId = any (\p -> (permResource p) == (unProjectId $ pId) && scope `elem` (permScopes p)) perms
 
 postProject :: Maybe Token -> Project -> Waziup ProjectId
 postProject tok proj = do
@@ -66,19 +55,7 @@ postProject tok proj = do
          JSON.Object o -> o
          _ -> error "Wrong object format"
     insert "projects" (bsonify ob)
-  let username = case tok of
-       Just t -> getUsername t
-       Nothing -> "guest"
-  let kcres = KC.Resource {
-         resId      = Nothing,
-         resName    = convertString $ show res,
-         resType    = Just "project",
-         resUris    = [],
-         resScopes  = map (\s -> K.Scope Nothing (fromScope s)) [ProjectsView, ProjectsUpdate, ProjectsDelete],
-         resOwner   = Owner Nothing username,
-         resOwnerManagedAccess = True,
-         resAttributes = []}
-  liftKeycloak tok $ createResource kcres
+  createResource' tok (convertString $ show res) "Project" [ProjectsView, ProjectsUpdate, ProjectsDelete] [] 
   return $ ProjectId $ convertString $ show res
 
 
@@ -90,7 +67,7 @@ getProject tok pid mfull = do
     Just p -> return p
     Nothing -> throwError err404 {errBody = "Cannot get project: id not found"}
   debug $ "Check permissions"
-  checkPermProject tok ProjectsView (fromJust $ pId p) 
+  checkPermResource tok ProjectsView (unProjectId $ fromJust $ pId p) 
   case mfull of
     Just True -> getFullProject tok p 
     _ -> return p
@@ -98,7 +75,7 @@ getProject tok pid mfull = do
 deleteProject :: Maybe Token -> ProjectId -> Waziup NoContent
 deleteProject tok pid = do
   info "Delete project"
-  checkPermProject tok ProjectsDelete pid 
+  checkPermResource tok ProjectsDelete (unProjectId pid)
   res <- runMongo $ deleteProjectMongo pid
   if res
     then return NoContent
@@ -107,7 +84,7 @@ deleteProject tok pid = do
 putProjectDevices :: Maybe Token -> ProjectId -> [DeviceId] -> Waziup NoContent
 putProjectDevices tok pid ids = do
   info "Put project devices"
-  checkPermProject tok ProjectsUpdate pid 
+  checkPermResource tok ProjectsUpdate (unProjectId pid)
   res <- runMongo $ putProjectDevicesMongo pid ids
   if res
     then return NoContent
@@ -116,7 +93,7 @@ putProjectDevices tok pid ids = do
 putProjectGateways :: Maybe Token -> ProjectId -> [GatewayId] -> Waziup NoContent
 putProjectGateways tok pid ids = do
   info "Put project gateways"
-  checkPermProject tok ProjectsUpdate pid 
+  checkPermResource tok ProjectsUpdate (unProjectId pid) 
   res <- runMongo $ putProjectGatewaysMongo pid ids
   if res
     then return NoContent
@@ -125,7 +102,7 @@ putProjectGateways tok pid ids = do
 putProjectName :: Maybe Token -> ProjectId -> Text -> Waziup NoContent
 putProjectName tok pid name = do
   info "Put project name"
-  checkPermProject tok ProjectsUpdate pid
+  checkPermResource tok ProjectsUpdate (unProjectId pid)
   res <- runMongo $ do 
     let sel = ["_id" =: (ObjId $ read $ convertString $ unProjectId pid)]
     mdoc <- findOne (select sel "projects")

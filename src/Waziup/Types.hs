@@ -156,9 +156,12 @@ instance ToSchema AuthBody where
         & mapped.schema.example ?~ toJSON (AuthBody "cdupont" "password")
 
 -- | Permission
+
+type PermResource = Text
+
 data Perm = Perm
-  { permResource :: Text -- ^ 
-  , permScopes :: [Scope] -- ^ 
+  { permResource :: PermResource 
+  , permScopes   :: [Scope]
   } deriving (Show, Eq, Generic)
 
 instance ToJSON Perm where
@@ -278,6 +281,7 @@ data Device = Device
   , devSensors      :: Maybe [Sensor]
   , devActuators    :: Maybe [Actuator]
   , devOwner        :: Maybe Username   -- ^ owner of the device node (output only)
+  , devDeployed     :: Maybe Bool       -- ^ whether the device is deployed or not 
   , devDateCreated  :: Maybe UTCTime    -- ^ creation date of the device (output only)
   , devDateModified :: Maybe UTCTime    -- ^ last update date of the device node (output only)
   , devKeycloakId   :: Maybe ResourceId -- ^ The is of the resource in Keycloak
@@ -293,6 +297,7 @@ defaultDevice = Device
   , devSensors      = Just [defaultSensor]
   , devActuators    = Just [defaultActuator]
   , devOwner        = Nothing
+  , devDeployed     = Just False 
   , devDateCreated  = Nothing
   , devDateModified = Nothing
   , devKeycloakId   = Nothing 
@@ -714,23 +719,33 @@ instance ToParamSchema GatewayId
 
 -- | one gateway 
 data Gateway = Gateway
-  { gwId     :: Maybe GatewayId     -- ^ ID of the gateway
-  , gwName   :: GatewayName         -- ^ name of the gateway
-  , gwTunnel :: Maybe GatewayTunnel -- ^ gateway tunnel with platform 
+  { gwId           :: GatewayId             -- ^ ID of the gateway
+  , gwName         :: Maybe GatewayName     -- ^ name of the gateway
+  , gwOwner        :: Maybe Username
+  , gwVisibility   :: Maybe Visibility
+  , gwLocation     :: Maybe Location
+  , gwDateCreated  :: Maybe UTCTime
+  , gwDateModified :: Maybe UTCTime
+  , gwTunnel       :: Maybe GatewayTunnel -- ^ gateway tunnel with platform 
   } deriving (Show, Eq, Generic)
 
 defaultGateway = Gateway 
-  { gwId      = Nothing 
-  , gwName    = "My gateway"
-  , gwTunnel  = Nothing
+  { gwId           = GatewayId "GW1" 
+  , gwName         = Just "My gateway"
+  , gwOwner        = Nothing
+  , gwVisibility   = Just Public
+  , gwLocation     = Nothing
+  , gwDateCreated  = Nothing
+  , gwDateModified = Nothing
+  , gwTunnel       = Nothing
   }
 
 --JSON instances
 instance FromJSON Gateway where
-  parseJSON = genericParseJSON $ defaultOptions {fieldLabelModifier = mapMongoId . unCapitalize . drop 2, AT.omitNothingFields = True}
+  parseJSON = genericParseJSON $ defaultOptions {fieldLabelModifier = snakeCase . drop 2, AT.omitNothingFields = True}
 
 instance ToJSON Gateway where
-  toJSON = genericToJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 2, AT.omitNothingFields = True}
+  toJSON = genericToJSON $ defaultOptions {fieldLabelModifier = snakeCase . drop 2, AT.omitNothingFields = True}
 
 instance ToSchema Gateway where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
@@ -753,6 +768,7 @@ instance ToSchema GatewayTunnel where
         & mapped.schema.example ?~ toJSON (GatewayTunnel 9999) 
 
 instance MimeUnrender PlainText Int
+instance MimeUnrender PlainText Bool
 
 ---------------------
 -- * Notifications --

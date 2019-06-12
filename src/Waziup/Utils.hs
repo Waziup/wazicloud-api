@@ -16,7 +16,9 @@ import           Control.Exception as C
 import           Data.String.Conversions
 import           Data.Aeson
 import           Data.Maybe
+import           Data.Hashable
 import           Data.Pool as P
+import           Data.HashMap.Strict as H
 import qualified Data.ByteString.Lazy as BL
 import           Network.HTTP.Types.Status as HTS
 import           Network.HTTP.Client as HC
@@ -105,4 +107,9 @@ maybeToList' Nothing = []
 
 try :: (MonadError a m) => m b -> m (Either a b) 
 try a = catchError (Right `liftM` a) (return . Left) 
+
+replaceKey :: (Ord k, Hashable k) => k -> k -> H.HashMap k v -> H.HashMap k v
+replaceKey k0 k1 m = case H.lookup k0 m of
+   Nothing -> m
+   Just e  -> H.insert k1 e (H.delete k0 m)
 

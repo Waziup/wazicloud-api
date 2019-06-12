@@ -1,12 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Waziup.Gateways where
 
 import           Waziup.Types
 import           Waziup.API
 import           Waziup.Utils
+import           Waziup.Auth hiding (info, warn, debug, err, Scope) 
 import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
 import           Control.Monad.IO.Class
+import           Control.Monad.Catch as C
+import           Control.Exception
 import           Data.String.Conversions
 import           Servant
 import           System.Log.Logger
@@ -14,6 +18,9 @@ import           Database.MongoDB as DB
 import           Data.Aeson as JSON
 import           Data.Bson as BSON
 import           Data.AesonBson
+import           Data.Maybe
+import           Data.Typeable
+import           Data.Time
 import           Safe
 
 -- * Projects API
@@ -21,35 +28,54 @@ import           Safe
 getGateways :: Maybe Token -> Waziup [Gateway]
 getGateways tok = do
   info "Get gateways"
-  runMongo $ do
+  gws <- runMongo $ do
     docs <- rest =<< find (select [] "gateways")
-    let res = sequence $ map (fromJSON . Object . aesonify) docs
+    let res = sequence $ map (fromJSON . Object . replaceKey "_id" "id" . aesonify) docs
     case res of
       JSON.Success a -> return a
       JSON.Error _ -> return []
+  info $ "Got gateways: " ++ (show gws)
+  gs <- getPermsGateways tok
+  let gs2 = filter (checkPermResource' GatewaysView gs . unGatewayId . gwId) gws -- TODO limits
+  return gs2
 
-postGateway :: Maybe Token -> Gateway -> Waziup GatewayId
-postGateway tok p = do
+postGateway :: Maybe Token -> Gateway -> Waziup NoContent
+postGateway tok g = do
   info "Post gateway"
-  runMongo $ do
-    let ob = case toJSON p of
-         JSON.Object o -> o
+  let username = case tok of
+       Just t -> getUsername t
+       Nothing -> "guest"
+  debug $ "gate: " ++ (show g)
+  currentTime <- liftIO $ getCurrentTime
+  let g' = g {gwOwner = Just username,
+              gwDateCreated = Just currentTime,
+              gwDateModified = Just currentTime} 
+  eres <- C.try $ runMongo $ do
+    let ob = case toJSON g' of
+         JSON.Object o -> replaceKey "id" "_id" o
          _ -> error "Wrong object format"
-    res <- insert "gateways" (bsonify ob)
-    return $ GatewayId $ convertString $ show res
+    debug $ "id: " ++ (show ob)
+    insert "gateways" (bsonify ob)
+  res <- case eres of
+    Right a -> return a
+    Left (CompoundFailure [WriteFailure _ e _]) -> throwError err422 {errBody = "Gateway ID already exists"}
+  createResource' tok (unGatewayId $ gwId g) "Gateway" [GatewaysView, GatewaysUpdate, GatewaysDelete] [] 
+  return NoContent
 
 getGateway :: Maybe Token -> GatewayId -> Waziup Gateway
 getGateway tok gid = do
   info "Get gateway"
-  mp <- runMongo $ getGatewayMongo gid 
-  case mp of
-    Just p -> return p
+  checkPermResource tok GatewaysView (unGatewayId gid) 
+  mg <- runMongo $ getGatewayMongo gid 
+  case mg of
+    Just g -> return g
     Nothing -> throwError err404 {errBody = "Cannot get gateway: id not found"}
 
 deleteGateway :: Maybe Token -> GatewayId -> Waziup NoContent
-deleteGateway tok pid = do
+deleteGateway tok gid = do
   info "Delete gateway"
-  res <- runMongo $ deleteGatewayMongo pid
+  checkPermResource tok GatewaysDelete (unGatewayId gid) 
+  res <- runMongo $ deleteGatewayMongo gid
   if res
     then return NoContent
     else throwError err404 {errBody = "Cannot delete project: id not found"}
@@ -60,6 +86,13 @@ putGatewayTunnel = undefined
 deleteGatewayTunnel :: Maybe Token -> GatewayId -> Waziup NoContent
 deleteGatewayTunnel = undefined
 
+putHealth :: Maybe Token -> GatewayId -> Waziup NoContent
+putHealth tok (GatewayId gid)= do
+  checkPermResource tok GatewaysUpdate gid 
+  currentTime <- liftIO $ getCurrentTime
+  runMongo $ modify (select ["_id" =: gid] "gateways") [ "$set" := Doc ["date_modified" := val currentTime]]
+  return NoContent
+  
 
 -- putProjectDevices :: Maybe Token -> ProjectId -> [DeviceId] -> Waziup NoContent
 --  putProjectDevices tok pid ids = do
@@ -74,17 +107,15 @@ deleteGatewayTunnel = undefined
 
 getGatewayMongo :: GatewayId -> Action IO (Maybe Gateway)
 getGatewayMongo (GatewayId pid) = do
-  case readMay $ convertString pid of
-    Just id -> do
-      mdoc <- findOne (select ["_id" =: (ObjId id)] "gateways")
-      case (fromJSON . Object . aesonify <$> mdoc) of
-         Just (JSON.Success a) -> return $ Just a
-         _ -> return Nothing
-    Nothing -> return Nothing
+  mdoc <- findOne (select ["_id" =: pid] "gateways")
+  debug $ "get:   " ++ (show mdoc)
+  case (fromJSON . Object . replaceKey "_id" "id" . aesonify <$> mdoc) of
+     Just (JSON.Success a) -> return $ Just a
+     _ -> return Nothing
 
 deleteGatewayMongo :: GatewayId -> Action IO Bool 
 deleteGatewayMongo (GatewayId pid) = do
-  let sel = ["_id" =: (ObjId $ read $ convertString pid)]
+  let sel = ["_id" =: pid]
   mdoc <- findOne (select sel "gateways")
   case mdoc of
      Just _ -> do

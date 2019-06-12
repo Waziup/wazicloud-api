@@ -20,8 +20,8 @@ import qualified Data.HashMap.Strict as H
 import           Data.Aeson as JSON hiding (Options)
 import           Data.Time.ISO8601
 import           Servant
-import           Keycloak as KC hiding (info, warn, debug, err) 
-import           Orion as O hiding (info, warn, debug, err)
+import           Keycloak as KC hiding (info, warn, debug, err, try) 
+import           Orion as O hiding (info, warn, debug, err, try)
 import           System.Log.Logger
 import           Paths_Waziup_Servant
 import           Database.MongoDB as DB hiding (value, Limit, Array, lookup, Value, Null, (!?))
@@ -67,6 +67,35 @@ getPerms tok scps = do
   let getP :: KC.Permission -> Perm
       getP (KC.Permission rsname _ scopes) = Perm rsname (mapMaybe toScope scopes)
   return $ map getP ps 
+
+createResource' :: Maybe Token -> ResourceName -> ResourceType -> [W.Scope] ->  [KC.Attribute] -> Waziup ResourceId
+createResource' tok resNam resTyp scopes attrs = do
+  let username = case tok of
+       Just t -> getUsername t
+       Nothing -> "guest"
+  let kcres = KC.Resource {
+         resId      = Nothing,
+         resName    = resNam,
+         resType    = Just resTyp,
+         resUris    = [],
+         resScopes  = map (\s -> KC.Scope Nothing (fromScope s)) scopes,
+         resOwner   = Owner Nothing username,
+         resOwnerManagedAccess = True,
+         resAttributes = attrs}
+  liftKeycloak tok $ KC.createResource kcres
+
+-- | Check that `perms` contain a permission for the resource with the correspondnog scope.
+checkPermResource' :: W.Scope -> [Perm] -> W.PermResource -> Bool
+checkPermResource' scope perms rid = any (\p -> (permResource p) == rid && scope `elem` (permScopes p)) perms
+
+-- | Throws error 403 if `perms` if there is no permission for the resource under the corresponding scope.
+checkPermResource :: Maybe Token -> W.Scope -> W.PermResource -> Waziup ()
+checkPermResource tok scope rid = do
+  ps <- getPerms tok [scope]
+  debug $ "perms: " ++ (show ps)
+  if checkPermResource' scope ps rid
+     then return ()
+     else throwError err403 {errBody = "Forbidden: Cannot access project"}
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

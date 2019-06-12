@@ -94,6 +94,9 @@ type DevicesAPI = Flat (Header "Authorization" Token :>
       :<|> "visibility"
            :> ReqBody '[PlainText, JSON] Visibility
            :> PutNoContent    '[JSON] NoContent
+      :<|> "deployed"
+           :> ReqBody '[PlainText, JSON] Bool
+           :> PutNoContent    '[JSON] NoContent
       )))
 
 
@@ -187,7 +190,7 @@ type GatewaysAPI = Flat ( Header "Authorization" Token :>
   "gateways" :> (
           Get  '[JSON] [Gateway]
     :<|>  ReqBody '[JSON] Gateway
-       :> Post '[PlainText, JSON] GatewayId
+       :> Post '[PlainText, JSON] NoContent
     :<|> Capture "gw_id" GatewayId :> (
            Get '[JSON] Gateway
       :<|> DeleteNoContent '[JSON] NoContent
@@ -196,6 +199,8 @@ type GatewaysAPI = Flat ( Header "Authorization" Token :>
         :> PutNoContent '[JSON] NoContent
       :<|> "tunnel"
         :> DeleteNoContent '[JSON] NoContent
+      :<|> "health"
+        :> PutNoContent '[JSON] NoContent
     )))
 
 

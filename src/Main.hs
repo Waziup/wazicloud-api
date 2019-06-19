@@ -6,7 +6,7 @@
 module Main where
 
 import           Network.Wai.Handler.Warp
-import           Network.Wai.Middleware.RequestLogger (logStdoutDev)
+import           Network.Wai.Middleware.RequestLogger (logStdout, logStdoutDev)
 import           Network.Wai.Middleware.Cors
 import           Waziup.Server
 import           Waziup.Types 
@@ -93,7 +93,7 @@ main = do
   Main.info $ convertString $ "MQTT is running on port " <> (show mqttPort)
   Main.info $ convertString $ "Documentation is on " <> host <> "/docs"
   forkIO $ mqttProxy waziupInfo
-  run port $ logStdoutDev 
+  run port $ logStdout
            $ cors (const $ Just corsPolicy)
            $ waziupServer waziupInfo
 

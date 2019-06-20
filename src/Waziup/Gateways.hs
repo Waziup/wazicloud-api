@@ -75,6 +75,8 @@ deleteGateway :: Maybe Token -> GatewayId -> Waziup NoContent
 deleteGateway tok gid = do
   info "Delete gateway"
   checkPermResource tok GatewaysDelete (unGatewayId gid) 
+  debug "Delete Keycloak resource"
+  liftKeycloak tok $ deleteResource (ResourceId $ unGatewayId gid)
   res <- runMongo $ deleteGatewayMongo gid
   if res
     then return NoContent

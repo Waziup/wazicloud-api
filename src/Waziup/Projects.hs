@@ -55,7 +55,7 @@ postProject tok proj = do
          JSON.Object o -> o
          _ -> error "Wrong object format"
     insert "projects" (bsonify ob)
-  createResource' tok (convertString $ show res) "Project" [ProjectsView, ProjectsUpdate, ProjectsDelete] [] 
+  createResource' tok Nothing (convertString $ show res) "Project" [ProjectsView, ProjectsUpdate, ProjectsDelete] [] 
   return $ ProjectId $ convertString $ show res
 
 

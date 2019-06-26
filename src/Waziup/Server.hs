@@ -110,6 +110,7 @@ gatewaysServer = getGateways
             :<|> putGatewayTunnel
             :<|> deleteGatewayTunnel
             :<|> putHealth
+            :<|> putGatewayName
             
 
 -- Actuators server

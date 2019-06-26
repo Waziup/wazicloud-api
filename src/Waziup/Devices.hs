@@ -72,7 +72,7 @@ postDevice tok d = do
   let did = unDeviceId $ devId d
   case res2 of
     Right _ -> do 
-      keyRes <- C.try $ createResource' tok did "device" scopes attrs                                 
+      keyRes <- C.try $ createResource' tok Nothing did "device" scopes attrs                                 
       case keyRes of
         Right (ResourceId resId) -> do
           liftOrion $ O.postTextAttributeOrion (EntityId did) devTyp (AttributeId "keycloak_id") resId
@@ -83,7 +83,7 @@ postDevice tok d = do
           throwError e
     Left (err :: ServantErr)  -> do
       warn "Orion error"
-      throwError err500 {errBody = "Not a Waziup notification"}
+      throwError err500 {errBody = "Not a Waziup device"}
  
 deleteDevice :: Maybe Token -> DeviceId -> Waziup NoContent
 deleteDevice tok did = do

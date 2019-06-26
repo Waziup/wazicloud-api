@@ -201,6 +201,9 @@ type GatewaysAPI = Flat ( Header "Authorization" Token :>
         :> DeleteNoContent '[JSON] NoContent
       :<|> "health"
         :> PutNoContent '[JSON] NoContent
+      :<|> "name"       
+           :> ReqBody '[PlainText, JSON] GatewayName
+           :> PutNoContent    '[JSON] NoContent
     )))
 
 

@@ -68,13 +68,13 @@ getPerms tok scps = do
       getP (KC.Permission rsname _ scopes) = Perm rsname (mapMaybe toScope scopes)
   return $ map getP ps 
 
-createResource' :: Maybe Token -> ResourceName -> ResourceType -> [W.Scope] ->  [KC.Attribute] -> Waziup ResourceId
-createResource' tok resNam resTyp scopes attrs = do
+createResource' :: Maybe Token -> Maybe ResourceId -> ResourceName -> ResourceType -> [W.Scope] ->  [KC.Attribute] -> Waziup ResourceId
+createResource' tok resId resNam resTyp scopes attrs = do
   let username = case tok of
        Just t -> getUsername t
        Nothing -> "guest"
   let kcres = KC.Resource {
-         resId      = Nothing,
+         resId      = resId,
          resName    = resNam,
          resType    = Just resTyp,
          resUris    = [],
@@ -84,7 +84,7 @@ createResource' tok resNam resTyp scopes attrs = do
          resAttributes = attrs}
   liftKeycloak tok $ KC.createResource kcres
 
--- | Check that `perms` contain a permission for the resource with the correspondnog scope.
+-- | Check that `perms` contain a permission for the resource with the corresponding scope.
 checkPermResource' :: W.Scope -> [Perm] -> W.PermResource -> Bool
 checkPermResource' scope perms rid = any (\p -> (permResource p) == rid && scope `elem` (permScopes p)) perms
 

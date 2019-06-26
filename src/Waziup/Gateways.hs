@@ -10,6 +10,7 @@ import           Waziup.Auth hiding (info, warn, debug, err, Scope)
 import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
 import           Control.Monad.IO.Class
 import           Control.Monad.Catch as C
+import           Control.Monad
 import           Control.Exception
 import           Data.String.Conversions
 import           Servant
@@ -21,6 +22,7 @@ import           Data.AesonBson
 import           Data.Maybe
 import           Data.Typeable
 import           Data.Time
+import           Data.Text hiding (find, map, filter)
 import           Safe
 
 -- * Projects API
@@ -59,24 +61,33 @@ postGateway tok g = do
   res <- case eres of
     Right a -> return a
     Left (CompoundFailure [WriteFailure _ e _]) -> throwError err422 {errBody = "Gateway ID already exists"}
-  createResource' tok (unGatewayId $ gwId g) "Gateway" [GatewaysView, GatewaysUpdate, GatewaysDelete] [] 
+  createResource' tok
+                  (Just $ ResourceId $ convertString $ "gateway-" <> (unGatewayId $ gwId g))
+                  (unGatewayId $ gwId g)
+                  "Gateway"
+                  [GatewaysView, GatewaysUpdate, GatewaysDelete]
+                  [] 
   return NoContent
 
 getGateway :: Maybe Token -> GatewayId -> Waziup Gateway
 getGateway tok gid = do
   info "Get gateway"
-  checkPermResource tok GatewaysView (unGatewayId gid) 
   mg <- runMongo $ getGatewayMongo gid 
-  case mg of
+  g <- case mg of
     Just g -> return g
     Nothing -> throwError err404 {errBody = "Cannot get gateway: id not found"}
+  checkPermResource tok GatewaysView (unGatewayId gid)
+  return g
 
 deleteGateway :: Maybe Token -> GatewayId -> Waziup NoContent
 deleteGateway tok gid = do
   info "Delete gateway"
+  mg <- runMongo $ getGatewayMongo gid
+  debug $ "GATEway: " ++ (show mg)
+  when (isNothing mg) $ throwError err404 {errBody = "Cannot get gateway: id not found"}
   checkPermResource tok GatewaysDelete (unGatewayId gid) 
   debug "Delete Keycloak resource"
-  liftKeycloak tok $ deleteResource (ResourceId $ unGatewayId gid)
+  liftKeycloak tok $ deleteResource (ResourceId $ "gateway-" <> unGatewayId gid)
   res <- runMongo $ deleteGatewayMongo gid
   if res
     then return NoContent
@@ -95,6 +106,21 @@ putHealth tok (GatewayId gid)= do
   runMongo $ modify (select ["_id" =: gid] "gateways") [ "$set" := Doc ["date_modified" := val currentTime]]
   return NoContent
   
+putGatewayName :: Maybe Token -> GatewayId -> Text -> Waziup NoContent
+putGatewayName tok pid name = do
+  info "Put gateway name"
+  checkPermResource tok GatewaysUpdate (unGatewayId pid)
+  res <- runMongo $ do 
+    let sel = ["_id" =: unGatewayId pid]
+    mdoc <- findOne (select sel "gateways")
+    case mdoc of
+       Just _ -> do
+         modify (select sel "gateways") [ "$set" := Doc ["name" := val name]]
+         return True
+       _ -> return False 
+  if res
+    then return NoContent
+    else throwError err404 {errBody = "Cannot update gateway: id not found"}
 
 -- putProjectDevices :: Maybe Token -> ProjectId -> [DeviceId] -> Waziup NoContent
 --  putProjectDevices tok pid ids = do

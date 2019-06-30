@@ -113,3 +113,5 @@ replaceKey k0 k1 m = case H.lookup k0 m of
    Nothing -> m
    Just e  -> H.insert k1 e (H.delete k0 m)
 
+maybe' :: b -> (a -> b -> b) -> Maybe a -> b
+maybe' b f ma = maybe b (flip f b) ma

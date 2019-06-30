@@ -66,7 +66,7 @@ postGateway tok g = do
                   (unGatewayId $ gwId g)
                   "Gateway"
                   [GatewaysView, GatewaysUpdate, GatewaysDelete]
-                  [] 
+                  (if (isJust $ gwVisibility g) then [KC.Attribute "visibility" [fromVisibility $ fromJust $ gwVisibility g]] else [])
   return NoContent
 
 getGateway :: Maybe Token -> GatewayId -> Waziup Gateway
@@ -83,7 +83,6 @@ deleteGateway :: Maybe Token -> GatewayId -> Waziup NoContent
 deleteGateway tok gid = do
   info "Delete gateway"
   mg <- runMongo $ getGatewayMongo gid
-  debug $ "GATEway: " ++ (show mg)
   when (isNothing mg) $ throwError err404 {errBody = "Cannot get gateway: id not found"}
   checkPermResource tok GatewaysDelete (unGatewayId gid) 
   debug "Delete Keycloak resource"

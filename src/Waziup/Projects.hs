@@ -55,7 +55,11 @@ postProject tok proj = do
          JSON.Object o -> o
          _ -> error "Wrong object format"
     insert "projects" (bsonify ob)
-  createResource' tok Nothing (convertString $ show res) "Project" [ProjectsView, ProjectsUpdate, ProjectsDelete] [] 
+  createResource' tok
+                  (Just $ ResourceId $ convertString $ "project-" <> (show res))
+                  (convertString $ show res)
+                  "Project"
+                  [ProjectsView, ProjectsUpdate, ProjectsDelete] [] 
   return $ ProjectId $ convertString $ show res
 
 
@@ -76,6 +80,7 @@ deleteProject :: Maybe Token -> ProjectId -> Waziup NoContent
 deleteProject tok pid = do
   info "Delete project"
   checkPermResource tok ProjectsDelete (unProjectId pid)
+  liftKeycloak tok $ deleteResource (ResourceId $ "project-" <> unProjectId pid)
   res <- runMongo $ deleteProjectMongo pid
   if res
     then return NoContent

@@ -79,7 +79,6 @@ renewPerms wi tv = do
   res <- liftIO $ runWaziup (getPerms' (convertString <$> user) (convertString <$> pass)) wi
   case res of
     Right perms -> do
-      debug $ "Got perms:" ++ (show perms)
       -- store permissions
       liftIO $ atomically $ writeTVar tv (PermCache perms user pass) 
     Left e -> do 
@@ -89,7 +88,10 @@ renewPerms wi tv = do
 
 -- | traffic going downstream (from external client to internal MQTT server)
 filterMQTTin :: WaziupInfo -> TVar PermCache -> AppData -> ConduitT B.ByteString B.ByteString IO ()
-filterMQTTin wi tperms extClient = awaitForever $ \p -> do
+filterMQTTin wi tperms extClient = awaitForever $ filterMQTTin' wi tperms extClient
+
+filterMQTTin' :: WaziupInfo -> TVar PermCache -> AppData -> B.ByteString -> ConduitT B.ByteString B.ByteString IO ()
+filterMQTTin' wi tperms extClient p = do
   let res = parse T.parsePacket p
   debug $ "Received: " ++ (show res)
   case res of
@@ -131,7 +133,14 @@ filterMQTTin wi tperms extClient = awaitForever $ \p -> do
         MQTTError e -> do
           err e
         MQTTOther -> yield p
-    _ -> yield p
+    Done _ _ -> yield p
+    Fail _ _ _ -> yield p
+    Partial f -> do
+      debug $ "Partial packet received, waiting for the rest... "
+      mp2 <- await
+      case mp2 of
+        Just p2 -> filterMQTTin' wi tperms extClient (p <> p2)
+        Nothing -> return ()
       
 -- | traffic going upstream (from internal MQTT server to external client)
 filterMQTTout :: WaziupInfo -> TVar PermCache -> AppData -> ConduitT B.ByteString B.ByteString IO ()

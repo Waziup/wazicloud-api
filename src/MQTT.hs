@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PartialTypeSignatures #-}
 
 module MQTT where
 
@@ -69,8 +70,8 @@ handleStreams wi extClient intServer = do
     renewPerms wi permst
     threadDelay (round $ 60 * 10 ** 6) --renew perms every minutes
   void $ concurrently
-    (runConduit $ appSource extClient .| filterMQTTin  wi permst extClient .| appSink intServer) --traffic downstream
-    (runConduit $ appSource intServer .| filterMQTTout wi permst intServer .| appSink extClient) --traffic upstream
+    (runConduit $ appSource extClient .| conduitParser T.parsePacket .| filterMQTTin  wi permst extClient .| appSink intServer) --traffic downstream
+    (runConduit $ appSource intServer .| conduitParser T.parsePacket .| filterMQTTout wi permst intServer .| appSink extClient) --traffic upstream
   killThread threadId
 
 renewPerms :: WaziupInfo -> TVar PermCache -> IO ()
@@ -79,28 +80,25 @@ renewPerms wi tv = do
   res <- liftIO $ runWaziup (getPerms' (convertString <$> user) (convertString <$> pass)) wi
   case res of
     Right perms -> do
-      debug $ "Got perms:" ++ (show perms)
       -- store permissions
       liftIO $ atomically $ writeTVar tv (PermCache perms user pass) 
     Left e -> do 
       err $ "Could not get Waziup permissions: " ++ (show e)
       return ()
-  
 
 -- | traffic going downstream (from external client to internal MQTT server)
-filterMQTTin :: WaziupInfo -> TVar PermCache -> AppData -> ConduitT B.ByteString B.ByteString IO ()
-filterMQTTin wi tperms extClient = awaitForever $ \p -> do
-  let res = parse T.parsePacket p
+filterMQTTin :: WaziupInfo -> TVar PermCache -> AppData -> ConduitT (_, T.MQTTPkt) B.ByteString IO ()
+filterMQTTin wi tperms extClient = awaitForever $ \(_,res) -> do 
   debug $ "Received: " ++ (show res)
   case res of
     -- Decode Connect request
-    Done _ (T.ConnPkt (T.ConnectRequest user pass _ _ _ _)) -> do
+    (T.ConnPkt (T.ConnectRequest user pass _ _ _ _)) -> do
       -- get permissions for this user
       liftIO $ atomically $ writeTVar tperms (PermCache [] (convertString <$> user) (convertString <$> pass)) 
       lift $ renewPerms wi tperms
-      yield p
+      yield $ convertString $ T.toByteString res
     -- Decode Publish
-    Done _ (T.PublishPkt (T.PublishRequest _ _ _ topic id body)) -> do
+    (T.PublishPkt (T.PublishRequest _ _ _ topic id body)) -> do
       -- Get the permissions
       (PermCache perms _ _) <- liftIO $ atomically $ readTVar tperms
       -- Decode MQTT message
@@ -114,7 +112,7 @@ filterMQTTin wi tperms extClient = awaitForever $ \p -> do
               -- Store the value
               lift $ runWaziup (postSensorValue devId senId senVal) wi
               -- pass value to MQTT server
-              yield p
+              yield $ convertString $ T.toByteString res
             else do
               -- return PUBACK directly to client (MQTT offers no way to inform the client about the failure)
               yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink extClient
@@ -125,22 +123,21 @@ filterMQTTin wi tperms extClient = awaitForever $ \p -> do
           if auth 
             then do
               lift $ runWaziup (putActuatorValue devId actId actVal) wi
-              yield p
+              yield $ convertString $ T.toByteString res
             else do
               yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink extClient
         MQTTError e -> do
           err e
-        MQTTOther -> yield p
-    _ -> yield p
+        MQTTOther -> yield $ convertString $ T.toByteString res
+    _ -> yield $ convertString $ T.toByteString res
       
 -- | traffic going upstream (from internal MQTT server to external client)
-filterMQTTout :: WaziupInfo -> TVar PermCache -> AppData -> ConduitT B.ByteString B.ByteString IO ()
-filterMQTTout wi tperms intServer = awaitForever $ \p -> do
-  let res = parse T.parsePacket p
+filterMQTTout :: WaziupInfo -> TVar PermCache -> AppData -> ConduitT (_, T.MQTTPkt) B.ByteString IO ()
+filterMQTTout wi tperms intServer = awaitForever $ \(_, res) -> do
   debug $ "Received downstream: " ++ (show res)
   case res of
     -- Decode Publish
-    Done _ (T.PublishPkt (T.PublishRequest _ _ _ topic id body)) -> do
+    (T.PublishPkt (T.PublishRequest _ _ _ topic id body)) -> do
       -- Get the permissions
       (PermCache perms _ _) <- liftIO $ atomically $ readTVar tperms
       -- Decode MQTT message
@@ -150,18 +147,18 @@ filterMQTTout wi tperms intServer = awaitForever $ \p -> do
           let auth = checkPermDevice DevicesDataView perms devId
           debug $ "Perm check downstream: " ++ (show auth)
           if auth 
-            then yield p
+            then yield $ convertString $ T.toByteString res
             else yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink intServer
         MQTTAct devId actId actVal -> do 
           let auth = checkPermDevice DevicesDataCreate perms devId
           debug $ "Perm check downstream: " ++ (show auth)
           if auth 
-            then yield p
+            then yield $ convertString $ T.toByteString res
             else yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink intServer
         MQTTError e -> do
           err e
-        MQTTOther -> yield p
-    _ -> yield p
+        MQTTOther -> yield $ convertString $ T.toByteString res
+    _ -> yield $ convertString $ T.toByteString res
   
   
 getPerms' :: Maybe T.Text -> Maybe T.Text -> Waziup [Perm]

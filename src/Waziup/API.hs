@@ -97,6 +97,9 @@ type DevicesAPI = Flat (Header "Authorization" Token :>
       :<|> "deployed"
            :> ReqBody '[PlainText, JSON] Bool
            :> PutNoContent    '[JSON] NoContent
+      :<|> "owner"
+           :> ReqBody '[PlainText, JSON] Username
+           :> PutNoContent    '[JSON] NoContent
       )))
 
 
@@ -203,6 +206,9 @@ type GatewaysAPI = Flat ( Header "Authorization" Token :>
         :> PutNoContent '[JSON] NoContent
       :<|> "name"       
            :> ReqBody '[PlainText, JSON] GatewayName
+           :> PutNoContent    '[JSON] NoContent
+      :<|> "owner"       
+           :> ReqBody '[PlainText, JSON] Username
            :> PutNoContent    '[JSON] NoContent
     )))
 

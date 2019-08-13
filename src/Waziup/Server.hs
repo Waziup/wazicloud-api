@@ -83,6 +83,7 @@ devicesServer = getDevices
            :<|> putDeviceGatewayId
            :<|> putDeviceVisibility
            :<|> putDeviceDeployed
+           :<|> putDeviceOwner
 
 -- Sensors server
 sensorsServer :: ServerT SensorsAPI Waziup
@@ -111,6 +112,7 @@ gatewaysServer = getGateways
             :<|> deleteGatewayTunnel
             :<|> putHealth
             :<|> putGatewayName
+            :<|> putGatewayOwner
             
 
 -- Actuators server

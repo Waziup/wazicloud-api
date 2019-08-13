@@ -4,7 +4,7 @@
 module Waziup.Devices where
 
 import           Waziup.Types as W
-import           Waziup.Utils
+import           Waziup.Utils as U
 import           Waziup.Auth hiding (info, warn, debug, err) 
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
@@ -65,31 +65,32 @@ postDevice tok d = do
   info $ "Post device: " ++ (show d)
   debug "Check permissions"
   liftKeycloak tok $ checkPermission (ResourceId "Devices") (fromScope DevicesCreate)
+  --deleteGuestDevice tok (devId d)
   debug "Create entity"
   let username = case tok of
        Just t -> getUsername t
        Nothing -> "guest"
   debug $ "Owner: " <> (show username)
   let entity = getEntityFromDevice (d {devOwner = Just username})
-  res2 <- C.try $ liftOrion $ O.postEntity entity
-  let scopes = [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView]
-  let attrs = if (isJust $ devVisibility d) then [KC.Attribute "visibility" [fromVisibility $ fromJust $ devVisibility d]] else []
-  let did = unDeviceId $ devId d
+  res2 <- U.try $ liftOrion $ O.postEntity entity
   case res2 of
     Right _ -> do 
-      keyRes <- C.try $ createResource' tok Nothing did "device" scopes attrs                                 
+      let scopes = [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView]
+      let attrs = if (isJust $ devVisibility d) then [KC.Attribute "visibility" [fromVisibility $ fromJust $ devVisibility d]] else []
+      let did = unDeviceId $ devId d
+      keyRes <- U.try $ createResource' tok Nothing did "device" scopes attrs                                 
       case keyRes of
         Right (ResourceId resId) -> do
           liftOrion $ O.postTextAttributeOrion (EntityId did) devTyp (AttributeId "keycloak_id") resId
           return NoContent
         Left e -> do
           err $ "Keycloak error: " ++ (show e) ++ " deleting device"
-          (_ :: Either ServantErr ()) <- C.try $ liftOrion $ O.deleteEntity (EntityId did) devTyp
+          (_ :: Either ServantErr ()) <- U.try $ liftOrion $ O.deleteEntity (EntityId did) devTyp
           throwError e
     Left (err :: ServantErr)  -> do
       warn "Orion error"
-      throwError err500 {errBody = "Not a Waziup device"}
- 
+      throwError err
+
 deleteDevice :: Maybe Token -> DeviceId -> Waziup NoContent
 deleteDevice tok did = do
   info "Delete device"
@@ -156,6 +157,29 @@ putDeviceDeployed mtok did dep = do
     debug "Update Orion resource"
     liftOrion $ O.postAttribute (toEntityId did) devTyp (AttributeId "deployed", O.Attribute "Bool" (Just $ toJSON dep) M.empty)
   return NoContent
+
+-- Change the owner of a devicey. The device will also automatically be passed as private.
+putDeviceOwner :: Maybe Token -> DeviceId -> KC.Username -> Waziup NoContent
+putDeviceOwner tok did user = do
+  info "Put device owner"
+  checkPermResource tok DevicesUpdate (unDeviceId did)
+  d <- getDevice tok did
+  debug "Update Orion resource"
+  liftOrion $ O.postAttribute (toEntityId did) devTyp (AttributeId "owner", O.Attribute "String" (Just $ toJSON user) M.empty)
+  info "Delete Keycloak resource"
+  liftKeycloak tok $ deleteResource $ fromJust $ devKeycloakId d
+  let scopes = [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView]
+  let attrs = if (isJust $ devVisibility d) then [KC.Attribute "visibility" [fromVisibility $ fromJust $ devVisibility d]] else []
+  let resName = unDeviceId did
+  (ResourceId resId) <- createResource' tok
+                           Nothing
+                           resName
+                           "Device"
+                           scopes
+                           attrs 
+  liftOrion $ O.postTextAttributeOrion (EntityId $ unDeviceId did) devTyp (AttributeId "keycloak_id") resId
+  return NoContent
+
 -- * From Orion to Waziup types
 
 getDeviceFromEntity :: O.Entity -> Device

@@ -106,11 +106,11 @@ putHealth tok (GatewayId gid)= do
   return NoContent
   
 putGatewayName :: Maybe Token -> GatewayId -> Text -> Waziup NoContent
-putGatewayName tok pid name = do
+putGatewayName tok gid name = do
   info "Put gateway name"
-  checkPermResource tok GatewaysUpdate (unGatewayId pid)
+  checkPermResource tok GatewaysUpdate (unGatewayId gid)
   res <- runMongo $ do 
-    let sel = ["_id" =: unGatewayId pid]
+    let sel = ["_id" =: unGatewayId gid]
     mdoc <- findOne (select sel "gateways")
     case mdoc of
        Just _ -> do
@@ -121,13 +121,28 @@ putGatewayName tok pid name = do
     then return NoContent
     else throwError err404 {errBody = "Cannot update gateway: id not found"}
 
--- putProjectDevices :: Maybe Token -> ProjectId -> [DeviceId] -> Waziup NoContent
---  putProjectDevices tok pid ids = do
---    info "Put project devices"
---    res <- runMongo $ putProjectDevicesMongo pid ids
---    if res
---      then return NoContent
---      else throwError err404 {errBody = "Cannot update project: id not found"}
+-- Change the owner of a gateway. The gateway will also automatically be passed as private.
+putGatewayOwner :: Maybe Token -> GatewayId -> KC.Username -> Waziup NoContent
+putGatewayOwner tok gid user = do
+  info "Put gateway owner"
+  checkPermResource tok GatewaysUpdate (unGatewayId gid)
+  res <- runMongo $ do 
+    let sel = ["_id" =: unGatewayId gid]
+    mdoc <- findOne (select sel "gateways")
+    case mdoc of
+       Just _ -> do
+         modify (select sel "gateways") [ "$set" := Doc ["owner" := val user, "visibility" := val ("private" :: String)]]
+         return True
+       _ -> return False 
+  info "Delete Keycloak resource"
+  liftKeycloak tok $ deleteResource (ResourceId $ "gateway-" <> unGatewayId gid)
+  createResource' tok
+                  (Just $ ResourceId $ convertString $ "gateway-" <> (unGatewayId gid))
+                  (unGatewayId gid)
+                  "Gateway"
+                  [GatewaysView, GatewaysUpdate, GatewaysDelete]
+                  [KC.Attribute "visibility" [fromVisibility Private]]
+  return NoContent
 
 
 -- * Helpers

@@ -6,6 +6,7 @@ module Waziup.Gateways where
 import           Waziup.Types
 import           Waziup.API
 import           Waziup.Utils
+import           Waziup.Devices hiding (info, warn, debug, err, Scope) 
 import           Waziup.Auth hiding (info, warn, debug, err, Scope) 
 import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
 import           Control.Monad.IO.Class
@@ -27,8 +28,8 @@ import           Safe
 
 -- * Projects API
 
-getGateways :: Maybe Token -> Waziup [Gateway]
-getGateways tok = do
+getGateways :: Maybe Token -> Maybe Bool -> Waziup [Gateway]
+getGateways tok mfull = do
   info "Get gateways"
   gws <- runMongo $ do
     docs <- rest =<< find (select [] "gateways")
@@ -37,9 +38,12 @@ getGateways tok = do
       JSON.Success a -> return a
       JSON.Error _ -> return []
   info $ "Got gateways: " ++ (show gws)
+  gws' <- case mfull of
+    Just True -> mapM (getFullGateway tok) gws 
+    _ -> return gws
   gs <- getPermsGateways tok
-  let gs2 = filter (checkPermResource' GatewaysView gs . unGatewayId . gwId) gws -- TODO limits
-  return gs2
+  let gws'' = filter (checkPermResource' GatewaysView gs . unGatewayId . gwId) gws'
+  return gws''
 
 postGateway :: Maybe Token -> Gateway -> Waziup NoContent
 postGateway tok g = do
@@ -69,15 +73,22 @@ postGateway tok g = do
                   (if (isJust $ gwVisibility g) then [KC.Attribute "visibility" [fromVisibility $ fromJust $ gwVisibility g]] else [])
   return NoContent
 
-getGateway :: Maybe Token -> GatewayId -> Waziup Gateway
-getGateway tok gid = do
+getGateway :: Maybe Token -> GatewayId -> Maybe Bool -> Waziup Gateway
+getGateway tok gid mfull = do
   info "Get gateway"
   mg <- runMongo $ getGatewayMongo gid 
   g <- case mg of
     Just g -> return g
     Nothing -> throwError err404 {errBody = "Cannot get gateway: id not found"}
   checkPermResource tok GatewaysView (unGatewayId gid)
-  return g
+  case mfull of
+    Just True -> getFullGateway tok g
+    _ -> return g
+
+getFullGateway :: Maybe Token -> Gateway -> Waziup Gateway
+getFullGateway tok g = do
+  devs <- getDevices tok (Just ("gateway_id==" <> (convertString $ unGatewayId $ gwId g))) Nothing Nothing 
+  return $ g {gwDevices = Just devs}
 
 deleteGateway :: Maybe Token -> GatewayId -> Waziup NoContent
 deleteGateway tok gid = do

@@ -191,11 +191,13 @@ type ActuatorsAPI = Flat ( Header "Authorization" Token :>
 
 type GatewaysAPI = Flat ( Header "Authorization" Token :> 
   "gateways" :> (
-          Get  '[JSON] [Gateway]
+          QueryParam "full" Bool
+       :> Get  '[JSON] [Gateway]
     :<|>  ReqBody '[JSON] Gateway
        :> Post '[PlainText, JSON] NoContent
     :<|> Capture "gw_id" GatewayId :> (
-           Get '[JSON] Gateway
+           QueryParam "full" Bool
+        :> Get '[JSON] Gateway
       :<|> DeleteNoContent '[JSON] NoContent
       :<|> "tunnel"
         :> ReqBody '[PlainText, JSON] Int

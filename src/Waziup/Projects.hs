@@ -125,7 +125,7 @@ putProjectName tok pid name = do
 getFullProject :: Maybe Token -> Project -> Waziup Project
 getFullProject tok p@(Project _ _ _ (Left devids) (Left gtwids)) = do
   devs <- mapM (try . getDevice tok) devids
-  gtwids <- mapM (try . getGateway tok) gtwids
+  gtwids <- mapM (try . (\id -> getGateway tok id Nothing)) gtwids
   return $ p {pDevices = Right $ rights devs, pGateways = Right $ rights gtwids}
 
 getProjectMongo :: ProjectId -> Action IO (Maybe Project)

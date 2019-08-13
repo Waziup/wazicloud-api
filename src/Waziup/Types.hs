@@ -726,7 +726,8 @@ data Gateway = Gateway
   , gwLocation     :: Maybe Location
   , gwDateCreated  :: Maybe UTCTime
   , gwDateModified :: Maybe UTCTime
-  , gwTunnel       :: Maybe GatewayTunnel -- ^ gateway tunnel with platform 
+  , gwTunnel       :: Maybe GatewayTunnel -- ^ gateway tunnel with platform
+  , gwDevices      :: Maybe [Device] 
   } deriving (Show, Eq, Generic)
 
 defaultGateway = Gateway 
@@ -738,6 +739,7 @@ defaultGateway = Gateway
   , gwDateCreated  = Nothing
   , gwDateModified = Nothing
   , gwTunnel       = Nothing
+  , gwDevices      = Nothing 
   }
 
 --JSON instances

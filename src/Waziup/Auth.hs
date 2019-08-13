@@ -73,6 +73,10 @@ createResource' tok resId resNam resTyp scopes attrs = do
   let username = case tok of
        Just t -> getUsername t
        Nothing -> "guest"
+  createResource'' tok resId resNam resTyp scopes attrs username 
+
+createResource'' :: Maybe Token -> Maybe ResourceId -> ResourceName -> ResourceType -> [W.Scope] ->  [KC.Attribute] -> KC.Username -> Waziup ResourceId
+createResource'' tok resId resNam resTyp scopes attrs username = do 
   let kcres = KC.Resource {
          resId      = resId,
          resName    = resNam,

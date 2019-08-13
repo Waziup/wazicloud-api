@@ -134,7 +134,7 @@ putGatewayName tok gid name = do
 
 -- Change the owner of a gateway. The gateway will also automatically be passed as private.
 putGatewayOwner :: Maybe Token -> GatewayId -> KC.Username -> Waziup NoContent
-putGatewayOwner tok gid user = do
+putGatewayOwner tok gid owner = do
   info "Put gateway owner"
   checkPermResource tok GatewaysUpdate (unGatewayId gid)
   res <- runMongo $ do 
@@ -142,17 +142,18 @@ putGatewayOwner tok gid user = do
     mdoc <- findOne (select sel "gateways")
     case mdoc of
        Just _ -> do
-         modify (select sel "gateways") [ "$set" := Doc ["owner" := val user, "visibility" := val ("private" :: String)]]
+         modify (select sel "gateways") [ "$set" := Doc ["owner" := val owner, "visibility" := val ("private" :: String)]]
          return True
        _ -> return False 
   info "Delete Keycloak resource"
   liftKeycloak tok $ deleteResource (ResourceId $ "gateway-" <> unGatewayId gid)
-  createResource' tok
+  createResource'' tok
                   (Just $ ResourceId $ convertString $ "gateway-" <> (unGatewayId gid))
                   (unGatewayId gid)
                   "Gateway"
                   [GatewaysView, GatewaysUpdate, GatewaysDelete]
                   [KC.Attribute "visibility" [fromVisibility Private]]
+                  owner
   return NoContent
 
 

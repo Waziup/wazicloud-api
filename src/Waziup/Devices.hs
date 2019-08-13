@@ -160,23 +160,24 @@ putDeviceDeployed mtok did dep = do
 
 -- Change the owner of a devicey. The device will also automatically be passed as private.
 putDeviceOwner :: Maybe Token -> DeviceId -> KC.Username -> Waziup NoContent
-putDeviceOwner tok did user = do
+putDeviceOwner tok did owner = do
   info "Put device owner"
   checkPermResource tok DevicesUpdate (unDeviceId did)
   d <- getDevice tok did
   debug "Update Orion resource"
-  liftOrion $ O.postAttribute (toEntityId did) devTyp (AttributeId "owner", O.Attribute "String" (Just $ toJSON user) M.empty)
+  liftOrion $ O.postAttribute (toEntityId did) devTyp (AttributeId "owner", O.Attribute "String" (Just $ toJSON owner) M.empty)
   info "Delete Keycloak resource"
   liftKeycloak tok $ deleteResource $ fromJust $ devKeycloakId d
   let scopes = [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView]
   let attrs = if (isJust $ devVisibility d) then [KC.Attribute "visibility" [fromVisibility $ fromJust $ devVisibility d]] else []
   let resName = unDeviceId did
-  (ResourceId resId) <- createResource' tok
+  (ResourceId resId) <- createResource'' tok
                            Nothing
                            resName
                            "Device"
                            scopes
-                           attrs 
+                           attrs
+                           owner
   liftOrion $ O.postTextAttributeOrion (EntityId $ unDeviceId did) devTyp (AttributeId "keycloak_id") resId
   return NoContent
 

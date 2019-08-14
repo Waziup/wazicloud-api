@@ -5,10 +5,12 @@ module Waziup.SensorData where
 
 import           Waziup.Types
 import           Waziup.Utils
+import           Waziup.Auth hiding (info, warn, debug, err)
 import           Waziup.Devices hiding (info, warn, debug, err)
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
 import           Control.Monad.Catch as C
+import           Control.Monad
 import           Data.Maybe
 import           Data.Text hiding (map, filter, foldl, any, find)
 import           Data.String.Conversions
@@ -27,8 +29,8 @@ import           Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 
 
 getDatapoints :: Maybe Token
-              -> Maybe DeviceId
-              -> Maybe SensorId
+              -> Maybe [DeviceId]
+              -> Maybe [SensorId]
               -> Maybe Int
               -> Maybe Int
               -> Maybe Sort
@@ -36,34 +38,32 @@ getDatapoints :: Maybe Token
               -> Maybe UTCTime
               -> Maybe Bool
               -> Waziup [Datapoint]
-getDatapoints tok did sid limit offset sort dateFrom dateTo calibEn = do
+getDatapoints tok mdids msids limit offset sort dateFrom dateTo calibEn = do
   info "Get datapoints"
-  withKCId (fromJustNote "parameter sensor_id is mandatory" did) $ \(keyId, device) -> do
-    debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (fromScope DevicesDataView)
-    debug "Permission granted, returning datapoints"
-    res <- runMongo $ getDatapointsMongo did sid limit offset sort dateFrom dateTo
-    let calib = if (isJust sid) 
-        then case L.find (\s -> (senId s) == fromJust sid) (maybeToList' $ devSensors device) of
-           Just sen -> senCalib sen
-           Nothing -> Nothing
-        else Nothing
-    if calibEn == Just False -- by default, values are calibrated
-       then return res -- return raw values
-       else return $ map (calibrateDatapoint calib) res -- return calibrated values
-    
-getDatapointsMongo :: Maybe DeviceId 
-                   -> Maybe SensorId
+  dids <- case mdids of
+    Nothing -> throwError err400 {errBody = "parameters 'devices' must be present"}
+    Just dids -> return dids
+  perms <- getPermsDevices tok
+  let dids' = filter (\did -> checkPermResource' DevicesDataView perms (unDeviceId did)) dids
+  res <- runMongo $ getDatapointsMongo dids' msids limit offset sort dateFrom dateTo
+  res' <- calibrateDatapoints tok dids' res 
+  return res'
+
+getDatapointsMongo :: [DeviceId]
+                   -> Maybe [SensorId]
                    -> Maybe Int
                    -> Maybe Int
                    -> Maybe Sort
                    -> Maybe UTCTime
                    -> Maybe UTCTime
                    -> Action IO [Datapoint]
-getDatapointsMongo did sid limit offset sort dateFrom dateTo = do
-  info "Get datapoints from Mongo"
-  let filterDev = ["device_id" =: did' | (Just (DeviceId did')) <- [did]]
-  let filterSen = ["sensor_id" =: sid' | (Just (SensorId sid')) <- [sid]]
+getDatapointsMongo dids msids limit offset sort dateFrom dateTo = do
+  info $ "Get datapoints from Mongo"
+  let filterDev = ["device_id" =: ["$in" =: map unDeviceId dids]]
+  let filterSen = case msids of
+         Nothing -> []
+         Just sids -> ["sensor_id" =: ["$in" =: map unSensorId sids]]
+
   --filter creation date by creating fake ObjectIds
   let filterDateFrom = ["$gte" =: Oid (truncate $ utcTimeToPOSIXSeconds dateFrom') 0 | (Just dateFrom') <- [dateFrom]]
   let filterDateTo   = ["$lte" =: Oid (truncate $ utcTimeToPOSIXSeconds dateTo') 0 | (Just dateTo') <- [dateTo]]
@@ -77,6 +77,9 @@ getDatapointsMongo did sid limit offset sort dateFrom dateTo = do
                Nothing  -> 1 :: Int
   let limit' = if isJust limit  then fromJust limit else 20
   let skip'  = if isJust offset then fromJust offset else 0
+  debug $ show filterSen
+  debug $ show filterDev
+
   let sel = (select filters "waziup_history") {sort  = ["_id" := val sort'],
                                                limit = fromIntegral limit',
                                                skip  = fromIntegral skip'}
@@ -96,9 +99,22 @@ isSuccess :: Result a -> Bool
 isSuccess (JSON.Success _) = True
 isSuccess (JSON.Error _) = False
 
-calibrateDatapoint :: Maybe Calib -> Datapoint -> Datapoint
-calibrateDatapoint cal d@(Datapoint _ _ val _ _) = d {dataValue = getCalibratedValue val cal}
+calibrateDatapoints :: Maybe Token -> [DeviceId] -> [Datapoint] -> Waziup [Datapoint]
+calibrateDatapoints tok dids ds = do
+  devices <- mapM (getDevice tok) dids
+  return $ map (calibrateDatapoint devices) ds
 
+calibrateDatapoint :: [Device] -> Datapoint -> Datapoint
+calibrateDatapoint devs d = calib (getCalib devs d) d where
+  calib :: Maybe Calib -> Datapoint -> Datapoint
+  calib cal d@(Datapoint _ _ val _ _) = d {dataValue = getCalibratedValue val cal}
+
+getCalib :: [Device] -> Datapoint -> Maybe Calib
+getCalib devs (Datapoint did sid _ _ _) = do
+  device <- L.find (\d -> (devId d) == did) devs
+  sensor <- L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors device)
+  calib <- senCalib sensor
+  return calib
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

@@ -5,6 +5,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE FlexibleInstances #-} 
 
 module Waziup.Types where
 
@@ -30,6 +31,7 @@ import           Data.Swagger.Internal
 import           Data.Swagger.Lens
 import           Data.String.Conversions
 import           Data.Pool
+import           Data.Either
 import qualified Data.Csv as CSV
 import           Control.Lens hiding ((.=))
 import           Control.Monad
@@ -263,6 +265,9 @@ instance FromJSON DeviceId where
 instance FromHttpApiData DeviceId where
   parseUrlPiece a = Right $ DeviceId a 
 
+instance FromHttpApiData [DeviceId] where
+  parseUrlPiece a = Right $ map DeviceId (T.splitOn "," a)
+
 -- Rendering in Swagger
 instance ToSchema DeviceId where
   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.unwrapUnaryRecords = True} proxy
@@ -399,6 +404,9 @@ instance FromJSON SensorId where
 -- SensorId is used in Url pieces
 instance FromHttpApiData SensorId where
   parseUrlPiece a = Right $ SensorId a 
+
+instance FromHttpApiData [SensorId] where
+  parseUrlPiece a = Right $ map SensorId (T.splitOn "," a)
 
 --Swagger instances
 instance ToSchema SensorId where

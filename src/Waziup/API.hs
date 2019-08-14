@@ -143,8 +143,8 @@ type SensorsAPI = Flat ( Header "Authorization" Token :>
 
 type SensorDataAPI = Flat (
   "sensors_data" :> Header "Authorization" Token 
-  :> QueryParam "device_id"  DeviceId
-  :> QueryParam "sensor_id"  SensorId
+  :> QueryParam "device_id"  [DeviceId]
+  :> QueryParam "sensor_id"  [SensorId]
   :> QueryParam "limit"      Int
   :> QueryParam "offset"     Int
   :> QueryParam "sort"       Sort

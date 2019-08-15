@@ -1,6 +1,7 @@
 WAZIUP API Server
 =================
 
+waziup-api is a component of the [Waziup platform](https://github.com/Waziup/Platform)
 
 Install
 =======
@@ -15,7 +16,7 @@ Run
 
 Once installed, you can run the program as follows:
 ```
-waziup-servant
+stack run
 ```
 
 Command line help is available at `waziup-servant --help`.

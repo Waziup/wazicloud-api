@@ -134,6 +134,9 @@ type SensorsAPI = Flat ( Header "Authorization" Token :>
         :<|> "value"
            :> ReqBody '[JSON] SensorValue
            :> PostNoContent   '[JSON] NoContent
+        :<|> "values"
+           :> ReqBody '[JSON] [SensorValue]
+           :> PostNoContent   '[JSON] NoContent
       )))
 
 

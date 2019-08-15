@@ -92,17 +92,35 @@ putSensorCalib mtok did sid cal = do
     liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromSensor (sensor {senCalib = Just cal}))
 
 putSensorValue :: Maybe Token -> DeviceId -> SensorId -> SensorValue -> Waziup NoContent
-putSensorValue mtok did sid senVal@(SensorValue v ts dr) = do
-  info $ "Put sensor value: " ++ (show senVal)
+putSensorValue mtok did sid sv = do
+  info $ "Put sensor value: " ++ (show sv)
+  withKCId did $ \(keyId, device) -> do
+    debug "Check permissions"
+    liftKeycloak mtok $ checkPermission keyId (fromScope DevicesDataCreate)
+    debug "Permission granted, updating sensor"
+    case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors device) of
+      Just sensor -> putSensorValue' did sensor sv
+      Nothing -> do 
+        warn "sensor not found"
+        throwError err404 {errBody = "Sensor not found"}
+
+putSensorValue' :: DeviceId -> Sensor -> SensorValue -> Waziup NoContent
+putSensorValue' did sensor senVal@(SensorValue v ts dr) = do
+  liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromSensor (sensor {senValue = Just senVal}))
+  runMongo $ postDatapoint $ Datapoint did (senId sensor) v ts dr
+  publishSensorValue did (senId sensor) senVal
+  return NoContent
+
+putSensorValues :: Maybe Token -> DeviceId -> SensorId -> [SensorValue] -> Waziup NoContent
+putSensorValues mtok did sid svs = do
+  info $ "Put sensor values"
   withKCId did $ \(keyId, device) -> do
     debug "Check permissions"
     liftKeycloak mtok $ checkPermission keyId (fromScope DevicesDataCreate)
     debug "Permission granted, updating sensor"
     case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors device) of
       Just sensor -> do
-        liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromSensor (sensor {senValue = Just senVal}))
-        runMongo $ postDatapoint $ Datapoint did sid v ts dr
-        publishSensorValue did sid senVal
+        mapM_ (putSensorValue' did sensor) svs
         return NoContent
       Nothing -> do 
         warn "sensor not found"

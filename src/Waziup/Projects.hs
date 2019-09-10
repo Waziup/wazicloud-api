@@ -50,8 +50,12 @@ getProjects tok mfull = do
 postProject :: Maybe Token -> Project -> Waziup ProjectId
 postProject tok proj = do
   info "Post project"
+  let username = case tok of
+       Just t -> getUsername t
+       Nothing -> "guest"
+  let proj' = proj {pOwner = Just username}
   res <- runMongo $ do
-    let ob = case toJSON $ proj of
+    let ob = case toJSON $ proj' of
          JSON.Object o -> o
          _ -> error "Wrong object format"
     insert "projects" (bsonify ob)

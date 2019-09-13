@@ -41,14 +41,11 @@ getDevices tok mq mlimit moffset = do
   ps <- getPermsDevices tok
   -- filter devices not permitted
   let devices2 = filter (checkPermDevice DevicesView ps . devId) devices
-  -- remove ofseted devices
+  -- remove offset devices
   let devices3 = maybe' devices2 L.drop moffset
   -- cut at the limit
   let devices4 = maybe' devices3 L.take mlimit
   return devices4
-
-checkPermDevice :: W.Scope -> [Perm] -> DeviceId -> Bool
-checkPermDevice scope perms dev = any (\p -> (permResource p) == (unDeviceId $ dev) && scope `elem` (permScopes p)) perms
  
 -- | get a sigle device
 getDevice :: Maybe Token -> DeviceId -> Waziup Device
@@ -75,10 +72,8 @@ postDevice tok d = do
   res2 <- U.try $ liftOrion $ O.postEntity entity
   case res2 of
     Right _ -> do 
-      let scopes = [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView]
-      let attrs = if (isJust $ devVisibility d) then [KC.Attribute "visibility" [fromVisibility $ fromJust $ devVisibility d]] else []
       let did = unDeviceId $ devId d
-      keyRes <- U.try $ createResource' tok Nothing did "device" scopes attrs                                 
+      keyRes <- U.try $ createResourceDevice tok (devId d) (devVisibility d)                                 
       case keyRes of
         Right (ResourceId resId) -> do
           liftOrion $ O.postTextAttributeOrion (EntityId did) devTyp (AttributeId "keycloak_id") resId
@@ -90,6 +85,12 @@ postDevice tok d = do
     Left (err :: ServantErr)  -> do
       warn "Orion error"
       throwError err
+
+createResourceDevice :: Maybe Token -> DeviceId -> Maybe Visibility -> Waziup ResourceId
+createResourceDevice tok d vis = do
+  let scopes = [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView]
+  let attrs = if (isJust vis) then [KC.Attribute "visibility" [fromVisibility $ fromJust vis]] else []
+  createResource' tok Nothing (unDeviceId d) "device" scopes attrs                                 
 
 deleteDevice :: Maybe Token -> DeviceId -> Waziup NoContent
 deleteDevice tok did = do
@@ -145,7 +146,8 @@ putDeviceVisibility mtok did vis = do
     liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
     debug "Update Orion resource"
     liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "visibility") (fromVisibility vis)
-    --TODO: update visibility in KEYCLOAK
+    --update visibility in KEYCLOAK
+    createResourceDevice mtok did (Just vis)                                 
   return NoContent
 
 putDeviceDeployed :: Maybe Token -> DeviceId -> Bool -> Waziup NoContent

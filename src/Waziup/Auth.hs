@@ -101,6 +101,9 @@ checkPermResource tok scope rid = do
      then return ()
      else throwError err403 {errBody = "Forbidden: Cannot access project"}
 
+checkPermDevice :: W.Scope -> [Perm] -> DeviceId -> Bool
+checkPermDevice scope perms dev = any (\p -> (permResource p) == (unDeviceId $ dev) && scope `elem` (permScopes p)) perms
+
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()
 debug s = liftIO $ debugM   "Auth" s

@@ -6,6 +6,7 @@ module Waziup.Notifs where
 
 import           Waziup.Types as T
 import           Waziup.Utils
+import           Waziup.Auth hiding (info, warn, debug, err)
 import qualified Waziup.Users as Users
 import           Waziup.Devices hiding (info, warn, debug, err)
 import           Control.Monad
@@ -44,7 +45,10 @@ getNotifs tok = do
   info "Get notifs"
   subs <- liftOrion $ O.getSubs
   let notifs = catMaybes $ map getNotifFromSub subs
-  return notifs
+  ps <- getPermsDevices tok
+  debug $ "Not Perms" ++ (show ps)
+  let notifs2 = L.filter (checkPermDevice DevicesView ps . L.head . notifDevices . notifCondition) notifs
+  return notifs2
                                               
 postNotif :: Maybe Token -> Notif -> Waziup NotifId
 postNotif tok not = do

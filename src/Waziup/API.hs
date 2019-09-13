@@ -232,10 +232,10 @@ type ProjectsAPI = Flat ( Header "Authorization" Token :>
            QueryParam "full" Bool
         :> Get '[JSON] Project
       :<|> DeleteNoContent '[JSON] NoContent
-      :<|> "devices"
+      :<|> "device_ids"
         :> ReqBody '[JSON] [DeviceId]
         :> PutNoContent '[JSON] NoContent
-      :<|> "gateways"
+      :<|> "gateway_ids"
         :> ReqBody '[JSON] [GatewayId]
         :> PutNoContent '[JSON] NoContent
       :<|> "name"

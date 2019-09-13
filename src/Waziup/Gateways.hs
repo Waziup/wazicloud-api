@@ -33,10 +33,7 @@ getGateways tok mfull = do
   info "Get gateways"
   gws <- runMongo $ do
     docs <- rest =<< find (select [] "gateways")
-    let res = sequence $ map (fromJSON . Object . replaceKey "_id" "id" . aesonify) docs
-    case res of
-      JSON.Success a -> return a
-      JSON.Error _ -> return []
+    return $ catMaybes $ map (resultToMaybe . fromJSON . Object . replaceKey "_id" "id" . aesonify) docs
   info $ "Got gateways: " ++ (show gws)
   gws' <- case mfull of
     Just True -> mapM (getFullGateway tok) gws 

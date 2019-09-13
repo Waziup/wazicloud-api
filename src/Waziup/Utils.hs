@@ -115,3 +115,8 @@ replaceKey k0 k1 m = case H.lookup k0 m of
 
 maybe' :: b -> (a -> b -> b) -> Maybe a -> b
 maybe' b f ma = maybe b (flip f b) ma
+
+resultToMaybe :: Result a -> Maybe a
+resultToMaybe (Success a) = Just a
+resultToMaybe (Data.Aeson.Error _) = Nothing
+

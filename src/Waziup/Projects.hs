@@ -35,10 +35,7 @@ getProjects tok mfull = do
   projects <- runMongo $ do
     docs <- rest =<< find (select [] "projects")
     info $ "Got projects docs: " ++ (show docs)
-    let res = sequence $ map (fromJSON . Object . aesonify) docs
-    case res of
-      JSON.Success a -> return a
-      JSON.Error _ -> return []
+    return $ catMaybes $ map (resultToMaybe . fromJSON . Object . replaceKey "_id" "id" .  aesonify) docs
   info $ "Got projects: " ++ (show projects)
   ps <- getPermsProjects tok
   let projects2 = filter (checkPermResource' ProjectsView ps . unProjectId . fromJust . pId) projects -- TODO limits
@@ -127,15 +124,15 @@ putProjectName tok pid name = do
 -- * Helpers
 
 getFullProject :: Maybe Token -> Project -> Waziup Project
-getFullProject tok p@(Project _ _ _ (Left devids) (Left gtwids)) = do
+getFullProject tok p@(Project _ _ _ (Just devids) (Just gtwids) _ _) = do
   devs <- mapM (try . getDevice tok) devids
   gtwids <- mapM (try . (\id -> getGateway tok id Nothing)) gtwids
-  return $ p {pDevices = Right $ rights devs, pGateways = Right $ rights gtwids}
+  return $ p {pDevices = Just $ rights devs, pGateways = Just $ rights gtwids}
 
 getProjectMongo :: ProjectId -> Action IO (Maybe Project)
 getProjectMongo (ProjectId pid) = do
   mdoc <- findOne (select ["_id" =: (ObjId $ read $ convertString pid)] "projects")
-  case (fromJSON . Object . aesonify <$> mdoc) of
+  case (fromJSON . Object . replaceKey "_id" "id" . aesonify <$> mdoc) of
      Just (JSON.Success a) -> return $ Just a
      _ -> return Nothing
 
@@ -155,7 +152,7 @@ putProjectGatewaysMongo (ProjectId pid) gids = do
   mdoc <- findOne (select sel "projects")
   case mdoc of
      Just _ -> do
-       modify (select sel "projects") [ "$set" := Doc ["gateways" := val (map unGatewayId gids)]]
+       modify (select sel "projects") [ "$set" := Doc ["gateway_ids" := val (map unGatewayId gids)]]
        return True
      _ -> return False 
 
@@ -166,7 +163,7 @@ putProjectDevicesMongo (ProjectId pid) ids = do
   mdoc <- findOne (select sel "projects")
   case mdoc of
      Just _ -> do
-       modify (select sel "projects") [ "$set" := Doc ["devices" := (val $ map unDeviceId ids)]]
+       modify (select sel "projects") [ "$set" := Doc ["device_ids" := (val $ map unDeviceId ids)]]
        return True
      _ -> return False 
 

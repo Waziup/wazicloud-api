@@ -1076,44 +1076,30 @@ instance ToParamSchema ProjectId
 
 -- * A project
 data Project = Project
-  { pId         :: Maybe ProjectId,
-    pName       :: Text,
-    pOwner      :: Maybe Username,
-    pDevices    :: Either [DeviceId] [Device],
-    pGateways   :: Either [GatewayId] [Gateway]
+  { pId          :: Maybe ProjectId,
+    pName        :: Text,
+    pOwner       :: Maybe Username,
+    pDevice_ids  :: Maybe [DeviceId],
+    pGateway_ids :: Maybe [GatewayId],
+    pDevices     :: Maybe [Device],
+    pGateways    :: Maybe [Gateway]
   } deriving (Show, Eq, Generic)
 
 defaultProject = Project
-  { pId         = Nothing,
-    pName       = "MyProject",
-    pOwner      = Nothing,
-    pDevices    = Left [],
-    pGateways   = Left []
+  { pId          = Nothing,
+    pName        = "MyProject",
+    pOwner       = Nothing,
+    pDevice_ids  = Just [],
+    pGateway_ids = Just [],
+    pDevices     = Nothing,
+    pGateways    = Nothing
   }
 
-instance ToJSON Project where
-   toJSON (Project pId pName pOwner (Left pDev) (Left pGate)) = 
-     object $ (maybe [] (\id -> [("id", toJSON id)]) pId) ++
-              (maybe [] (\own -> [("owner", toJSON own)]) pOwner) ++
-               ["name"     .= pName,
-                "devices"  .= pDev,
-                "gateways" .= pGate] 
-   toJSON (Project pId pName pOwner (Right pDev) (Right pGate)) = 
-     object $ (maybe [] (\id -> [("id", toJSON id)]) pId) ++
-              (maybe [] (\own -> [("owner", toJSON own)]) pOwner) ++
-               ["name"     .= pName,
-                "devices"  .= pDev,
-                "gateways" .= pGate] 
-
 instance FromJSON Project where
-  parseJSON (Object v) = Project <$> v .:? "_id" 
-                                 <*> v .:  "name"
-                                 <*> v .:? "owner"
-                                 <*> (   (Left  <$> v .: "devices")
-                                     <|> (Right <$> v .: "devices"))
-                                 <*> (   (Left  <$> v .: "gateways")
-                                     <|> (Right <$> v .: "gateways"))
-  parseJSON _          = mzero 
+  parseJSON = genericParseJSON $ snakeDrop 1
+
+instance ToJSON Project where
+  toJSON = genericToJSON $ snakeDrop 1
 
 instance ToSchema Project where
   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy

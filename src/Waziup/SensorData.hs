@@ -86,18 +86,7 @@ getDatapointsMongo dids msids limit offset sort dateFrom dateTo = do
   debug $ show sel
   cur <- find sel
   docs <- rest cur
-  debug $ "Got docs:" <> (show docs)
-  let res = filter isSuccess $ map (fromJSON . Object . aesonify) docs
-  debug $ "Got datapoints:" <> (show res)
-  case (sequence res) of
-    JSON.Success a -> return a
-    JSON.Error e -> do
-      err $ "Error from Mongo:" ++ (show e)
-      return []
-
-isSuccess :: Result a -> Bool
-isSuccess (JSON.Success _) = True
-isSuccess (JSON.Error _) = False
+  return $ catMaybes $ map (resultToMaybe . fromJSON . Object . aesonify) docs
 
 calibrateDatapoints :: Maybe Token -> [DeviceId] -> [Datapoint] -> Waziup [Datapoint]
 calibrateDatapoints tok dids ds = do

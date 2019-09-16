@@ -76,30 +76,32 @@ runWaziup w wi = runExceptT $ runHandler' $ runReaderT w wi
 --------------
 
 data WaziupConfig = WaziupConfig {
-  _serverConf    :: ServerConfig,
-  _mongoConf     :: MongoConfig,
-  _keycloakConf  :: KCConfig,
-  _orionConf     :: O.OrionConfig,
-  _mqttConf      :: MQTTConfig,
-  _twitterConf   :: TWInfo,
-  _plivoConf     :: PlivoConfig
+  _serverConf         :: ServerConfig,
+  _mongoConf          :: MongoConfig,
+  _keycloakConf       :: KCConfig,
+  _orionConf          :: O.OrionConfig,
+  _mqttConf           :: MQTTConfig,
+  _twitterConf        :: TWInfo,
+  _plivoConf          :: PlivoConfig
   } deriving (Eq, Show)
 
 -- | Server or client configuration, specifying the host and port to query or serve on.
 data ServerConfig = ServerConfig {
-  _serverHost     :: Text,     -- ^ Hostname to serve on, e.g. "127.0.0.1"
-  _serverPort     :: Int,      -- ^ Port to serve on, e.g. 8080
-  _serverPortMQTT :: Int,      -- ^ Port to serve on, e.g. 2883 
-  _guestLogin     :: Username,
-  _guestPassword  :: Password} deriving (Eq, Show)
+  _serverHost       :: Text,     -- ^ Hostname to serve on, e.g. "127.0.0.1"
+  _serverPort       :: Int,      -- ^ Port to serve on, e.g. 8080
+  _serverPortMQTT   :: Int,      -- ^ Port to serve on, e.g. 2883 
+  _guestLogin       :: Username,
+  _guestPassword    :: Password,
+  _notifMinInterval :: Double} deriving (Eq, Show)
 
 defaultServerConfig :: ServerConfig
 defaultServerConfig = ServerConfig {
-  _serverHost     = "http://localhost:3000",
-  _serverPort     = 3000,
-  _serverPortMQTT = 3883,
-  _guestLogin     = "guest",
-  _guestPassword  = "guest"}
+  _serverHost       = "http://localhost:3000",
+  _serverPort       = 3000,
+  _serverPortMQTT   = 3883,
+  _guestLogin       = "guest",
+  _guestPassword    = "guest",
+  _notifMinInterval = 120}
  
 data MongoConfig = MongoConfig {
   _mongoUrl  :: Text,

@@ -53,8 +53,10 @@ getNotifs tok = do
 postNotif :: Maybe Token -> Notif -> Waziup NotifId
 postNotif tok not = do
   info $ "Post notif: " ++ (show not)
+  notifMinInterval <- view (waziupConfig.serverConf.notifMinInterval)
+  let not2 = not {notifThrottling = max notifMinInterval (notifThrottling not)}
   host <- view (waziupConfig.serverConf.serverHost)
-  sub <- getSubFromNotif not host
+  sub <- getSubFromNotif not2 host
   debug $ "sub: " ++ (convertString $ (encode sub) :: String)
   (SubId res) <- liftOrion $ O.postSub sub
   return $ NotifId res 

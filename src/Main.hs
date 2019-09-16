@@ -43,32 +43,34 @@ main :: IO ()
 main = do
   (C.try $ startLog "Waziup-log.xml") :: IO (Either SomeException ())
   Main.info $ "API server starting..."
-  envUrl        <- lookupEnv "HTTP_URL"
-  envPort       <- lookupEnv "HTTP_PORT" 
-  envPortMQTT   <- lookupEnv "MQTT_PORT"
-  envKCUrl      <- lookupEnv "KEYCLOAK_URL"
-  envOrUrl      <- lookupEnv "ORION_URL"
-  envMongUrl    <- lookupEnv "MONGODB_URL"
-  envMongUser   <- lookupEnv "MONGODB_USER"
-  envMongPass   <- lookupEnv "MONGODB_PASS"
-  envMosqHost   <- lookupEnv "MOSQ_HOST"
-  envMosqPort   <- lookupEnv "MOSQ_PORT"
-  envTwitKey    <- lookupEnv "TWITTER_CONSUMER_KEY"
-  envTwitSec    <- lookupEnv "TWITTER_CONSUMER_SECRET"
-  envTwitTok    <- lookupEnv "TWITTER_ACCESS_TOKEN"
-  envTwitTokSec <- lookupEnv "TWITTER_ACCESS_TOKEN_SECRET"
-  envPlivoID    <- lookupEnv "PLIVO_ID"
-  envPlivoToken <- lookupEnv "PLIVO_TOKEN"
-  let kcConfig     = defaultKCConfig     & baseUrl        .~? (convertString <$> envKCUrl)
-  let orionConfig  = defaultOrionConfig  & orionUrl       .~? (convertString <$> envOrUrl)
-  let mongoConfig  = defaultMongoConfig  & mongoUrl       .~? (convertString <$> envMongUrl)
-                                         & mongoUser      .~  (convertString <$> envMongUser)
-                                         & mongoPass      .~  (convertString <$> envMongPass)
-  let serverConfig = defaultServerConfig & serverHost     .~? (convertString <$> envUrl)
-                                         & serverPort     .~? (read          <$> envPort)
-                                         & serverPortMQTT .~? (read          <$> envPortMQTT)
-  let mqttConfig   = defaultMQTTConfig   & mqttHost       .~? (convertString <$> envMosqHost)
-                                         & mqttPort       .~? (read          <$> envMosqPort)
+  envUrl              <- lookupEnv "HTTP_URL"
+  envPort             <- lookupEnv "HTTP_PORT" 
+  envPortMQTT         <- lookupEnv "MQTT_PORT"
+  envKCUrl            <- lookupEnv "KEYCLOAK_URL"
+  envOrUrl            <- lookupEnv "ORION_URL"
+  envMongUrl          <- lookupEnv "MONGODB_URL"
+  envMongUser         <- lookupEnv "MONGODB_USER"
+  envMongPass         <- lookupEnv "MONGODB_PASS"
+  envMosqHost         <- lookupEnv "MOSQ_HOST"
+  envMosqPort         <- lookupEnv "MOSQ_PORT"
+  envTwitKey          <- lookupEnv "TWITTER_CONSUMER_KEY"
+  envTwitSec          <- lookupEnv "TWITTER_CONSUMER_SECRET"
+  envTwitTok          <- lookupEnv "TWITTER_ACCESS_TOKEN"
+  envTwitTokSec       <- lookupEnv "TWITTER_ACCESS_TOKEN_SECRET"
+  envPlivoID          <- lookupEnv "PLIVO_ID"
+  envPlivoToken       <- lookupEnv "PLIVO_TOKEN"
+  envNotifMinInterval <- lookupEnv "NOTIF_MIN_INTERVAL"
+  let kcConfig     = defaultKCConfig     & baseUrl          .~? (convertString <$> envKCUrl)
+  let orionConfig  = defaultOrionConfig  & orionUrl         .~? (convertString <$> envOrUrl)
+  let mongoConfig  = defaultMongoConfig  & mongoUrl         .~? (convertString <$> envMongUrl)
+                                         & mongoUser        .~  (convertString <$> envMongUser)
+                                         & mongoPass        .~  (convertString <$> envMongPass)
+  let serverConfig = defaultServerConfig & serverHost       .~? (convertString <$> envUrl)
+                                         & serverPort       .~? (read          <$> envPort)
+                                         & serverPortMQTT   .~? (read          <$> envPortMQTT)
+                                         & notifMinInterval .~? (read          <$> envNotifMinInterval)
+  let mqttConfig   = defaultMQTTConfig   & mqttHost         .~? (convertString <$> envMosqHost)
+                                         & mqttPort         .~? (read          <$> envMosqPort)
   let twitterConf = 
         if isJust envTwitKey && isJust envTwitSec && isJust envTwitTok && isJust envTwitTokSec 
           then def { twProxy = Nothing,
@@ -79,7 +81,7 @@ main = do
           else defaultTwitterConf
   let plivoConf = defaultPlivoConf & plivoID    .~? (convertString <$> envPlivoID)
                                    & plivoToken .~? (convertString <$> envPlivoToken)
-  let confParser = waziupConfigParser serverConfig mongoConfig kcConfig orionConfig mqttConfig twitterConf plivoConf 
+  let confParser = waziupConfigParser serverConfig mongoConfig kcConfig orionConfig mqttConfig twitterConf plivoConf
   let confParser' = Opts.info (confParser <**> helper) (fullDesc <> progDesc "Create a server for Waziup API" <> header "Waziup API server")
   conf <- execParser confParser'
   let mongUrl = conf ^. mongoConf.mongoUrl
@@ -111,13 +113,14 @@ waziupConfigParser servDef mDef kcDef oDef mqttDef twittDef plivoDef = do
   return $ WaziupConfig serv m kc o mqttDef twittDef plivoDef
 
 serverConfigParser :: ServerConfig -> Parser ServerConfig
-serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass) = do
+serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass defNotif) = do
   url           <- strOption   (long "url"         <> metavar "<url>"      <> help "url of this server"  <> value defUrl)
   port          <- option auto (long "port"        <> metavar "<port>"     <> help "HTTP port of this server" <> value defPort) 
   portMQTT      <- option auto (long "portMQTT"    <> metavar "<portMQTT>" <> help "MQTT port of this server" <> value defPortMQTT) 
   guestLogin    <- strOption   (long "kcGuestLog"  <> metavar "<login>"    <> help "Guest login of Keycloak"    <> value defGueLog)
   guestPassword <- strOption   (long "kcGuestPass" <> metavar "<password>" <> help "Guest password of Keycloak" <> value defGuePass)
-  return $ ServerConfig url port portMQTT guestLogin guestPassword
+  notifInterval <- option auto (long "notif"       <> metavar "<notif>"    <> help "minimum interval for notifications (in seconds)" <> value defNotif) 
+  return $ ServerConfig url port portMQTT guestLogin guestPassword notifInterval
 
 kcConfigParser :: KCConfig -> Parser KCConfig
 kcConfigParser (KCConfig defUrl defRealm defCID defCSec) = do

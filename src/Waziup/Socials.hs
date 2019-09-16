@@ -111,8 +111,8 @@ postSMS tok user@(T.User _ _ _ _ _ (Just phone) _ _ (Just c)) txt = do
     Left (err :: SomeException) -> throwError err400 {errBody = convertString $ "Could not send SMS: " ++ (show err)}
   return ()
 postSMS _ _ _ = do
-  warn "phone ID not found in user profile"
-  throwError err400 {errBody = "phone ID not found in user profile"}
+  warn "phone ID or sms credit not found in user profile: update user profile"
+  throwError err400 {errBody = "phone ID or sms credit not found in user profile: update user profile"}
 
 postSocialMessageBatch :: Maybe Token -> SocialMessageBatch -> Waziup NoContent
 postSocialMessageBatch tok b@(SocialMessageBatch uns chans msg) = do

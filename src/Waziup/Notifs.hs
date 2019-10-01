@@ -37,6 +37,7 @@ import           Servant
 import           Network.HTTP.Types.Status as HTS
 import           Orion as O hiding (info, warn, debug, err)
 import           Network.HTTP.Types.URI as URI
+import           Safe
 
 -- * Notif API
 
@@ -46,9 +47,13 @@ getNotifs tok = do
   subs <- liftOrion $ O.getSubs
   let notifs = catMaybes $ map getNotifFromSub subs
   ps <- getPermsDevices tok
-  debug $ "Not Perms" ++ (show ps)
-  let notifs2 = L.filter (checkPermDevice DevicesView ps . L.head . notifDevices . notifCondition) notifs
-  return notifs2
+  debug $ "Perms" ++ (show ps)
+  let notifs2 = L.filter (isPermitted ps) notifs
+  return notifs2 where
+  isPermitted :: [Perm] -> Notif -> Bool
+  isPermitted ps notif = case (notifDevices $ notifCondition notif) of
+    [] -> False
+    a:as -> checkPermDevice DevicesView ps a --Only the first device is used to check permission 
                                               
 postNotif :: Maybe Token -> Notif -> Waziup NotifId
 postNotif tok not = do

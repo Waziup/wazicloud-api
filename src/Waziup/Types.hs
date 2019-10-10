@@ -729,15 +729,16 @@ instance ToParamSchema GatewayId
 
 -- | one gateway 
 data Gateway = Gateway
-  { gwId           :: GatewayId             -- ^ ID of the gateway
-  , gwName         :: Maybe GatewayName     -- ^ name of the gateway
+  { gwId           :: GatewayId         
+  , gwName         :: Maybe GatewayName
   , gwOwner        :: Maybe Username
   , gwVisibility   :: Maybe Visibility
   , gwLocation     :: Maybe Location
   , gwDateCreated  :: Maybe UTCTime
   , gwDateModified :: Maybe UTCTime
-  , gwTunnel       :: Maybe GatewayTunnel -- ^ gateway tunnel with platform
-  , gwDevices      :: Maybe [Device] 
+  , gwDevices      :: Maybe [Device]
+  , gwConnected    :: Maybe Bool
+  , gwLastSeen     :: Maybe UTCTime
   } deriving (Show, Eq, Generic)
 
 defaultGateway = Gateway 
@@ -748,8 +749,9 @@ defaultGateway = Gateway
   , gwLocation     = Nothing
   , gwDateCreated  = Nothing
   , gwDateModified = Nothing
-  , gwTunnel       = Nothing
   , gwDevices      = Nothing 
+  , gwConnected    = Nothing 
+  , gwLastSeen     = Nothing
   }
 
 --JSON instances

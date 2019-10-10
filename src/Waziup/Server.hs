@@ -109,9 +109,7 @@ gatewaysServer = getGateways
             :<|> postGateway
             :<|> getGateway
             :<|> deleteGateway
-            :<|> putGatewayTunnel
-            :<|> deleteGatewayTunnel
-            :<|> putHealth
+            :<|> putHeartbeat
             :<|> putGatewayName
             :<|> putGatewayOwner
             

@@ -202,12 +202,7 @@ type GatewaysAPI = Flat ( Header "Authorization" Token :>
            QueryParam "full" Bool
         :> Get '[JSON] Gateway
       :<|> DeleteNoContent '[JSON] NoContent
-      :<|> "tunnel"
-        :> ReqBody '[PlainText, JSON] Int
-        :> PutNoContent '[JSON] NoContent
-      :<|> "tunnel"
-        :> DeleteNoContent '[JSON] NoContent
-      :<|> "health"
+      :<|> "heartbeat"
         :> PutNoContent '[JSON] NoContent
       :<|> "name"       
            :> ReqBody '[PlainText, JSON] GatewayName

@@ -100,14 +100,8 @@ deleteGateway tok gid = do
     then return NoContent
     else throwError err404 {errBody = "Cannot delete project: id not found"}
 
-putGatewayTunnel :: Maybe Token -> GatewayId -> Int -> Waziup NoContent
-putGatewayTunnel = undefined
-
-deleteGatewayTunnel :: Maybe Token -> GatewayId -> Waziup NoContent
-deleteGatewayTunnel = undefined
-
-putHealth :: Maybe Token -> GatewayId -> Waziup NoContent
-putHealth tok (GatewayId gid)= do
+putHeartbeat :: Maybe Token -> GatewayId -> Waziup NoContent
+putHeartbeat tok (GatewayId gid)= do
   checkPermResource tok GatewaysUpdate gid 
   currentTime <- liftIO $ getCurrentTime
   runMongo $ modify (select ["_id" =: gid] "gateways") [ "$set" := Doc ["date_modified" := val currentTime]]

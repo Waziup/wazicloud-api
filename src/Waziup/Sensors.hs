@@ -15,6 +15,9 @@ import           Keycloak as KC hiding (info, warn, debug, err, Scope)
 import           Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
 import           MQTT hiding (info, warn, debug, err) 
+import           Safe (readMay)
+import           Data.Aeson
+import           Data.String.Conversions
 
 getSensors :: Maybe Token -> DeviceId -> Waziup [Sensor]
 getSensors tok did = do
@@ -105,11 +108,22 @@ putSensorValue mtok did sid sv = do
         throwError err404 {errBody = "Sensor not found"}
 
 putSensorValue' :: DeviceId -> Sensor -> SensorValue -> Waziup NoContent
-putSensorValue' did sensor senVal@(SensorValue v ts dr) = do
-  liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromSensor (sensor {senValue = Just senVal}))
+putSensorValue' did sensor val = do
+  let val'@(SensorValue v ts dr) = convIntValue val
+  -- Update data on ORion
+  liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromSensor (sensor {senValue = Just val'}))
+  -- Push in DB
   runMongo $ postDatapoint $ Datapoint did (senId sensor) v ts dr
-  publishSensorValue did (senId sensor) senVal
+  -- publish on MQTT
+  publishSensorValue did (senId sensor) val'
   return NoContent
+
+-- Strings that contains numbers will be converted to Numbers
+convIntValue :: SensorValue -> SensorValue
+convIntValue (SensorValue (String s) ts dr) = case readMay (convertString s) of
+  Just i  -> SensorValue (Number i) ts dr
+  Nothing -> SensorValue (String s) ts dr
+convIntValue r = r
 
 putSensorValues :: Maybe Token -> DeviceId -> SensorId -> [SensorValue] -> Waziup NoContent
 putSensorValues mtok did sid svs = do

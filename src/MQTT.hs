@@ -238,6 +238,7 @@ putConnect connCache isConnected = do
   mCon <- liftIO $ atomically $ readTVar connCache
   case mCon of
     (Just (ConnCache _ _ _ connId)) -> do
+      debug $ "Putting connected=" ++ (show isConnected) ++ " on gateway " ++ (show connId)
       void $ runMongo $ modify (select ["_id" =: (convertString connId :: T.Text)] "gateways") [ "$set" =: Doc ["connected" =: val isConnected]]
     Nothing -> return ()
 

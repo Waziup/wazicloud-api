@@ -28,7 +28,6 @@ import           Network.HTTP.Types (renderQuery)
 import           Network.Wreq as W hiding (statusCode)
 import           Network.Wreq.Types
 import           System.Log.Logger
-import           Debug.Trace
 import           System.IO.Unsafe
 import           Web.JWT as JWT
 
@@ -66,7 +65,6 @@ getAllPermissions scopes tok = do
   body <- keycloakPost "protocol/openid-connect/token" dat tok
   case eitherDecode body of
     Right ret -> do
-      debug $ "Keycloak success: " ++ (show ret) 
       return ret
     Left (err2 :: String) -> do
       debug $ "Keycloak parse error: " ++ (show err2) 
@@ -116,15 +114,13 @@ getClientAuthToken = do
 
 
 -- | Extract user name from a token
-getUsername :: Token -> Maybe Username
+getUsername :: Token -> Username
 getUsername (Token tok) = do 
   case JWT.decode $ convertString tok of
     Just t -> case (unClaimsMap $ unregisteredClaims $ claims t) !? "preferred_username" of
-      Just (String un) -> Just un
-      _ -> Nothing
-    Nothing -> do
-      traceM $ "Error while decoding token"
-      Nothing
+      Just (String un) -> un
+      _ -> error "preferred_username not present in token" 
+    Nothing -> error "Error while decoding token"
 
 
 -- * Resource
@@ -153,17 +149,20 @@ deleteResource (ResourceId rid) tok = do
   keycloakDelete ("authz/protection/resource_set/" <> rid) tok2 
   return ()
 
+-- | Update a resource
+updateResource :: Resource -> Token -> Keycloak ResourceId
+updateResource r tok = createResource r tok
 
 -- * Users
 
 -- | Get users. Default number of users is 100. Parameters max and first allow to paginate and retrieve more than 100 users.
 getUsers :: Maybe Max -> Maybe First -> Maybe Username -> Token -> Keycloak [User]
 getUsers max first username tok = do
-  let query = maybe [] (\l -> [("limit", Just $ convertString $ show l)]) max
-           ++ maybe [] (\m -> [("max", Just $ convertString $ show m)]) first
+  let query = maybe [] (\m -> [("max", Just $ convertString $ show m)]) max
+           ++ maybe [] (\f -> [("first", Just $ convertString $ show f)]) first
            ++ maybe [] (\u -> [("username", Just $ convertString u)]) username
   body <- keycloakAdminGet ("users" <> (convertString $ renderQuery True query)) tok 
-  debug $ "Keycloak success: " ++ (show body) 
+  debug $ "Keycloak success" 
   case eitherDecode body of
     Right ret -> do
       debug $ "Keycloak success: " ++ (show ret) 
@@ -209,7 +208,7 @@ keycloakPost path dat tok = do
   let url = (unpack $ baseUrl <> "/realms/" <> realm <> "/" <> path) 
   info $ "Issuing KEYCLOAK POST with url: " ++ (show url) 
   debug $ "  data: " ++ (show dat) 
-  debug $ "  headers: " ++ (show $ opts ^. W.headers) 
+  --debug $ "  headers: " ++ (show $ opts ^. W.headers) 
   eRes <- C.try $ liftIO $ W.postWith opts url dat
   case eRes of 
     Right res -> do
@@ -226,7 +225,7 @@ keycloakPost' path dat = do
   let url = (unpack $ baseUrl <> "/realms/" <> realm <> "/" <> path) 
   info $ "Issuing KEYCLOAK POST with url: " ++ (show url) 
   debug $ "  data: " ++ (show dat) 
-  debug $ "  headers: " ++ (show $ opts ^. W.headers) 
+  --debug $ "  headers: " ++ (show $ opts ^. W.headers) 
   eRes <- C.try $ liftIO $ W.postWith opts url dat
   case eRes of 
     Right res -> do
@@ -274,7 +273,7 @@ keycloakAdminPost path dat tok = do
   let url = (unpack $ baseUrl <> "/admin/realms/" <> realm <> "/" <> path) 
   info $ "Issuing KEYCLOAK POST with url: " ++ (show url) 
   debug $ "  data: " ++ (show dat) 
-  debug $ "  headers: " ++ (show $ opts ^. W.headers) 
+  --debug $ "  headers: " ++ (show $ opts ^. W.headers) 
   eRes <- C.try $ liftIO $ W.postWith opts url dat
   case eRes of 
     Right res -> do

@@ -145,6 +145,7 @@ notifsServer :: ServerT NotifsAPI Waziup
 notifsServer = getNotifs
           :<|> postNotif
           :<|> getNotif
+          :<|> patchNotif
           :<|> deleteNotif
           :<|> putNotifStatus
 

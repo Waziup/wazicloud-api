@@ -288,6 +288,8 @@ type NotifsAPI = Flat ( Header "Authorization" Token :>
        :> Post '[PlainText, JSON] NotifId
     :<|> Capture "notif_id" NotifId :> (
            Get '[JSON] Notif
+      :<|> ReqBody '[JSON] Notif
+       :> Patch '[JSON] NoContent
       :<|> DeleteNoContent '[JSON] NoContent
       :<|> "status" 
        :> ReqBody '[PlainText, JSON] SubStatus 

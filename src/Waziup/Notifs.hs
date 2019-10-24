@@ -77,6 +77,17 @@ getNotif tok (NotifId id) = do
       warn "Not a Waziup notification"
       throwError err400 {errBody = "Not a Waziup notification"}
 
+patchNotif :: Maybe Token -> NotifId -> Notif -> Waziup NoContent
+patchNotif tok (NotifId id) not = do
+  info $ "Patch notif: " ++ (show not)
+  notifMinInterval <- view (waziupConfig.serverConf.notifMinInterval)
+  let not2 = not {notifThrottling = max notifMinInterval (notifThrottling not)}
+  host <- view (waziupConfig.serverConf.serverHost)
+  sub <- getSubFromNotif not2 host
+  debug $ "sub: " ++ (convertString $ (encode sub) :: String)
+  liftOrion $ O.patchSub (SubId id) sub
+  return NoContent
+
 deleteNotif :: Maybe Token -> NotifId -> Waziup NoContent
 deleteNotif tok (NotifId id) = do
   info "Delete notif"
@@ -84,13 +95,13 @@ deleteNotif tok (NotifId id) = do
   return NoContent
 
 putNotifStatus :: Maybe Token -> NotifId -> SubStatus -> Waziup NoContent
-putNotifStatus tok (NotifId id) status = do
+putNotifStatus tok nid status = do
   info "Put notif status"
-  stat <- case status of
-    SubActive   -> return "active"
-    SubInactive -> return "inactive"
-    _ -> throwError err400 {errBody = "Wrong notification status. Valid values are: \"active\" and \"inactive\""}
-  liftOrion $ O.patchSub (SubId id) (M.singleton "status" stat)
+  notif <- getNotif tok nid
+  let not2 = notif {notifStatus = Just status}
+  host <- view (waziupConfig.serverConf.serverHost)
+  sub <- getSubFromNotif not2 host
+  liftOrion $ O.patchSub (SubId $ unNotifId nid) sub 
   return NoContent
 
 -- * Helpers

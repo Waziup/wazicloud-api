@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Waziup.Auth where
 
@@ -26,7 +27,6 @@ import           System.Log.Logger
 import           Paths_Waziup_Servant
 import           Database.MongoDB as DB hiding (value, Limit, Array, lookup, Value, Null, (!?))
 import           Data.AesonBson
-
 
 -- | get a token
 postAuth :: AuthBody -> Waziup Token
@@ -64,9 +64,18 @@ getPermsGateways tok = do
 getPerms :: Maybe Token -> [W.Scope] -> Waziup [Perm]
 getPerms tok scps = do
   ps <- liftKeycloak tok $ getAllPermissions (map fromScope scps)
-  let getP :: KC.Permission -> Perm
-      getP (KC.Permission rsname _ scopes) = Perm rsname (mapMaybe toScope scopes)
-  return $ map getP ps 
+  return $ map getPerm ps 
+  
+getPerm :: KC.Permission -> Perm
+getPerm (KC.Permission rsname rsid scopes) = Perm (getPermResource rsid rsname) (mapMaybe toScope scopes)
+
+--Resource ID is extracted from the KC ID.
+-- For legacy reason, old resources uses the resource name to store the device ID (to be removed after migration)
+getPermResource :: ResourceId -> ResourceName -> PermResource
+getPermResource (ResourceId (stripPrefix "device-" -> Just id))  _ = PermDeviceId $ DeviceId id
+getPermResource (ResourceId (stripPrefix "gateway-" -> Just id)) _ = PermGatewayId $ GatewayId id
+getPermResource (ResourceId (stripPrefix "project-" -> Just id)) _ = PermProjectId $ ProjectId id
+getPermResource _ rsName = PermDeviceId $ DeviceId rsName
 
 createResource' :: Maybe Token -> Maybe ResourceId -> ResourceName -> ResourceType -> [W.Scope] ->  [KC.Attribute] -> Waziup ResourceId
 createResource' tok resId resNam resTyp scopes attrs = do

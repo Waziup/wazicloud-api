@@ -44,7 +44,7 @@ getDatapoints tok mdids msids limit offset sort dateFrom dateTo calibEn = do
     Nothing -> throwError err400 {errBody = "parameters 'devices' must be present"}
     Just dids -> return dids
   perms <- getPermsDevices tok
-  let dids' = filter (\did -> checkPermResource' DevicesDataView perms (unDeviceId did)) dids
+  let dids' = filter (\did -> checkPermResource' DevicesDataView perms (PermDeviceId did)) dids
   res <- runMongo $ getDatapointsMongo dids' msids limit offset sort dateFrom dateTo
   res' <- calibrateDatapoints tok dids' res 
   return res'

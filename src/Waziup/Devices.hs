@@ -40,7 +40,7 @@ getDevices tok mq mlimit moffset = do
   let devices = map getDeviceFromEntity entities
   ps <- getPermsDevices tok
   -- filter devices not permitted
-  let devices2 = filter (checkPermDevice DevicesView ps . devId) devices
+  let devices2 = filter (checkPermResource' DevicesView ps . PermDeviceId . devId) devices
   -- remove offset devices
   let devices3 = maybe' devices2 L.drop moffset
   -- cut at the limit
@@ -90,7 +90,12 @@ createResourceDevice :: Maybe Token -> DeviceId -> Maybe Visibility -> Waziup Re
 createResourceDevice tok d vis = do
   let scopes = [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView]
   let attrs = if (isJust vis) then [KC.Attribute "visibility" [fromVisibility $ fromJust vis]] else []
-  createResource' tok Nothing (unDeviceId d) "device" scopes attrs                                 
+  createResource' tok 
+                  (Just $ ResourceId $ convertString $ "device-" <> (unDeviceId d))
+                  ("device-" <> unDeviceId d)
+                  "Device"
+                  scopes
+                  attrs                                 
 
 deleteDevice :: Maybe Token -> DeviceId -> Waziup NoContent
 deleteDevice tok did = do
@@ -164,7 +169,7 @@ putDeviceDeployed mtok did dep = do
 putDeviceOwner :: Maybe Token -> DeviceId -> KC.Username -> Waziup NoContent
 putDeviceOwner tok did owner = do
   info "Put device owner"
-  checkPermResource tok DevicesUpdate (unDeviceId did)
+  checkPermResource tok DevicesUpdate (PermDeviceId did)
   d <- getDevice tok did
   debug "Update Orion resource"
   liftOrion $ O.postAttribute (toEntityId did) devTyp (AttributeId "owner", O.Attribute "String" (Just $ toJSON owner) M.empty)

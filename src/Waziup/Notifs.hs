@@ -53,7 +53,7 @@ getNotifs tok = do
   isPermitted :: [Perm] -> Notif -> Bool
   isPermitted ps notif = case (notifDevices $ notifCondition notif) of
     [] -> False
-    a:as -> checkPermDevice DevicesView ps a --Only the first device is used to check permission 
+    a:as -> checkPermResource' DevicesView ps (PermDeviceId a) --Only the first device is used to check permission 
                                               
 postNotif :: Maybe Token -> Notif -> Waziup NotifId
 postNotif tok not = do

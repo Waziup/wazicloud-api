@@ -90,7 +90,9 @@ createResource'' tok resId resNam resTyp scopes attrs username = do
 
 -- | Check that `perms` contain a permission for the resource with the corresponding scope.
 checkPermResource' :: W.Scope -> [Perm] -> W.PermResource -> Bool
-checkPermResource' scope perms rid = any (\p -> (permResource p) == rid && scope `elem` (permScopes p)) perms
+checkPermResource' scope perms rid = any (isPermitted rid scope) perms where
+  isPermitted :: PermResource -> W.Scope -> Perm -> Bool
+  isPermitted rid scope (Perm pid scopes) = pid == rid && scope `elem` scopes
 
 -- | Throws error 403 if `perms` if there is no permission for the resource under the corresponding scope.
 checkPermResource :: Maybe Token -> W.Scope -> W.PermResource -> Waziup ()
@@ -100,9 +102,6 @@ checkPermResource tok scope rid = do
   if checkPermResource' scope ps rid
      then return ()
      else throwError err403 {errBody = "Forbidden: Cannot access project"}
-
-checkPermDevice :: W.Scope -> [Perm] -> DeviceId -> Bool
-checkPermDevice scope perms dev = any (\p -> (permResource p) == (unDeviceId $ dev) && scope `elem` (permScopes p)) perms
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

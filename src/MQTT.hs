@@ -118,7 +118,7 @@ filterMQTTin wi connCache extClient = awaitForever $ \(_,res) -> do
       case decodePub topic body of
         MQTTSen devId senId senVal -> do
           -- check authorization
-          let auth = checkPermDevice DevicesDataCreate perms devId
+          let auth = checkPermResource' DevicesDataCreate perms (PermDeviceId devId)
           debug $ "Perm check: " ++ (show auth)
           if auth 
             then do
@@ -131,7 +131,7 @@ filterMQTTin wi connCache extClient = awaitForever $ \(_,res) -> do
               yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink extClient
 
         MQTTAct devId actId actVal -> do 
-          let auth = checkPermDevice DevicesDataCreate perms devId
+          let auth = checkPermResource' DevicesDataCreate perms (PermDeviceId devId)
           debug $ "Perm check: " ++ (show auth)
           if auth 
             then do
@@ -157,13 +157,13 @@ filterMQTTout wi connCache intServer = awaitForever $ \(_, res) -> do
       case decodePub topic body of
         MQTTSen devId senId senVal -> do
           -- check authorization
-          let auth = checkPermDevice DevicesDataView perms devId
+          let auth = checkPermResource' DevicesDataView perms (PermDeviceId devId)
           debug $ "Perm check downstream: " ++ (show auth)
           if auth 
             then yield $ convertString $ T.toByteString res
             else yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink intServer
         MQTTAct devId actId actVal -> do 
-          let auth = checkPermDevice DevicesDataCreate perms devId
+          let auth = checkPermResource' DevicesDataCreate perms (PermDeviceId devId)
           debug $ "Perm check downstream: " ++ (show auth)
           if auth 
             then yield $ convertString $ T.toByteString res

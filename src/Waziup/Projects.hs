@@ -38,7 +38,7 @@ getProjects tok mfull = do
     return $ catMaybes $ map (resultToMaybe . fromJSON . Object . replaceKey "_id" "id" .  aesonify) docs
   info $ "Got projects: " ++ (show projects)
   ps <- getPermsProjects tok
-  let projects2 = filter (checkPermResource' ProjectsView ps . unProjectId . fromJust . pId) projects -- TODO limits
+  let projects2 = filter (checkPermResource' ProjectsView ps . PermProjectId . fromJust . pId) projects -- TODO limits
   projects3 <- case mfull of
     Just True -> mapM (getFullProject tok) projects2
     _ -> return projects2
@@ -58,7 +58,7 @@ postProject tok proj = do
     insert "projects" (bsonify ob)
   createResource' tok
                   (Just $ ResourceId $ convertString $ "project-" <> (show res))
-                  (convertString $ show res)
+                  (convertString $ "project-" <> show res)
                   "Project"
                   [ProjectsView, ProjectsUpdate, ProjectsDelete] [] 
   return $ ProjectId $ convertString $ show res
@@ -72,7 +72,7 @@ getProject tok pid mfull = do
     Just p -> return p
     Nothing -> throwError err404 {errBody = "Cannot get project: id not found"}
   debug $ "Check permissions"
-  checkPermResource tok ProjectsView (unProjectId $ fromJust $ pId p) 
+  checkPermResource tok ProjectsView (PermProjectId $ fromJust $ pId p) 
   case mfull of
     Just True -> getFullProject tok p 
     _ -> return p
@@ -80,7 +80,7 @@ getProject tok pid mfull = do
 deleteProject :: Maybe Token -> ProjectId -> Waziup NoContent
 deleteProject tok pid = do
   info "Delete project"
-  checkPermResource tok ProjectsDelete (unProjectId pid)
+  checkPermResource tok ProjectsDelete (PermProjectId pid)
   liftKeycloak tok $ deleteResource (ResourceId $ "project-" <> unProjectId pid)
   res <- runMongo $ deleteProjectMongo pid
   if res
@@ -90,7 +90,7 @@ deleteProject tok pid = do
 putProjectDevices :: Maybe Token -> ProjectId -> [DeviceId] -> Waziup NoContent
 putProjectDevices tok pid ids = do
   info "Put project devices"
-  checkPermResource tok ProjectsUpdate (unProjectId pid)
+  checkPermResource tok ProjectsUpdate (PermProjectId pid)
   res <- runMongo $ putProjectDevicesMongo pid ids
   if res
     then return NoContent
@@ -99,7 +99,7 @@ putProjectDevices tok pid ids = do
 putProjectGateways :: Maybe Token -> ProjectId -> [GatewayId] -> Waziup NoContent
 putProjectGateways tok pid ids = do
   info "Put project gateways"
-  checkPermResource tok ProjectsUpdate (unProjectId pid) 
+  checkPermResource tok ProjectsUpdate (PermProjectId pid) 
   res <- runMongo $ putProjectGatewaysMongo pid ids
   if res
     then return NoContent
@@ -108,7 +108,7 @@ putProjectGateways tok pid ids = do
 putProjectName :: Maybe Token -> ProjectId -> Text -> Waziup NoContent
 putProjectName tok pid name = do
   info "Put project name"
-  checkPermResource tok ProjectsUpdate (unProjectId pid)
+  checkPermResource tok ProjectsUpdate (PermProjectId pid)
   res <- runMongo $ do 
     let sel = ["_id" =: (ObjId $ read $ convertString $ unProjectId pid)]
     mdoc <- findOne (select sel "projects")

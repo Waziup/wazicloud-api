@@ -161,7 +161,16 @@ instance ToSchema AuthBody where
 
 -- | Permission
 
-type PermResource = Text
+data PermResource = PermDeviceId DeviceId
+                  | PermGatewayId GatewayId
+                  | PermProjectId ProjectId
+                  deriving (Show, Eq, Generic)
+
+instance ToJSON PermResource where
+  toJSON = genericToJSON defaultOptions
+
+instance ToSchema PermResource where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
 
 data Perm = Perm
   { permResource :: PermResource 

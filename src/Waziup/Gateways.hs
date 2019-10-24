@@ -39,7 +39,7 @@ getGateways tok mfull = do
     Just True -> mapM (getFullGateway tok) gws 
     _ -> return gws
   gs <- getPermsGateways tok
-  let gws'' = filter (checkPermResource' GatewaysView gs . unGatewayId . gwId) gws'
+  let gws'' = filter (checkPermResource' GatewaysView gs . PermGatewayId . gwId) gws'
   return gws''
 
 postGateway :: Maybe Token -> Gateway -> Waziup NoContent
@@ -64,7 +64,7 @@ postGateway tok g = do
     Left (CompoundFailure [WriteFailure _ e _]) -> throwError err422 {errBody = "Gateway ID already exists"}
   createResource' tok
                   (Just $ ResourceId $ convertString $ "gateway-" <> (unGatewayId $ gwId g))
-                  (unGatewayId $ gwId g)
+                  ("gateway-" <> (unGatewayId $ gwId g))
                   "Gateway"
                   [GatewaysView, GatewaysUpdate, GatewaysDelete]
                   (if (isJust $ gwVisibility g) then [KC.Attribute "visibility" [fromVisibility $ fromJust $ gwVisibility g]] else [])
@@ -77,7 +77,7 @@ getGateway tok gid mfull = do
   g <- case mg of
     Just g -> return g
     Nothing -> throwError err404 {errBody = "Cannot get gateway: id not found"}
-  checkPermResource tok GatewaysView (unGatewayId gid)
+  checkPermResource tok GatewaysView (PermGatewayId gid)
   case mfull of
     Just True -> getFullGateway tok g
     _ -> return g
@@ -92,7 +92,7 @@ deleteGateway tok gid = do
   info "Delete gateway"
   mg <- runMongo $ getGatewayMongo gid
   when (isNothing mg) $ throwError err404 {errBody = "Cannot get gateway: id not found"}
-  checkPermResource tok GatewaysDelete (unGatewayId gid) 
+  checkPermResource tok GatewaysDelete (PermGatewayId gid) 
   debug "Delete Keycloak resource"
   liftKeycloak tok $ deleteResource (ResourceId $ "gateway-" <> unGatewayId gid)
   res <- runMongo $ deleteGatewayMongo gid
@@ -101,16 +101,16 @@ deleteGateway tok gid = do
     else throwError err404 {errBody = "Cannot delete project: id not found"}
 
 putHeartbeat :: Maybe Token -> GatewayId -> Waziup NoContent
-putHeartbeat tok (GatewayId gid)= do
-  checkPermResource tok GatewaysUpdate gid 
+putHeartbeat tok gid = do
+  checkPermResource tok GatewaysUpdate (PermGatewayId gid) 
   currentTime <- liftIO $ getCurrentTime
-  runMongo $ modify (select ["_id" =: gid] "gateways") [ "$set" := Doc ["date_modified" := val currentTime]]
+  runMongo $ modify (select ["_id" =: unGatewayId gid] "gateways") [ "$set" := Doc ["date_modified" := val currentTime]]
   return NoContent
   
 putGatewayName :: Maybe Token -> GatewayId -> Text -> Waziup NoContent
 putGatewayName tok gid name = do
   info "Put gateway name"
-  checkPermResource tok GatewaysUpdate (unGatewayId gid)
+  checkPermResource tok GatewaysUpdate (PermGatewayId gid)
   res <- runMongo $ do 
     let sel = ["_id" =: unGatewayId gid]
     mdoc <- findOne (select sel "gateways")
@@ -127,7 +127,7 @@ putGatewayName tok gid name = do
 putGatewayOwner :: Maybe Token -> GatewayId -> KC.Username -> Waziup NoContent
 putGatewayOwner tok gid owner = do
   info "Put gateway owner"
-  checkPermResource tok GatewaysUpdate (unGatewayId gid)
+  checkPermResource tok GatewaysUpdate (PermGatewayId gid)
   res <- runMongo $ do 
     let sel = ["_id" =: unGatewayId gid]
     mdoc <- findOne (select sel "gateways")

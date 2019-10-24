@@ -141,12 +141,15 @@ getSub (SubId eid) = do
       debug $ "Orion parse error: " ++ (show err2) 
       throwError $ ParseError $ pack (show err2)
 
+patchSub :: SubId -> Subscription -> Orion () 
+patchSub (SubId eid) e = do
+  debug $ convertString $ "PatchSubscription: " <> (JSON.encode e)
+  res <- orionPatch ("/v2/subscriptions/" <> eid) (toJSON e)
+  debug $ "Orion resp: " ++ (show res)
+  return () 
+
 deleteSub :: SubId -> Orion ()
 deleteSub (SubId sid) = orionDelete ("/v2/subscriptions/" <> sid)
-
-patchSub :: SubId -> Map Text Text -> Orion () 
-patchSub (SubId eid) patch = do
-  orionPatch ("/v2/subscriptions/" <> eid) (toJSON patch)
 
 -- * Requests to Orion.
 

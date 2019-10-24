@@ -167,7 +167,7 @@ data PermResource = PermDeviceId DeviceId
                   deriving (Show, Eq, Generic)
 
 instance ToJSON PermResource where
-  toJSON = genericToJSON defaultOptions
+  toJSON = genericToJSON defaultOptions {sumEncoding = UntaggedValue}
 
 instance ToSchema PermResource where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy

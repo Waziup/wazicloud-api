@@ -121,7 +121,7 @@ data Subscription = Subscription {
   subDescription  :: Text,              -- ^ Description
   subSubject      :: SubSubject,        -- ^ what is subscribed on, and conditions for triggering
   subNotification :: SubNotif,          -- ^ what to do when triggered
-  subThrottling   :: Double,            -- ^ minimum interval between two messages in seconds
+  subThrottling   :: NominalDiffTime,   -- ^ minimum interval between two messages in seconds
   subStatus       :: Maybe SubStatus,
   subExpires      :: Maybe UTCTime
   } deriving (Show, Eq, Generic)

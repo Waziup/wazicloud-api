@@ -78,7 +78,7 @@ data PermCache = PermCache {
   
 -- | run a Waziup monad
 runWaziup :: Waziup a -> WaziupInfo -> IO (Either ServantErr a)
-runWaziup w wi = runExceptT $ runHandler' $ evalStateT w wi
+runWaziup w wi = runExceptT $ runHandler' $ runReaderT w wi
 
 --------------
 -- * Config --

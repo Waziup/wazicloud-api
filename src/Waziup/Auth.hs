@@ -66,7 +66,7 @@ getPermsGateways tok = do
 getPerms :: Maybe Token -> [W.Scope] -> Waziup [Perm]
 getPerms mtok scps = do
   debug "getPerms"
-  permsTV <- use permCache
+  permsTV <- view permCache
   permsM <- liftIO $ atomically $ readTVar permsTV
   tok <- fromMaybeToken mtok
   let username = getUsername tok
@@ -103,7 +103,7 @@ getPerms mtok scps = do
 
 invalidateCache :: Waziup ()
 invalidateCache = do
-  permsTV <- use permCache
+  permsTV <- view permCache
   liftIO $ atomically $ writeTVar permsTV M.empty 
   
   

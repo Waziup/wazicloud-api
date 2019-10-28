@@ -63,7 +63,7 @@ liftKeycloak' kc = do
 -- * run Mongo function
 runMongo :: Action IO a -> Waziup a
 runMongo dbAction = do
-  (WaziupInfo dBPool conf _) <- ask
+  (WaziupInfo dBPool conf _ _) <- ask
   dBPool <- view dbPool 
   muser  <- view $ waziupConfig.mongoConf.mongoUser
   mpass  <- view $ waziupConfig.mongoConf.mongoPass

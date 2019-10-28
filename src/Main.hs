@@ -154,7 +154,7 @@ startLog :: FilePath -> IO ()
 startLog fp = do
    stdoutHandler <- do
         lh <- streamHandler stdout DEBUG
-        return $ setFormatter lh (simpleLogFormatter "[$time : $loggername : $prio] $msg")
+        return $ setFormatter lh (tfLogFormatter "%Y-%m-%dT%H:%M:%S.%q" "[$time : $loggername : $prio] $msg")
    log4jHandler <- log4jFileHandler fp DEBUG
    updateGlobalLogger rootLoggerName removeHandler
    updateGlobalLogger rootLoggerName (addHandler stdoutHandler)

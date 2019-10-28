@@ -27,7 +27,7 @@ Executable waziup-servant
                      , Waziup.Utils
                      , Paths_Waziup_Servant
                      , MQTT
-  ghc-options:         -Wall
+  ghc-options:       -threaded -Wall
   build-depends:       base
                      , aeson
                      , text

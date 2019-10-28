@@ -11,15 +11,15 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Catch as C
 import           Control.Monad
 import           Data.Maybe
-import           Data.Map as M hiding (map, mapMaybe, filter, lookup, insert, delete)
+import           Data.Map as M hiding (map, mapMaybe, filter, delete)
 import           Data.Text hiding (map, filter, foldl, any)
 import           Data.String.Conversions
 import qualified Data.List as L
 import qualified Data.Vector as V
 import           Data.Scientific
 import qualified Data.HashMap.Strict as H
-import           Data.Aeson as JSON hiding (Options)
 import           Data.Time.ISO8601
+import           Data.Time
 import           Servant
 import           Keycloak as KC hiding (info, warn, debug, err, try) 
 import           Orion as O hiding (info, warn, debug, err, try)
@@ -27,6 +27,8 @@ import           System.Log.Logger
 import           Paths_Waziup_Servant
 import           Database.MongoDB as DB hiding (value, Limit, Array, lookup, Value, Null, (!?))
 import           Data.AesonBson
+import           Control.Lens
+import           Control.Concurrent.STM
 
 -- | get a token
 postAuth :: AuthBody -> Waziup Token
@@ -62,9 +64,48 @@ getPermsGateways tok = do
                 GatewaysDelete]
 
 getPerms :: Maybe Token -> [W.Scope] -> Waziup [Perm]
-getPerms tok scps = do
-  ps <- liftKeycloak tok $ getAllPermissions (map fromScope scps)
-  return $ map getPerm ps 
+getPerms mtok scps = do
+  debug "getPerms"
+  permsTV <- use permCache
+  permsM <- liftIO $ atomically $ readTVar permsTV
+  tok <- fromMaybeToken mtok
+  let username = getUsername tok
+  now <- liftIO getCurrentTime
+  --look up username in cache
+  debug $ "lookup cache for " ++ (show username)
+  cachedPerms <- case M.lookup username permsM of
+    Just (PermCache perms retrievedTime) -> do
+      debug "cache found"
+      let delay = 60 --seconds
+      --checl if not expired
+      if now < addUTCTime delay retrievedTime
+        --return permissions
+        then do
+          debug "cache valid"
+          return $ Just perms
+        --else get perms from Keycloak and update the cache
+        else do
+          debug "cache expired"
+          return Nothing
+    Nothing -> do
+      debug $ "cache not found"
+      return Nothing
+  case cachedPerms of
+    Just perms -> return perms
+    Nothing -> do
+      debug "get perms from Keycloak"
+      perms <- liftKeycloak (Just tok) $ getAllPermissions (map fromScope allScopes)
+      let perms' = map getPerm perms
+      let permsM' = M.insert username (PermCache perms' now) permsM
+      debug "update cache"
+      liftIO $ atomically $ writeTVar permsTV permsM' 
+      return perms'
+
+invalidateCache :: Waziup ()
+invalidateCache = do
+  permsTV <- use permCache
+  liftIO $ atomically $ writeTVar permsTV M.empty 
+  
   
 getPerm :: KC.Permission -> Perm
 getPerm (KC.Permission rsname rsid scopes) = Perm (getPermResource rsid rsname) (mapMaybe toScope scopes)
@@ -77,6 +118,12 @@ getPermResource (ResourceId (stripPrefix "gateway-" -> Just id)) _ = PermGateway
 getPermResource (ResourceId (stripPrefix "project-" -> Just id)) _ = PermProjectId $ ProjectId id
 getPermResource _ rsName = PermDeviceId $ DeviceId rsName
 
+-- opposite conversion: from Waziup Ids to KC IDs.
+getKCResourceId :: PermResource -> KC.ResourceId
+getKCResourceId (PermDeviceId  (DeviceId id))  = ResourceId $ "device-"  <> id
+getKCResourceId (PermGatewayId (GatewayId id)) = ResourceId $ "gateway-" <> id
+getKCResourceId (PermProjectId (ProjectId id)) = ResourceId $ "project-" <> id
+
 createResource' :: Maybe Token -> Maybe ResourceId -> ResourceName -> ResourceType -> [W.Scope] ->  [KC.Attribute] -> Waziup ResourceId
 createResource' tok resId resNam resTyp scopes attrs = do
   let username = case tok of
@@ -85,7 +132,9 @@ createResource' tok resId resNam resTyp scopes attrs = do
   createResource'' tok resId resNam resTyp scopes attrs username 
 
 createResource'' :: Maybe Token -> Maybe ResourceId -> ResourceName -> ResourceType -> [W.Scope] ->  [KC.Attribute] -> KC.Username -> Waziup ResourceId
-createResource'' tok resId resNam resTyp scopes attrs username = do 
+createResource'' tok resId resNam resTyp scopes attrs username = do
+  --creating a new resource in Keycloak invalidates the cache
+  invalidateCache
   let kcres = KC.Resource {
          resId      = resId,
          resName    = resNam,
@@ -111,6 +160,26 @@ checkPermResource tok scope rid = do
   if checkPermResource' scope ps rid
      then return ()
      else throwError err403 {errBody = "Forbidden: Cannot access project"}
+
+deleteResource :: Maybe Token -> PermResource -> Waziup ()
+deleteResource tok pr = do
+  --invalidate all cache
+  invalidateCache
+  liftKeycloak tok $ KC.deleteResource $ getKCResourceId pr
+
+deleteResource' :: Maybe Token -> ResourceId -> Waziup ()
+deleteResource' tok resId = do
+  --invalidate all cache
+  invalidateCache
+  liftKeycloak tok $ KC.deleteResource resId
+
+-- | Update a resource
+updateResource :: Maybe Token -> KC.Resource ->  Waziup ResourceId
+updateResource tok res = do 
+  --invalidate all cache
+  invalidateCache
+  liftKeycloak tok $ KC.createResource res 
+
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

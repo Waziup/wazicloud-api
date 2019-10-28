@@ -21,7 +21,7 @@ import qualified Data.HashMap.Strict as H
 import           Data.Aeson as JSON hiding (Options)
 import           Data.Time.ISO8601
 import           Servant
-import           Keycloak as KC hiding (info, warn, debug, err) 
+import           Keycloak as KC hiding (info, warn, debug, err, createResource, updateResource, deleteResource, deleteResoure') 
 import           Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
 import           Paths_Waziup_Servant
@@ -90,9 +90,9 @@ createResourceDevice :: Maybe Token -> DeviceId -> Maybe Visibility -> Waziup Re
 createResourceDevice tok d vis = do
   let scopes = [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView]
   let attrs = if (isJust vis) then [KC.Attribute "visibility" [fromVisibility $ fromJust vis]] else []
-  createResource' tok 
-                  (Just $ ResourceId $ convertString $ "device-" <> (unDeviceId d))
-                  ("device-" <> unDeviceId d)
+  createResource' tok
+                  (Just $ getKCResourceId $ PermDeviceId d)
+                  (unResId $ getKCResourceId $ PermDeviceId d)
                   "Device"
                   scopes
                   attrs                                 
@@ -104,7 +104,7 @@ deleteDevice tok did = do
     debug "Check permissions"
     liftKeycloak tok $ checkPermission keyId (fromScope DevicesDelete)
     debug "Delete Keycloak resource"
-    liftKeycloak tok $ deleteResource keyId
+    deleteResource' tok keyId
     debug "Delete Orion resource"
     liftOrion $ O.deleteEntity (toEntityId did) devTyp
     debug "Delete Mongo resources"
@@ -165,7 +165,7 @@ putDeviceDeployed mtok did dep = do
     liftOrion $ O.postAttribute (toEntityId did) devTyp (AttributeId "deployed", O.Attribute "Bool" (Just $ toJSON dep) M.empty)
   return NoContent
 
--- Change the owner of a devicey. The device will also automatically be passed as private.
+-- Change the owner of a device. The device will also automatically be passed as private.
 putDeviceOwner :: Maybe Token -> DeviceId -> KC.Username -> Waziup NoContent
 putDeviceOwner tok did owner = do
   info "Put device owner"
@@ -174,7 +174,7 @@ putDeviceOwner tok did owner = do
   debug "Update Orion resource"
   liftOrion $ O.postAttribute (toEntityId did) devTyp (AttributeId "owner", O.Attribute "String" (Just $ toJSON owner) M.empty)
   info "Delete Keycloak resource"
-  liftKeycloak tok $ deleteResource $ fromJust $ devKeycloakId d
+  deleteResource' tok (fromJust $ devKeycloakId d)
   let scopes = [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView]
   let attrs = if (isJust $ devVisibility d) then [KC.Attribute "visibility" [fromVisibility $ fromJust $ devVisibility d]] else []
   let resName = unDeviceId did

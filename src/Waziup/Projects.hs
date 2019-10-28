@@ -9,7 +9,7 @@ import           Waziup.Utils
 import           Waziup.Auth hiding (info, warn, debug, err) 
 import           Waziup.Devices hiding (info, warn, debug, err) 
 import           Waziup.Gateways hiding (info, warn, debug, err) 
-import           Keycloak as KC hiding (info, warn, debug, err, Scope, try) 
+import           Keycloak as KC hiding (info, warn, debug, err, try, createResource, updateResource, deleteResource, deleteResoure') 
 import qualified Keycloak as K (Scope(..)) 
 import           Control.Monad.Except (throwError, catchError, MonadError)
 import           Control.Monad.IO.Class
@@ -81,7 +81,7 @@ deleteProject :: Maybe Token -> ProjectId -> Waziup NoContent
 deleteProject tok pid = do
   info "Delete project"
   checkPermResource tok ProjectsDelete (PermProjectId pid)
-  liftKeycloak tok $ deleteResource (ResourceId $ "project-" <> unProjectId pid)
+  deleteResource tok (PermProjectId pid)
   res <- runMongo $ deleteProjectMongo pid
   if res
     then return NoContent

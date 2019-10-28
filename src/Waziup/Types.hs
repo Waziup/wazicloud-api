@@ -49,6 +49,9 @@ import qualified Orion.Types as O
 import           Web.Twitter.Conduit hiding (map)
 import           Debug.Trace
 import           Safe
+import           Data.Map hiding (drop, map, foldl)
+import           Control.Concurrent.STM
+import           Data.Time
 
 type Limit  = Int
 type Offset = Int
@@ -64,12 +67,18 @@ type Waziup = ReaderT WaziupInfo Servant.Handler
 data WaziupInfo = WaziupInfo {
   _dbPool       :: Pool DB.Pipe,
   _waziupConfig :: WaziupConfig,
-  _ontologies   :: Ontologies
+  _ontologies   :: Ontologies,
+  _permCache    :: TVar (Map Username PermCache)
   }
 
+data PermCache = PermCache {
+  _perms :: [Perm],
+  _retrievedTime :: UTCTime
+  } deriving (Show)
+  
 -- | run a Waziup monad
 runWaziup :: Waziup a -> WaziupInfo -> IO (Either ServantErr a)
-runWaziup w wi = runExceptT $ runHandler' $ runReaderT w wi
+runWaziup w wi = runExceptT $ runHandler' $ evalStateT w wi
 
 --------------
 -- * Config --
@@ -87,21 +96,24 @@ data WaziupConfig = WaziupConfig {
 
 -- | Server or client configuration, specifying the host and port to query or serve on.
 data ServerConfig = ServerConfig {
-  _serverHost       :: Text,     -- ^ Hostname to serve on, e.g. "127.0.0.1"
-  _serverPort       :: Int,      -- ^ Port to serve on, e.g. 8080
-  _serverPortMQTT   :: Int,      -- ^ Port to serve on, e.g. 2883 
-  _guestLogin       :: Username,
-  _guestPassword    :: Password,
-  _notifMinInterval :: Double} deriving (Eq, Show)
+  _serverHost         :: Text,     -- ^ Hostname to serve on, e.g. "127.0.0.1"
+  _serverPort         :: Int,      -- ^ Port to serve on, e.g. 8080
+  _serverPortMQTT     :: Int,      -- ^ Port to serve on, e.g. 2883 
+  _guestLogin         :: Username,
+  _guestPassword      :: Password,
+  _notifMinInterval   :: NominalDiffTime,  -- ^ minimum interval between two notifications (seconds)
+  _cacheValidDuration :: NominalDiffTime   -- ^ duration of cache validity (seconds)
+  } deriving (Eq, Show)
 
 defaultServerConfig :: ServerConfig
 defaultServerConfig = ServerConfig {
-  _serverHost       = "http://localhost:3000",
-  _serverPort       = 3000,
-  _serverPortMQTT   = 3883,
-  _guestLogin       = "guest",
-  _guestPassword    = "guest",
-  _notifMinInterval = 120}
+  _serverHost         = "http://localhost:3000",
+  _serverPort         = 3000,
+  _serverPortMQTT     = 3883,
+  _guestLogin         = "guest",
+  _guestPassword      = "guest",
+  _notifMinInterval   = 120,
+  _cacheValidDuration = 5 * 60}   -- 5 minutes
  
 data MongoConfig = MongoConfig {
   _mongoUrl  :: Text,
@@ -197,7 +209,10 @@ data Scope = DevicesCreate
            | GatewaysUpdate
            | GatewaysView
            | GatewaysDelete
-   deriving (Show, Read, Eq, Generic)
+   deriving (Show, Read, Eq, Generic, Enum)
+
+allScopes :: [Scope]
+allScopes = [toEnum 0 ..]
 
 instance ToJSON Scope where
   toJSON = genericToJSON defaultOptions {AT.constructorTagModifier = fromScope'}
@@ -825,7 +840,7 @@ data Notif = Notif
   , notifDescription       :: Text                -- ^ Description of the notification
   , notifCondition         :: NotifCondition      -- ^ What is looked at and with which condition 
   , notifAction            :: SocialMessageBatch  -- ^ Where to send the notification
-  , notifThrottling        :: Double              -- ^ minimum interval between two messages in seconds
+  , notifThrottling        :: NominalDiffTime     -- ^ minimum interval between two messages in seconds
   , notifStatus            :: Maybe O.SubStatus   -- ^ current status of the notification 
   , notifTimesSent         :: Maybe Int
   , notifLastNotif         :: Maybe UTCTime
@@ -1371,3 +1386,4 @@ makeLenses ''MQTTConfig
 makeLenses ''WaziupInfo
 makeLenses ''MongoConfig
 makeLenses ''PlivoConfig
+makeLenses ''PermCache

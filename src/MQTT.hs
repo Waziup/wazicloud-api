@@ -97,7 +97,8 @@ renewPerms wi tv = do
 -- | traffic going downstream (from external client to internal MQTT server)
 filterMQTTin :: WaziupInfo -> TVar (Maybe ConnCache) -> AppData -> ConduitT (_, T.MQTTPkt) B.ByteString IO ()
 filterMQTTin wi connCache extClient = awaitForever $ \(_,res) -> do 
-  debug $ "Received: " ++ (show res)
+  conn <- liftIO $ atomically $ readTVar connCache
+  debug $ "Received: " ++ (show res) ++ " ID= " ++ (show $ connId <$> conn)
   case res of
     -- Decode Connect request
     (T.ConnPkt (T.ConnectRequest user pass _ _ _ connId)) -> do

@@ -8,7 +8,7 @@ import           Waziup.API
 import           Waziup.Utils
 import           Waziup.Devices hiding (info, warn, debug, err, Scope) 
 import           Waziup.Auth hiding (info, warn, debug, err, Scope) 
-import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
+import           Keycloak as KC hiding (info, warn, debug, err, Scope, createResource, updateResource, deleteResource, deleteResoure')
 import           Control.Monad.IO.Class
 import           Control.Monad.Catch as C
 import           Control.Monad
@@ -94,7 +94,7 @@ deleteGateway tok gid = do
   when (isNothing mg) $ throwError err404 {errBody = "Cannot get gateway: id not found"}
   checkPermResource tok GatewaysDelete (PermGatewayId gid) 
   debug "Delete Keycloak resource"
-  liftKeycloak tok $ deleteResource (ResourceId $ "gateway-" <> unGatewayId gid)
+  deleteResource tok (PermGatewayId gid)
   res <- runMongo $ deleteGatewayMongo gid
   if res
     then return NoContent
@@ -137,7 +137,7 @@ putGatewayOwner tok gid owner = do
          return True
        _ -> return False 
   info "Delete Keycloak resource"
-  liftKeycloak tok $ deleteResource (ResourceId $ "gateway-" <> unGatewayId gid)
+  deleteResource tok (PermGatewayId gid)
   createResource'' tok
                   (Just $ ResourceId $ convertString $ "gateway-" <> (unGatewayId gid))
                   (unGatewayId gid)

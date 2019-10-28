@@ -37,6 +37,9 @@ import           System.Environment
 import           Paths_Waziup_Servant
 import           MQTT
 import           Web.Twitter.Conduit hiding (map)
+import           Data.Map as M hiding (map)
+import           Control.Concurrent.STM
+import           Data.Time
 
 
 main :: IO ()
@@ -60,17 +63,19 @@ main = do
   envPlivoID          <- lookupEnv "PLIVO_ID"
   envPlivoToken       <- lookupEnv "PLIVO_TOKEN"
   envNotifMinInterval <- lookupEnv "NOTIF_MIN_INTERVAL"
-  let kcConfig     = defaultKCConfig     & baseUrl          .~? (convertString <$> envKCUrl)
-  let orionConfig  = defaultOrionConfig  & orionUrl         .~? (convertString <$> envOrUrl)
-  let mongoConfig  = defaultMongoConfig  & mongoUrl         .~? (convertString <$> envMongUrl)
-                                         & mongoUser        .~  (convertString <$> envMongUser)
-                                         & mongoPass        .~  (convertString <$> envMongPass)
-  let serverConfig = defaultServerConfig & serverHost       .~? (convertString <$> envUrl)
-                                         & serverPort       .~? (read          <$> envPort)
-                                         & serverPortMQTT   .~? (read          <$> envPortMQTT)
-                                         & notifMinInterval .~? (read          <$> envNotifMinInterval)
-  let mqttConfig   = defaultMQTTConfig   & mqttHost         .~? (convertString <$> envMosqHost)
-                                         & mqttPort         .~? (read          <$> envMosqPort)
+  envCacheDuration    <- lookupEnv "NOTIF_CACHE_DURATION"
+  let kcConfig     = defaultKCConfig     & baseUrl            .~? (convertString    <$> envKCUrl)
+  let orionConfig  = defaultOrionConfig  & orionUrl           .~? (convertString    <$> envOrUrl)
+  let mongoConfig  = defaultMongoConfig  & mongoUrl           .~? (convertString    <$> envMongUrl)
+                                         & mongoUser          .~  (convertString    <$> envMongUser)
+                                         & mongoPass          .~  (convertString    <$> envMongPass)
+  let serverConfig = defaultServerConfig & serverHost         .~? (convertString    <$> envUrl)
+                                         & serverPort         .~? (read             <$> envPort)
+                                         & serverPortMQTT     .~? (read             <$> envPortMQTT)
+                                         & notifMinInterval   .~? (fromInteger.read <$> envNotifMinInterval)
+                                         & cacheValidDuration .~? (fromInteger.read <$> envCacheDuration)
+  let mqttConfig   = defaultMQTTConfig   & mqttHost           .~? (convertString    <$> envMosqHost)
+                                         & mqttPort           .~? (read             <$> envMosqPort)
   let twitterConf = 
         if isJust envTwitKey && isJust envTwitSec && isJust envTwitTok && isJust envTwitTokSec 
           then def { twProxy = Nothing,
@@ -90,7 +95,8 @@ main = do
   let host = conf ^. serverConf.serverHost
   let port = conf ^. serverConf.serverPort
   let mqttPort = conf ^. serverConf.serverPortMQTT
-  let waziupInfo = WaziupInfo pool conf ontologies
+  permsCache <- atomically $ newTVar M.empty 
+  let waziupInfo = WaziupInfo pool conf ontologies permsCache
   Main.info $ convertString $ "HTTP API is running on " <> host <> "/api/v2"
   Main.info $ convertString $ "MQTT is running on port " <> (show mqttPort)
   Main.info $ convertString $ "Documentation is on " <> host <> "/docs"
@@ -113,14 +119,15 @@ waziupConfigParser servDef mDef kcDef oDef mqttDef twittDef plivoDef = do
   return $ WaziupConfig serv m kc o mqttDef twittDef plivoDef
 
 serverConfigParser :: ServerConfig -> Parser ServerConfig
-serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass defNotif) = do
+serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass defNotif defCache) = do
   url           <- strOption   (long "url"         <> metavar "<url>"      <> help "url of this server"  <> value defUrl)
   port          <- option auto (long "port"        <> metavar "<port>"     <> help "HTTP port of this server" <> value defPort) 
   portMQTT      <- option auto (long "portMQTT"    <> metavar "<portMQTT>" <> help "MQTT port of this server" <> value defPortMQTT) 
   guestLogin    <- strOption   (long "kcGuestLog"  <> metavar "<login>"    <> help "Guest login of Keycloak"    <> value defGueLog)
   guestPassword <- strOption   (long "kcGuestPass" <> metavar "<password>" <> help "Guest password of Keycloak" <> value defGuePass)
-  notifInterval <- option auto (long "notif"       <> metavar "<notif>"    <> help "minimum interval for notifications (in seconds)" <> value defNotif) 
-  return $ ServerConfig url port portMQTT guestLogin guestPassword notifInterval
+  notifInterval <- option auto (long "notif"       <> metavar "<notif>"    <> help "minimum interval for notifications (in seconds)" <> value (floor defNotif)) 
+  cacheDuration <- option auto (long "cache"       <> metavar "<cache>"    <> help "duration of the cache valididy (in seconds)" <> value (floor defCache)) 
+  return $ ServerConfig url port portMQTT guestLogin guestPassword (fromInteger notifInterval) (fromInteger cacheDuration)
 
 kcConfigParser :: KCConfig -> Parser KCConfig
 kcConfigParser (KCConfig defUrl defRealm defCID defCSec) = do

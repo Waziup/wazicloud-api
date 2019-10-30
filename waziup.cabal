@@ -130,6 +130,7 @@ Executable migrate
   ghc-options:        -threaded -Wall
   build-depends:       base
                      , keycloak-hs
+                     , orion-hs
                      , hslogger
                      , aeson
                      , string-conversions

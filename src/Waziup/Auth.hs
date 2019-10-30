@@ -29,6 +29,7 @@ import           Database.MongoDB as DB hiding (value, Limit, Array, lookup, Val
 import           Data.AesonBson
 import           Control.Lens
 import           Control.Concurrent.STM
+import           Control.Monad
 
 -- | get a token
 postAuth :: AuthBody -> Waziup Token
@@ -141,7 +142,7 @@ createResource'' tok resId resNam resTyp scopes attrs username = do
          resType    = Just resTyp,
          resUris    = [],
          resScopes  = map (\s -> KC.Scope Nothing (fromScope s)) scopes,
-         resOwner   = Owner Nothing username,
+         resOwner   = Owner Nothing (Just username),
          resOwnerManagedAccess = True,
          resAttributes = attrs}
   liftKeycloak tok $ KC.createResource kcres

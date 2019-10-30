@@ -107,8 +107,8 @@ data ServerConfig = ServerConfig {
 
 defaultServerConfig :: ServerConfig
 defaultServerConfig = ServerConfig {
-  _serverHost         = "http://localhost:3000",
-  _serverPort         = 3000,
+  _serverHost         = "http://localhost:800",
+  _serverPort         = 800,
   _serverPortMQTT     = 3883,
   _guestLogin         = "guest",
   _guestPassword      = "guest",
@@ -214,6 +214,10 @@ data Scope = DevicesCreate
 allScopes :: [Scope]
 allScopes = [toEnum 0 ..]
 
+deviceScopes  = [DevicesUpdate, DevicesView, DevicesDelete, DevicesDataCreate, DevicesDataView]
+projectScopes = [ProjectsUpdate, ProjectsView, ProjectsDelete]
+gatewayScopes = [GatewaysUpdate, GatewaysView, GatewaysDelete]
+
 instance ToJSON Scope where
   toJSON = genericToJSON defaultOptions {AT.constructorTagModifier = fromScope'}
 
@@ -315,7 +319,6 @@ data Device = Device
   , devDeployed     :: Maybe Bool       -- ^ whether the device is deployed or not 
   , devDateCreated  :: Maybe UTCTime    -- ^ creation date of the device (output only)
   , devDateModified :: Maybe UTCTime    -- ^ last update date of the device node (output only)
-  , devKeycloakId   :: Maybe ResourceId -- ^ The is of the resource in Keycloak
   } deriving (Show, Eq, Generic)
 
 defaultDevice = Device
@@ -331,7 +334,6 @@ defaultDevice = Device
   , devDeployed     = Just False 
   , devDateCreated  = Nothing
   , devDateModified = Nothing
-  , devKeycloakId   = Nothing 
   }
 
 instance ToJSON Device where

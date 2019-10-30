@@ -62,12 +62,7 @@ postGateway tok g = do
   res <- case eres of
     Right a -> return a
     Left (CompoundFailure [WriteFailure _ e _]) -> throwError err422 {errBody = "Gateway ID already exists"}
-  createResource' tok
-                  (Just $ ResourceId $ convertString $ "gateway-" <> (unGatewayId $ gwId g))
-                  ("gateway-" <> (unGatewayId $ gwId g))
-                  "Gateway"
-                  [GatewaysView, GatewaysUpdate, GatewaysDelete]
-                  (if (isJust $ gwVisibility g) then [KC.Attribute "visibility" [fromVisibility $ fromJust $ gwVisibility g]] else [])
+  createResource tok (PermGatewayId $ gwId g) (gwVisibility g) (Just username)
   return NoContent
 
 getGateway :: Maybe Token -> GatewayId -> Maybe Bool -> Waziup Gateway
@@ -138,13 +133,10 @@ putGatewayOwner tok gid owner = do
        _ -> return False 
   info "Delete Keycloak resource"
   deleteResource tok (PermGatewayId gid)
-  createResource'' tok
-                  (Just $ ResourceId $ convertString $ "gateway-" <> (unGatewayId gid))
-                  (unGatewayId gid)
-                  "Gateway"
-                  [GatewaysView, GatewaysUpdate, GatewaysDelete]
-                  [KC.Attribute "visibility" [fromVisibility Private]]
-                  owner
+  createResource tok
+                 (PermGatewayId gid)
+                 (Just Private)
+                 (Just owner)
   return NoContent
 
 

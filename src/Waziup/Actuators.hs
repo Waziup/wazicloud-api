@@ -6,6 +6,7 @@ module Waziup.Actuators where
 import           Waziup.Types
 import           Waziup.Utils
 import           Waziup.Devices hiding (info, warn, debug, err)
+import           Waziup.Auth hiding (info, warn, debug, err)
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
 import           Data.Text hiding (map, filter, foldl, any)
@@ -21,45 +22,43 @@ import           MQTT hiding (info, warn, debug, err)
 getActuators :: Maybe Token -> DeviceId -> Waziup [Actuator]
 getActuators tok did = do
   info "Get actuators"
-  withKCId did $ \(keyId, device) -> do
-    debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (fromScope DevicesView)
-    debug "Permission granted, returning actuators"
-    return $ maybeToList' $ devActuators device
+  debug "Check permissions"
+  checkPermResource tok DevicesView (PermDeviceId did)
+  debug "Permission granted, returning actuators"
+  device <- getDeviceOrion did
+  return $ maybeToList' $ devActuators device
 
 postActuator :: Maybe Token -> DeviceId -> Actuator -> Waziup NoContent
 postActuator tok did actuator = do
   info $ "Post actuator: " ++ (show actuator)
-  withKCId did $ \(keyId, _) -> do
-    debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (fromScope DevicesUpdate)
-    debug "Permission granted, creating actuator"
-    let att = getAttFromActuator actuator
-    liftOrion $ O.postAttribute (toEntityId did) devTyp att 
-    return NoContent
+  debug "Check permissions"
+  checkPermResource tok DevicesUpdate (PermDeviceId did)
+  debug "Permission granted, creating actuator"
+  let att = getAttFromActuator actuator
+  liftOrion $ O.postAttribute (toEntityId did) devTyp att 
+  return NoContent
  
 getActuator :: Maybe Token -> DeviceId -> ActuatorId -> Waziup Actuator
 getActuator tok did aid = do
   info "Get actuator"
-  withKCId did $ \(keyId, device) -> do
-     debug "Check permissions"
-     liftKeycloak tok $ checkPermission keyId (fromScope DevicesView)
-     debug "Permission granted, returning actuator"
-     case L.find (\s -> actId s == aid) (maybeToList' $ devActuators device) of
-       Just act -> return act
-       Nothing -> do 
-         warn "Actuator not found"
-         throwError err404 {errBody = "Actuator not found"}
+  debug "Check permissions"
+  checkPermResource tok DevicesView (PermDeviceId did)
+  debug "Permission granted, returning actuator"
+  device <- getDeviceOrion did
+  case L.find (\s -> actId s == aid) (maybeToList' $ devActuators device) of
+    Just act -> return act
+    Nothing -> do 
+      warn "Actuator not found"
+      throwError err404 {errBody = "Actuator not found"}
 
 deleteActuator :: Maybe Token -> DeviceId -> ActuatorId -> Waziup NoContent
 deleteActuator tok did aid = do
   info "Delete actuator"
-  withKCId did $ \(keyId, _) -> do
-    debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (fromScope DevicesUpdate)
-    debug "Permission granted, deleting actuator"
-    liftOrion $ O.deleteAttribute (toEntityId did) devTyp (toAttributeId aid)
-    return NoContent
+  debug "Check permissions"
+  checkPermResource tok DevicesUpdate (PermDeviceId did)
+  debug "Permission granted, deleting actuator"
+  liftOrion $ O.deleteAttribute (toEntityId did) devTyp (toAttributeId aid)
+  return NoContent
 
 putActuatorName :: Maybe Token -> DeviceId -> ActuatorId -> ActuatorName -> Waziup NoContent
 putActuatorName mtok did aid name = do
@@ -82,32 +81,32 @@ putActuatorValueType mtok did aid av = do
 putActuatorValue :: Maybe Token -> DeviceId -> ActuatorId -> JSON.Value -> Waziup NoContent
 putActuatorValue mtok did aid actVal = do
   info $ "Put actuator value: " ++ (show actVal)
-  withKCId did $ \(keyId, device) -> do
-     debug "Check permissions"
-     liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
-     debug "Permission granted, returning actuator"
-     case L.find (\s -> actId s == aid) (maybeToList' $ devActuators device) of
-       Just act -> do
-         liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromActuator (act {actValue = Just actVal}))
-         publishActuatorValue did aid actVal
-         return NoContent
-       Nothing -> do 
-         warn "Actuator not found"
-         throwError err404 {errBody = "Actuator not found"}
+  debug "Check permissions"
+  checkPermResource mtok DevicesUpdate (PermDeviceId did)
+  debug "Permission granted, returning actuator"
+  device <- getDeviceOrion did
+  case L.find (\s -> actId s == aid) (maybeToList' $ devActuators device) of
+    Just act -> do
+      liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromActuator (act {actValue = Just actVal}))
+      publishActuatorValue did aid actVal
+      return NoContent
+    Nothing -> do 
+      warn "Actuator not found"
+      throwError err404 {errBody = "Actuator not found"}
 
 updateActuatorField :: Maybe Token -> DeviceId -> ActuatorId -> (Actuator -> Waziup ()) -> Waziup NoContent
 updateActuatorField mtok did aid w = do
-  withKCId did $ \(keyId, device) -> do
-    debug "Check permissions"
-    liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
-    debug "Permission granted, updating actuator"
-    case L.find (\s -> (actId s) == aid) (maybeToList' $ devActuators device) of
-      Just act -> do
-        w act
-        return NoContent
-      Nothing -> do 
-        warn "actuator not found"
-        throwError err404 {errBody = "Actuator not found"}
+  debug "Check permissions"
+  checkPermResource mtok DevicesUpdate (PermDeviceId did)
+  debug "Permission granted, updating actuator"
+  device <- getDeviceOrion did
+  case L.find (\s -> (actId s) == aid) (maybeToList' $ devActuators device) of
+    Just act -> do
+      w act
+      return NoContent
+    Nothing -> do 
+      warn "actuator not found"
+      throwError err404 {errBody = "Actuator not found"}
 
 toAttributeId :: ActuatorId -> AttributeId
 toAttributeId (ActuatorId sid) = AttributeId sid

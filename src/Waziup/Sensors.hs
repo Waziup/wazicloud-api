@@ -5,6 +5,7 @@ module Waziup.Sensors where
 
 import           Waziup.Types
 import           Waziup.Utils
+import           Waziup.Auth hiding (info, warn, debug, err)
 import           Waziup.Devices hiding (info, warn, debug, err)
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
@@ -22,47 +23,44 @@ import           Data.String.Conversions
 getSensors :: Maybe Token -> DeviceId -> Waziup [Sensor]
 getSensors tok did = do
   info "Get sensors"
-  withKCId did $ \(keyId, device) -> do
-    debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (fromScope DevicesView)
-    debug "Permission granted, returning sensors"
-    return $ maybeToList' $ devSensors device
+  debug "Check permissions"
+  checkPermResource tok DevicesView (PermDeviceId did)
+  debug "Permission granted, returning sensors"
+  device <- getDeviceFromEntity <$> (liftOrion $ O.getEntity (EntityId $ unDeviceId did) devTyp)
+  return $ maybeToList' $ devSensors device
 
 postSensor :: Maybe Token -> DeviceId -> Sensor -> Waziup NoContent
 postSensor tok did sensor = do
   info $ "Post sensor: " ++ (show sensor)
-  withKCId did $ \(keyId, _) -> do
-    debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (fromScope DevicesUpdate)
-    debug "Permission granted, creating sensor"
-    let att = getAttFromSensor sensor
-    liftOrion $ O.postAttribute (toEntityId did) devTyp att 
-    return NoContent
+  debug "Check permissions"
+  checkPermResource tok DevicesUpdate (PermDeviceId did)
+  debug "Permission granted, creating sensor"
+  liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromSensor sensor)
+  return NoContent
  
 getSensor :: Maybe Token -> DeviceId -> SensorId -> Waziup Sensor
 getSensor tok did sid = do
   info "Get sensor"
-  withKCId did $ \(keyId, device) -> do
-     debug "Check permissions"
-     liftKeycloak tok $ checkPermission keyId (fromScope DevicesView)
-     debug "Permission granted, returning sensor"
-     case L.find (\s -> senId s == sid) (maybeToList' $ devSensors device) of
-       Just sensor -> return sensor
-       Nothing -> do 
-         warn "Sensor not found"
-         throwError err404 {errBody = "Sensor not found"}
+  debug "Check permissions"
+  checkPermResource tok DevicesView (PermDeviceId did)
+  debug "Permission granted, returning sensor"
+  device <- getDeviceOrion did
+  case L.find (\s -> senId s == sid) (maybeToList' $ devSensors device) of
+    Just sensor -> return sensor
+    Nothing -> do 
+      warn "Sensor not found"
+      throwError err404 {errBody = "Sensor not found"}
 
 deleteSensor :: Maybe Token -> DeviceId -> SensorId -> Waziup NoContent
 deleteSensor tok did sid = do
   info "Delete sensor"
-  withKCId did $ \(keyId, _) -> do
-    debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (fromScope DevicesUpdate)
-    debug "Permission granted, deleting sensor"
-    liftOrion $ O.deleteAttribute (toEntityId did) devTyp (toAttributeId sid)
-    debug "Deleting Mongo datapoints"
-    runMongo $ deleteSensorDatapoints did sid
-    return NoContent
+  debug "Check permissions"
+  checkPermResource tok DevicesUpdate (PermDeviceId did)
+  debug "Permission granted, deleting sensor"
+  liftOrion $ O.deleteAttribute (toEntityId did) devTyp (toAttributeId sid)
+  debug "Deleting Mongo datapoints"
+  runMongo $ deleteSensorDatapoints did sid
+  return NoContent
 
 putSensorName :: Maybe Token -> DeviceId -> SensorId -> SensorName -> Waziup NoContent
 putSensorName mtok did sid name = do
@@ -97,15 +95,15 @@ putSensorCalib mtok did sid cal = do
 putSensorValue :: Maybe Token -> DeviceId -> SensorId -> SensorValue -> Waziup NoContent
 putSensorValue mtok did sid sv = do
   info $ "Put sensor value: " ++ (show sv)
-  withKCId did $ \(keyId, device) -> do
-    debug "Check permissions"
-    liftKeycloak mtok $ checkPermission keyId (fromScope DevicesDataCreate)
-    debug "Permission granted, updating sensor"
-    case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors device) of
-      Just sensor -> putSensorValue' did sensor sv
-      Nothing -> do 
-        warn "sensor not found"
-        throwError err404 {errBody = "Sensor not found"}
+  debug "Check permissions"
+  checkPermResource mtok DevicesDataCreate (PermDeviceId did)
+  debug "Permission granted, updating sensor"
+  device <- getDeviceOrion did
+  case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors device) of
+    Just sensor -> putSensorValue' did sensor sv
+    Nothing -> do 
+      warn "sensor not found"
+      throwError err404 {errBody = "Sensor not found"}
 
 putSensorValue' :: DeviceId -> Sensor -> SensorValue -> Waziup NoContent
 putSensorValue' did sensor val = do
@@ -128,31 +126,31 @@ convIntValue r = r
 putSensorValues :: Maybe Token -> DeviceId -> SensorId -> [SensorValue] -> Waziup NoContent
 putSensorValues mtok did sid svs = do
   info $ "Put sensor values"
-  withKCId did $ \(keyId, device) -> do
-    debug "Check permissions"
-    liftKeycloak mtok $ checkPermission keyId (fromScope DevicesDataCreate)
-    debug "Permission granted, updating sensor"
-    case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors device) of
-      Just sensor -> do
-        mapM_ (putSensorValue' did sensor) svs
-        return NoContent
-      Nothing -> do 
-        warn "sensor not found"
-        throwError err404 {errBody = "Sensor not found"}
+  debug "Check permissions"
+  checkPermResource mtok DevicesDataCreate (PermDeviceId did)
+  debug "Permission granted, updating sensor"
+  device <- getDeviceOrion did
+  case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors device) of
+    Just sensor -> do
+      mapM_ (putSensorValue' did sensor) svs
+      return NoContent
+    Nothing -> do 
+      warn "sensor not found"
+      throwError err404 {errBody = "Sensor not found"}
   
 updateSensorField :: Maybe Token -> DeviceId -> SensorId -> (Sensor -> Waziup ()) -> Waziup NoContent
 updateSensorField mtok did sid w = do
-  withKCId did $ \(keyId, device) -> do
-    debug "Check permissions"
-    liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
-    debug "Permission granted, updating sensor"
-    case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors device) of
-      Just sensor -> do
-        w sensor
-        return NoContent
-      Nothing -> do 
-        warn "sensor not found"
-        throwError err404 {errBody = "Sensor not found"}
+  debug "Check permissions"
+  checkPermResource mtok DevicesUpdate (PermDeviceId did)
+  debug "Permission granted, updating sensor"
+  device <- getDeviceOrion did
+  case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors device) of
+    Just sensor -> do
+      w sensor
+      return NoContent
+    Nothing -> do 
+      warn "sensor not found"
+      throwError err404 {errBody = "Sensor not found"}
 
 toAttributeId :: SensorId -> AttributeId
 toAttributeId (SensorId sid) = AttributeId sid

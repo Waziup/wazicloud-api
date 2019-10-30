@@ -42,30 +42,31 @@ postAuth (AuthBody username password) = do
 getPermsDevices :: Maybe Token -> Waziup [Perm]
 getPermsDevices tok = do
   info "Get devices permissions"
-  getPerms tok [DevicesUpdate,
-                DevicesView,
-                DevicesDelete,
-                DevicesDataView,
-                DevicesDataCreate]
+  perms <- getPerms tok
+  return $ filter isDevicePerm perms where
+    isDevicePerm (Perm (PermDeviceId _) _) = True
+    isDevicePerm _ = False
 
 -- | Get all permissions. If no token is passed, the guest token will be used.
 getPermsProjects :: Maybe Token -> Waziup [Perm]
 getPermsProjects tok = do
   info "Get projects permissions"
-  getPerms tok [ProjectsUpdate,
-                ProjectsView,
-                ProjectsDelete]
+  perms <- getPerms tok
+  return $ filter isProjectPerm perms where
+    isProjectPerm (Perm (PermProjectId _) _) = True
+    isProjectPerm _ = False
 
 -- | Get all permissions. If no token is passed, the guest token will be used.
 getPermsGateways :: Maybe Token -> Waziup [Perm]
 getPermsGateways tok = do
   info "Get gateways permissions"
-  getPerms tok [GatewaysUpdate,
-                GatewaysView,
-                GatewaysDelete]
+  perms <- getPerms tok
+  return $ filter isGatewayPerm perms where
+    isGatewayPerm (Perm (PermGatewayId _) _) = True
+    isGatewayPerm _ = False
 
-getPerms :: Maybe Token -> [W.Scope] -> Waziup [Perm]
-getPerms mtok scps = do
+getPerms :: Maybe Token -> Waziup [Perm]
+getPerms mtok = do
   debug "getPerms"
   permsTV <- view permCache
   permsM <- liftIO $ atomically $ readTVar permsTV
@@ -125,20 +126,23 @@ getKCResourceId (PermDeviceId  (DeviceId id))  = ResourceId $ "device-"  <> id
 getKCResourceId (PermGatewayId (GatewayId id)) = ResourceId $ "gateway-" <> id
 getKCResourceId (PermProjectId (ProjectId id)) = ResourceId $ "project-" <> id
 
-createResource' :: Maybe Token -> Maybe ResourceId -> ResourceName -> ResourceType -> [W.Scope] ->  [KC.Attribute] -> Waziup ResourceId
-createResource' tok resId resNam resTyp scopes attrs = do
-  let username = case tok of
-       Just t -> getUsername t
-       Nothing -> "guest"
-  createResource'' tok resId resNam resTyp scopes attrs username 
-
-createResource'' :: Maybe Token -> Maybe ResourceId -> ResourceName -> ResourceType -> [W.Scope] ->  [KC.Attribute] -> KC.Username -> Waziup ResourceId
-createResource'' tok resId resNam resTyp scopes attrs username = do
+createResource :: Maybe Token -> PermResource -> Maybe Visibility -> Maybe KC.Username -> Waziup ResourceId
+createResource tok permRes vis muser = do
   --creating a new resource in Keycloak invalidates the cache
   invalidateCache
+  let (resTyp, scopes) = case permRes of
+       PermDeviceId _  -> ("Device" , deviceScopes)
+       PermGatewayId _ -> ("Gateway", gatewayScopes)
+       PermProjectId _ -> ("Project", projectScopes)
+  let attrs = if (isJust vis) then [KC.Attribute "visibility" [fromVisibility $ fromJust vis]] else []
+  let username = case muser of
+       Just user -> user          --if username is provided, use it. 
+       Nothing -> case tok of
+         Just t -> getUsername t  --Else, if token is provided, extract the username.
+         Nothing -> "guest"       --Finally, use "guest" as a username.
   let kcres = KC.Resource {
-         resId      = resId,
-         resName    = resNam,
+         resId      = (Just $ getKCResourceId $ permRes),
+         resName    = (unResId $ getKCResourceId $ permRes),
          resType    = Just resTyp,
          resUris    = [],
          resScopes  = map (\s -> KC.Scope Nothing (fromScope s)) scopes,
@@ -156,23 +160,21 @@ checkPermResource' scope perms rid = any (isPermitted rid scope) perms where
 -- | Throws error 403 if `perms` if there is no permission for the resource under the corresponding scope.
 checkPermResource :: Maybe Token -> W.Scope -> W.PermResource -> Waziup ()
 checkPermResource tok scope rid = do
-  ps <- getPerms tok [scope]
+  ps <- getPerms tok
   debug $ "perms: " ++ (show ps)
   if checkPermResource' scope ps rid
      then return ()
-     else throwError err403 {errBody = "Forbidden: Cannot access project"}
+     else throwError err403 {errBody = "Forbidden: Cannot access resource"}
 
 deleteResource :: Maybe Token -> PermResource -> Waziup ()
 deleteResource tok pr = do
   --invalidate all cache
   invalidateCache
-  liftKeycloak tok $ KC.deleteResource $ getKCResourceId pr
-
-deleteResource' :: Maybe Token -> ResourceId -> Waziup ()
-deleteResource' tok resId = do
-  --invalidate all cache
-  invalidateCache
-  liftKeycloak tok $ KC.deleteResource resId
+  --delete all resources
+  liftIO $ flip runKeycloak defaultKCConfig $ do
+    tok2 <- KC.getClientAuthToken
+    KC.deleteResource (getKCResourceId pr) tok2
+  return ()
 
 -- | Update a resource
 updateResource :: Maybe Token -> KC.Resource ->  Waziup ResourceId

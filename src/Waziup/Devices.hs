@@ -51,118 +51,85 @@ getDevices tok mq mlimit moffset = do
 getDevice :: Maybe Token -> DeviceId -> Waziup Device
 getDevice tok did = do
   info "Get device"
-  withKCId did $ \(keyId, device) -> do
-    debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (fromScope DevicesView)
-    debug "Permission granted, returning device"
-    return device
+  device <- getDeviceFromEntity <$> (liftOrion $ O.getEntity (EntityId $ unDeviceId did) devTyp)
+  debug "Check permissions"
+  checkPermResource tok DevicesView (PermDeviceId did)
+  debug "Permission granted, returning device"
+  return device
 
 postDevice :: Maybe Token -> Device -> Waziup NoContent
 postDevice tok d = do
   info $ "Post device: " ++ (show d)
   debug "Check permissions"
   liftKeycloak tok $ checkPermission (ResourceId "Devices") (fromScope DevicesCreate)
-  --deleteGuestDevice tok (devId d)
   debug "Create entity"
   let username = case tok of
        Just t -> getUsername t
        Nothing -> "guest"
   debug $ "Owner: " <> (show username)
   let entity = getEntityFromDevice (d {devOwner = Just username})
-  res2 <- U.try $ liftOrion $ O.postEntity entity
-  case res2 of
-    Right _ -> do 
-      let did = unDeviceId $ devId d
-      keyRes <- U.try $ createResourceDevice tok (devId d) (devVisibility d)                                 
-      case keyRes of
-        Right (ResourceId resId) -> do
-          liftOrion $ O.postTextAttributeOrion (EntityId did) devTyp (AttributeId "keycloak_id") resId
-          return NoContent
-        Left e -> do
-          err $ "Keycloak error: " ++ (show e) ++ " deleting device"
-          (_ :: Either ServantErr ()) <- U.try $ liftOrion $ O.deleteEntity (EntityId did) devTyp
-          throwError e
-    Left (err :: ServantErr)  -> do
-      warn "Orion error"
-      throwError err
-
-createResourceDevice :: Maybe Token -> DeviceId -> Maybe Visibility -> Waziup ResourceId
-createResourceDevice tok d vis = do
-  let scopes = [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView]
-  let attrs = if (isJust vis) then [KC.Attribute "visibility" [fromVisibility $ fromJust vis]] else []
-  createResource' tok
-                  (Just $ getKCResourceId $ PermDeviceId d)
-                  (unResId $ getKCResourceId $ PermDeviceId d)
-                  "Device"
-                  scopes
-                  attrs                                 
+  liftOrion $ O.postEntity entity
+  createResource tok (PermDeviceId $ devId d) (devVisibility d) (Just username)
+  return NoContent
 
 deleteDevice :: Maybe Token -> DeviceId -> Waziup NoContent
 deleteDevice tok did = do
   info "Delete device"
-  withKCId did $ \(keyId, _) -> do
-    debug "Check permissions"
-    liftKeycloak tok $ checkPermission keyId (fromScope DevicesDelete)
-    debug "Delete Keycloak resource"
-    deleteResource' tok keyId
-    debug "Delete Orion resource"
-    liftOrion $ O.deleteEntity (toEntityId did) devTyp
-    debug "Delete Mongo resources"
-    runMongo $ deleteDeviceDatapoints did
-    return NoContent
+  debug "Check permissions"
+  checkPermResource tok DevicesDelete (PermDeviceId did)
+  debug "Delete Keycloak resource"
+  deleteResource tok (PermDeviceId did)
+  debug "Delete Orion resource"
+  liftOrion $ O.deleteEntity (toEntityId did) devTyp
+  debug "Delete Mongo resources"
+  runMongo $ deleteDeviceDatapoints did
+  return NoContent
 
 putDeviceLocation :: Maybe Token -> DeviceId -> Location -> Waziup NoContent
 putDeviceLocation mtok did loc = do
   info $ "Put device location: " ++ (show loc)
-  withKCId did $ \(keyId, _) -> do
-    debug "Check permissions"
-    liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
-
-    debug "Update Orion resource"
-    let att = getLocationAttr loc
-    liftOrion $ O.postAttribute (toEntityId did) devTyp att
+  debug "Check permissions"
+  checkPermResource mtok DevicesUpdate (PermDeviceId did)
+  debug "Update Orion resource"
+  liftOrion $ O.postAttribute (toEntityId did) devTyp (getLocationAttr loc)
   return NoContent
 
 putDeviceName :: Maybe Token -> DeviceId -> DeviceName -> Waziup NoContent
 putDeviceName mtok did name = do
   info $ "Put device name: " ++ (show name)
-  withKCId did $ \(keyId, _) -> do
-    debug "Check permissions"
-    liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
-    debug "Update Orion resource"
-    liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "name") name
+  debug "Check permissions"
+  checkPermResource mtok DevicesUpdate (PermDeviceId did)
+  debug "Update Orion resource"
+  liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "name") name
   return NoContent
 
 putDeviceGatewayId :: Maybe Token -> DeviceId -> GatewayId -> Waziup NoContent
 putDeviceGatewayId mtok did (GatewayId gid) = do
   info $ "Put device gateway ID: " ++ (show gid)
-  withKCId did $ \(keyId, _) -> do
-    debug "Check permissions"
-    liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
-    debug "Update Orion resource"
-    liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "gateway_id") gid
+  debug "Check permissions"
+  checkPermResource mtok DevicesUpdate (PermDeviceId did)
+  debug "Update Orion resource"
+  liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "gateway_id") gid
   return NoContent
 
 putDeviceVisibility :: Maybe Token -> DeviceId -> Visibility -> Waziup NoContent
 putDeviceVisibility mtok did vis = do
   info $ "Put device visibility: " ++ (show vis)
-  withKCId did $ \(keyId, _) -> do
-    debug "Check permissions"
-    liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
-    debug "Update Orion resource"
-    liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "visibility") (fromVisibility vis)
-    --update visibility in KEYCLOAK
-    createResourceDevice mtok did (Just vis)                                 
+  debug "Check permissions"
+  checkPermResource mtok DevicesUpdate (PermDeviceId did)
+  debug "Update Orion resource"
+  liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "visibility") (fromVisibility vis)
+  --update visibility in KEYCLOAK
+  createResource mtok (PermDeviceId did) (Just vis) Nothing
   return NoContent
 
 putDeviceDeployed :: Maybe Token -> DeviceId -> Bool -> Waziup NoContent
 putDeviceDeployed mtok did dep = do
   info $ "Put device deployed: " ++ (show dep)
-  withKCId did $ \(keyId, _) -> do
-    debug "Check permissions"
-    liftKeycloak mtok $ checkPermission keyId (fromScope DevicesUpdate)
-    debug "Update Orion resource"
-    liftOrion $ O.postAttribute (toEntityId did) devTyp (AttributeId "deployed", O.Attribute "Bool" (Just $ toJSON dep) M.empty)
+  debug "Check permissions"
+  checkPermResource mtok DevicesUpdate (PermDeviceId did)
+  debug "Update Orion resource"
+  liftOrion $ O.postAttribute (toEntityId did) devTyp (AttributeId "deployed", O.Attribute "Bool" (Just $ toJSON dep) M.empty)
   return NoContent
 
 -- Change the owner of a device. The device will also automatically be passed as private.
@@ -173,22 +140,15 @@ putDeviceOwner tok did owner = do
   d <- getDevice tok did
   debug "Update Orion resource"
   liftOrion $ O.postAttribute (toEntityId did) devTyp (AttributeId "owner", O.Attribute "String" (Just $ toJSON owner) M.empty)
-  info "Delete Keycloak resource"
-  deleteResource' tok (fromJust $ devKeycloakId d)
-  let scopes = [DevicesView, DevicesUpdate, DevicesDelete, DevicesDataCreate, DevicesDataView]
-  let attrs = if (isJust $ devVisibility d) then [KC.Attribute "visibility" [fromVisibility $ fromJust $ devVisibility d]] else []
-  let resName = unDeviceId did
-  (ResourceId resId) <- createResource'' tok
-                           Nothing
-                           resName
-                           "Device"
-                           scopes
-                           attrs
-                           owner
-  liftOrion $ O.postTextAttributeOrion (EntityId $ unDeviceId did) devTyp (AttributeId "keycloak_id") resId
+  info "Replace Keycloak resource"
+  deleteResource tok (PermDeviceId did)
+  createResource tok (PermDeviceId did) (devVisibility d) (Just owner)
   return NoContent
 
 -- * From Orion to Waziup types
+
+getDeviceOrion :: DeviceId -> Waziup Device
+getDeviceOrion did = getDeviceFromEntity <$> (liftOrion $ O.getEntity (EntityId $ unDeviceId did) devTyp)
 
 getDeviceFromEntity :: O.Entity -> Device
 getDeviceFromEntity (O.Entity (EntityId eId) eType attrs) = 
@@ -203,8 +163,7 @@ getDeviceFromEntity (O.Entity (EntityId eId) eType attrs) =
            devDateCreated  = fromSimpleAttribute (AttributeId "dateCreated") attrs >>= parseISO8601.unpack,
            devDateModified = fromSimpleAttribute (AttributeId "dateModified") attrs >>= parseISO8601.unpack,
            devSensors      = Just $ mapMaybe getSensorFromAttribute (toList attrs),
-           devActuators    = Just $ mapMaybe getActuatorFromAttribute (toList attrs),
-           devKeycloakId   = ResourceId <$> O.fromSimpleAttribute (AttributeId "keycloak_id") attrs}
+           devActuators    = Just $ mapMaybe getActuatorFromAttribute (toList attrs)}
 
 getLocation :: Map O.AttributeId O.Attribute -> Maybe Location
 getLocation attrs = do 
@@ -273,12 +232,11 @@ isNull _    = False
 -- * From Waziup to Orion types
 
 getEntityFromDevice :: Device -> O.Entity
-getEntityFromDevice (Device (DeviceId sid) sgid sname sloc sdom svis sensors acts sown sdep _ _ skey) = 
+getEntityFromDevice (Device (DeviceId sid) sgid sname sloc sdom svis sensors acts sown sdep _ _) = 
   O.Entity (EntityId sid) (fromJust devTyp) $ fromList $ catMaybes [getSimpleAttr (AttributeId "name")        <$> sname,
                                                            getSimpleAttr (AttributeId "gateway_id")  <$> (unGatewayId <$> sgid),
                                                            getSimpleAttr (AttributeId "owner")       <$> sown,
                                                            getSimpleAttr (AttributeId "domain")      <$> sdom,
-                                                           getSimpleAttr (AttributeId "keycloak_id") <$> (unResId <$> skey),
                                                            getSimpleAttr (AttributeId "visibility")  <$> (fromVisibility <$> svis),
                                                            Just (AttributeId "deployed", O.Attribute "Bool" (Just $ toJSON sdep) M.empty),
                                                            getLocationAttr               <$> sloc] <>
@@ -308,15 +266,6 @@ getAttFromActuator (Actuator (ActuatorId actId) name ak avt av) =
                                             getTextMetadata (MetadataId "actuator_value_type") <$> convertString.show <$> avt]))
 
 
-withKCId :: DeviceId -> ((ResourceId, Device) -> Waziup a) -> Waziup a
-withKCId (DeviceId did) f = do
-  device <- getDeviceFromEntity <$> (liftOrion $ O.getEntity (EntityId did) devTyp)
-  case (devKeycloakId device) of
-    Just keyId -> f (keyId, device) 
-    Nothing -> do
-      error "Device: KC Id not present"
-      throwError err500 {errBody = "Device: KC Id not present"}
-
 toEntityId :: DeviceId -> EntityId
 toEntityId (DeviceId did) = EntityId did
 
@@ -337,7 +286,7 @@ postDatapointFromSensor did (Sensor sid _ _ _ _ (Just (SensorValue v t rt)) _) =
 postDatapointFromSensor did _ = return ()
 
 postDatapointsFromDevice :: Device -> Action IO ()
-postDatapointsFromDevice (Device did _ _ _ _ _ ss _ _ _ _ _ _) = void $ forM (maybeToList' ss) $ postDatapointFromSensor did
+postDatapointsFromDevice (Device did _ _ _ _ _ ss _ _ _ _ _) = void $ forM (maybeToList' ss) $ postDatapointFromSensor did
 postDatapointsFromDevice _ = return ()
 
 deleteSensorDatapoints :: DeviceId -> SensorId -> Action IO ()

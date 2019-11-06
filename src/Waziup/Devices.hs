@@ -28,25 +28,28 @@ import           Paths_Waziup_Servant
 import           Database.MongoDB as DB hiding (value, Limit, Array, lookup, Value, Null, (!?))
 import           Data.AesonBson
 
---Orion entity type for devices
-devTyp :: Maybe Text
-devTyp = Just "Device"
-
 -- | Get devices, given a query, limits and offsets
 getDevices :: Maybe Token -> Maybe DevicesQuery -> Maybe Limit -> Maybe Offset -> Waziup [Device]
 getDevices tok mq mlimit moffset = do
   info "Get devices"
-  entities <- liftOrion $ O.getEntities mq devTyp
-  let devices = map getDeviceFromEntity entities
-  ps <- getPermsDevices tok
+  devices <- getAllDevices mq
+  ps <- getPerms tok devicesViewReq
   -- filter devices not permitted
-  let devices2 = filter (checkPermResource' DevicesView ps . PermDeviceId . devId) devices
+  let devices2 = filter (\d -> isPermittedResource DevicesView (PermDeviceId $ devId d) ps) devices
   -- remove offset devices
   let devices3 = maybe' devices2 L.drop moffset
   -- cut at the limit
   let devices4 = maybe' devices3 L.take mlimit
   return devices4
- 
+
+devicesViewReq :: PermReq
+devicesViewReq = PermReq Nothing [fromScope DevicesView]
+
+getAllDevices :: Maybe DevicesQuery -> Waziup [Device]
+getAllDevices mq = do
+  entities <- liftOrion $ O.getEntities mq devTyp
+  return $  map getDeviceFromEntity entities
+
 -- | get a sigle device
 getDevice :: Maybe Token -> DeviceId -> Waziup Device
 getDevice tok did = do
@@ -61,7 +64,7 @@ postDevice :: Maybe Token -> Device -> Waziup NoContent
 postDevice tok d = do
   info $ "Post device: " ++ (show d)
   debug "Check permissions"
-  liftKeycloak tok $ checkPermission (ResourceId "Devices") (fromScope DevicesCreate)
+  --liftKeycloak tok $ checkPermission (ResourceId "Devices") (fromScope DevicesCreate)
   debug "Create entity"
   let username = case tok of
        Just t -> getUsername t
@@ -146,6 +149,10 @@ putDeviceOwner tok did owner = do
   return NoContent
 
 -- * From Orion to Waziup types
+
+--Orion entity type for devices
+devTyp :: Maybe Text
+devTyp = Just "Device"
 
 getDeviceOrion :: DeviceId -> Waziup Device
 getDeviceOrion did = getDeviceFromEntity <$> (liftOrion $ O.getEntity (EntityId $ unDeviceId did) devTyp)

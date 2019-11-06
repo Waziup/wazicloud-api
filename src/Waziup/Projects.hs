@@ -32,17 +32,21 @@ import           Safe
 getProjects :: Maybe Token -> Maybe Bool -> Waziup [Project]
 getProjects tok mfull = do
   info "Get projects"
-  projects <- runMongo $ do
-    docs <- rest =<< find (select [] "projects")
-    info $ "Got projects docs: " ++ (show docs)
-    return $ catMaybes $ map (resultToMaybe . fromJSON . Object . replaceKey "_id" "id" .  aesonify) docs
+  projects <- getAllProjects
   info $ "Got projects: " ++ (show projects)
-  ps <- getPermsProjects tok
-  let projects2 = filter (checkPermResource' ProjectsView ps . PermProjectId . fromJust . pId) projects -- TODO limits
+  ps <- getPerms tok (PermReq Nothing [fromScope ProjectsView])
+  let projects2 = filter (\p -> isPermittedResource ProjectsView (PermProjectId $ fromJust $ pId p) ps) projects -- TODO limits
   projects3 <- case mfull of
     Just True -> mapM (getFullProject tok) projects2
     _ -> return projects2
   return projects3
+
+getAllProjects :: Waziup [Project]
+getAllProjects = do
+  runMongo $ do
+    docs <- rest =<< find (select [] "projects")
+    info $ "Got projects docs: " ++ (show docs)
+    return $ catMaybes $ map (resultToMaybe . fromJSON . Object . replaceKey "_id" "id" .  aesonify) docs
 
 postProject :: Maybe Token -> Project -> Waziup ProjectId
 postProject tok proj = do

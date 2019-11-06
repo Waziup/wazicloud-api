@@ -93,7 +93,7 @@ postTwitter user msg = do
       res <- C.try $ do
         users <- liftIO $ call twInfo mgr $ usersLookup $ ScreenNameListParam [convertString screenName]
         let usrId = TWT.userId $ L.head users
-        liftIO $ call twInfo mgr $ directMessagesNew (UserIdParam usrId) msg
+        liftIO $ call twInfo mgr $ directMessagesNew usrId msg
       case res of
         Right _ -> return () 
         Left (FromJSONError e) -> debug $ "Twitter FromJSONError: " ++ (show e) 

@@ -31,16 +31,23 @@ import           Safe
 getGateways :: Maybe Token -> Maybe Bool -> Waziup [Gateway]
 getGateways tok mfull = do
   info "Get gateways"
-  gws <- runMongo $ do
-    docs <- rest =<< find (select [] "gateways")
-    return $ catMaybes $ map (resultToMaybe . fromJSON . Object . replaceKey "_id" "id" . aesonify) docs
+  gws <- getAllGateways
   info $ "Got gateways: " ++ (show gws)
   gws' <- case mfull of
     Just True -> mapM (getFullGateway tok) gws 
     _ -> return gws
-  gs <- getPermsGateways tok
-  let gws'' = filter (checkPermResource' GatewaysView gs . PermGatewayId . gwId) gws'
+  gs <- getPerms tok gatewaysViewReq
+  let gws'' = filter (\g -> isPermittedResource GatewaysView (PermGatewayId $ gwId g) gs) gws'
   return gws''
+
+gatewaysViewReq :: PermReq
+gatewaysViewReq = PermReq Nothing [fromScope GatewaysView]
+
+getAllGateways :: Waziup [Gateway]
+getAllGateways = do
+  runMongo $ do
+    docs <- rest =<< find (select [] "gateways")
+    return $ catMaybes $ map (resultToMaybe . fromJSON . Object . replaceKey "_id" "id" . aesonify) docs
 
 postGateway :: Maybe Token -> Gateway -> Waziup NoContent
 postGateway tok g = do

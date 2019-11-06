@@ -16,7 +16,6 @@ import           Servant.CSV.Cassava
 import           Servant.Swagger.UI
 import           Keycloak (Token, Username)
 import           Orion
-
 -----------------------------
 -- | Waziup type-level API --
 -----------------------------

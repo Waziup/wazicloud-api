@@ -46,14 +46,14 @@ getNotifs tok = do
   info "Get notifs"
   subs <- liftOrion $ O.getSubs
   let notifs = catMaybes $ map getNotifFromSub subs
-  ps <- getPermsDevices tok
+  ps <- getPerms tok (PermReq Nothing [fromScope DevicesView]) 
   debug $ "Perms" ++ (show ps)
   let notifs2 = L.filter (isPermitted ps) notifs
   return notifs2 where
   isPermitted :: [Perm] -> Notif -> Bool
   isPermitted ps notif = case (notifDevices $ notifCondition notif) of
     [] -> False
-    a:as -> checkPermResource' DevicesView ps (PermDeviceId a) --Only the first device is used to check permission 
+    a:_ -> isPermittedResource DevicesView (PermDeviceId a) ps --Only the first device is used to check permission 
                                               
 postNotif :: Maybe Token -> Notif -> Waziup NotifId
 postNotif tok not = do

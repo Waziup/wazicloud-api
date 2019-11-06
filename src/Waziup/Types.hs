@@ -6,6 +6,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE FlexibleInstances #-} 
+{-# LANGUAGE ViewPatterns #-}
 
 module Waziup.Types where
 
@@ -14,7 +15,7 @@ import           Data.Maybe (fromMaybe)
 import           Data.Aeson as Aeson
 import           Data.Aeson.Types as AT (Options(..), defaultOptions, Pair)
 import           Data.Aeson.Casing (snakeCase, aesonDrop)
-import           Data.Text (Text)
+import           Data.Text (Text) 
 import qualified Data.Text as T
 import qualified Data.Map as Map
 import qualified Data.HashMap.Strict as HM
@@ -62,19 +63,19 @@ type Offset = Int
 
 -- Monad for running requests against Waziup backend components
 -- Servant.Handler is ExceptT ServantErr IO a
-type Waziup = ReaderT WaziupInfo Servant.Handler
+type Waziup = WaziupM Servant.Handler
+
+type WaziupM a = ReaderT WaziupInfo a
 
 data WaziupInfo = WaziupInfo {
   _dbPool       :: Pool DB.Pipe,
   _waziupConfig :: WaziupConfig,
   _ontologies   :: Ontologies,
-  _permCache    :: TVar (Map Username PermCache)
+  _permCache    :: TVar PermCache 
   }
 
-data PermCache = PermCache {
-  _perms :: [Perm],
-  _retrievedTime :: UTCTime
-  } deriving (Show)
+--Cache for each permission request result
+type PermCache = Map (KC.Username, PermReq) ([Perm], UTCTime)
   
 -- | run a Waziup monad
 runWaziup :: Waziup a -> WaziupInfo -> IO (Either ServantErr a)
@@ -173,20 +174,42 @@ instance ToSchema AuthBody where
 
 -- | Permission
 
+-- Any permission resource Id
 data PermResource = PermDeviceId DeviceId
                   | PermGatewayId GatewayId
                   | PermProjectId ProjectId
-                  deriving (Show, Eq, Generic)
+                  deriving (Show, Eq, Generic, Ord)
 
 instance ToJSON PermResource where
   toJSON = genericToJSON defaultOptions {sumEncoding = UntaggedValue}
 
 instance ToSchema PermResource where
-   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+  declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+
+
+--Conversions with KC Resource Type
+deviceKCPrefix  = "device-"
+gatewayKCPrefix = "gateway-"
+projectKCPrefix = "project-"
+
+--Resource ID is extracted from the KC ID.
+getPermResource :: ResourceId -> PermResource
+getPermResource (ResourceId (T.stripPrefix deviceKCPrefix  -> Just id)) = PermDeviceId  $ DeviceId id
+getPermResource (ResourceId (T.stripPrefix gatewayKCPrefix -> Just id)) = PermGatewayId $ GatewayId id
+getPermResource (ResourceId (T.stripPrefix projectKCPrefix -> Just id)) = PermProjectId $ ProjectId id
+
+-- opposite conversion: from Waziup Ids to KC IDs.
+getKCResourceId :: PermResource -> KC.ResourceId
+getKCResourceId (PermDeviceId  (DeviceId id))  = ResourceId $ deviceKCPrefix  <> id
+getKCResourceId (PermGatewayId (GatewayId id)) = ResourceId $ gatewayKCPrefix <> id
+getKCResourceId (PermProjectId (ProjectId id)) = ResourceId $ projectKCPrefix <> id
+
+getPerm :: KC.Permission -> Perm
+getPerm (Permission rid _ scopes) = Perm (getPermResource <$> rid) (catMaybes $ map toScope scopes)
 
 data Perm = Perm
-  { permResource :: PermResource 
-  , permScopes   :: [Scope]
+  { permResource :: Maybe PermResource 
+  , permScopes   :: [Scope] --Not empty
   } deriving (Show, Eq, Generic)
 
 instance ToJSON Perm where
@@ -209,7 +232,7 @@ data Scope = DevicesCreate
            | GatewaysUpdate
            | GatewaysView
            | GatewaysDelete
-   deriving (Show, Read, Eq, Generic, Enum)
+   deriving (Show, Read, Eq, Generic, Enum, Ord)
 
 allScopes :: [Scope]
 allScopes = [toEnum 0 ..]
@@ -227,49 +250,49 @@ instance FromJSON Scope where
 instance ToSchema Scope where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.constructorTagModifier = fromScope'} proxy
 
-toScope :: Text -> Maybe Scope
-toScope "devices:create"      = Just DevicesCreate    
-toScope "devices:update"      = Just DevicesUpdate    
-toScope "devices:view"        = Just DevicesView      
-toScope "devices:delete"      = Just DevicesDelete    
-toScope "devices-data:create" = Just DevicesDataCreate
-toScope "devices-data:view"   = Just DevicesDataView  
-toScope "projects:create"     = Just ProjectsCreate    
-toScope "projects:update"     = Just ProjectsUpdate    
-toScope "projects:view"       = Just ProjectsView      
-toScope "projects:delete"     = Just ProjectsDelete    
-toScope "gateways:create"     = Just GatewaysCreate    
-toScope "gateways:update"     = Just GatewaysUpdate    
-toScope "gateways:view"       = Just GatewaysView      
-toScope "gateways:delete"     = Just GatewaysDelete    
-toScope _                     = Nothing
+toScope :: ScopeName -> Maybe Scope
+toScope (ScopeName "devices:create")      = Just DevicesCreate    
+toScope (ScopeName "devices:update")      = Just DevicesUpdate    
+toScope (ScopeName "devices:view")        = Just DevicesView      
+toScope (ScopeName "devices:delete")      = Just DevicesDelete    
+toScope (ScopeName "devices-data:create") = Just DevicesDataCreate
+toScope (ScopeName "devices-data:view")   = Just DevicesDataView  
+toScope (ScopeName "projects:create")     = Just ProjectsCreate    
+toScope (ScopeName "projects:update")     = Just ProjectsUpdate    
+toScope (ScopeName "projects:view")       = Just ProjectsView      
+toScope (ScopeName "projects:delete")     = Just ProjectsDelete    
+toScope (ScopeName "gateways:create")     = Just GatewaysCreate    
+toScope (ScopeName "gateways:update")     = Just GatewaysUpdate    
+toScope (ScopeName "gateways:view")       = Just GatewaysView      
+toScope (ScopeName "gateways:delete")     = Just GatewaysDelete    
+toScope _                                 = Nothing
 
 -- Convert KC representation to Scope , e.g. "devices:create" to "DeviceCreate"
 toScope' :: String -> String
-toScope' a = case toScope $ convertString a of
+toScope' a = case toScope $ ScopeName $ convertString a of
   Just s -> show s
   Nothing -> a
 
-fromScope :: Scope -> Text
-fromScope DevicesCreate     = "devices:create"       
-fromScope DevicesUpdate     = "devices:update"       
-fromScope DevicesView       = "devices:view"         
-fromScope DevicesDelete     = "devices:delete"       
-fromScope DevicesDataCreate = "devices-data:create"  
-fromScope DevicesDataView   = "devices-data:view"   
-fromScope ProjectsCreate    = "projects:create"       
-fromScope ProjectsUpdate    = "projects:update"       
-fromScope ProjectsView      = "projects:view"         
-fromScope ProjectsDelete    = "projects:delete"       
-fromScope GatewaysCreate    = "gateways:create"       
-fromScope GatewaysUpdate    = "gateways:update"       
-fromScope GatewaysView      = "gateways:view"         
-fromScope GatewaysDelete    = "gateways:delete"       
+fromScope :: Scope -> ScopeName 
+fromScope DevicesCreate     = ScopeName "devices:create"       
+fromScope DevicesUpdate     = ScopeName "devices:update"       
+fromScope DevicesView       = ScopeName "devices:view"         
+fromScope DevicesDelete     = ScopeName "devices:delete"       
+fromScope DevicesDataCreate = ScopeName "devices-data:create"  
+fromScope DevicesDataView   = ScopeName "devices-data:view"   
+fromScope ProjectsCreate    = ScopeName "projects:create"       
+fromScope ProjectsUpdate    = ScopeName "projects:update"       
+fromScope ProjectsView      = ScopeName "projects:view"         
+fromScope ProjectsDelete    = ScopeName "projects:delete"       
+fromScope GatewaysCreate    = ScopeName "gateways:create"       
+fromScope GatewaysUpdate    = ScopeName "gateways:update"       
+fromScope GatewaysView      = ScopeName "gateways:view"         
+fromScope GatewaysDelete    = ScopeName "gateways:delete"       
 
 -- Convert Scope to KC representation, e.g. "DeviceCreate" to "devices:create"
 fromScope' :: String -> String
 fromScope' a = case readMay a of
-  Just s -> convertString $ fromScope s
+  Just s -> convertString $ unScopeName $ fromScope s
   Nothing -> a
 
 
@@ -282,7 +305,7 @@ type Domain        = Text
 type DevicesQuery  = Text
 
 -- Id of a device
-newtype DeviceId = DeviceId {unDeviceId :: Text} deriving (Show, Eq, Generic)
+newtype DeviceId = DeviceId {unDeviceId :: Text} deriving (Show, Eq, Generic, Ord)
 
 -- JSON instances
 instance ToJSON DeviceId where
@@ -726,7 +749,7 @@ instance ToSchema Actuator where
 type GatewayName = Text
 
 -- Id of a gateway
-newtype GatewayId = GatewayId {unGatewayId :: Text} deriving (Show, Eq, Generic)
+newtype GatewayId = GatewayId {unGatewayId :: Text} deriving (Show, Eq, Generic, Ord)
 
 --JSON instances
 instance ToJSON GatewayId where
@@ -1081,7 +1104,7 @@ instance ToSchema User where
 ----------------
 
 --Project Id are used in bodies (JSON and PlainText) and URL piece
-newtype ProjectId = ProjectId {unProjectId :: Text} deriving (Show, Eq, Generic)
+newtype ProjectId = ProjectId {unProjectId :: Text} deriving (Show, Eq, Generic, Ord)
 
 instance ToJSON ProjectId where
   toJSON = genericToJSON (defaultOptions {AT.unwrapUnaryRecords = True})
@@ -1388,4 +1411,3 @@ makeLenses ''MQTTConfig
 makeLenses ''WaziupInfo
 makeLenses ''MongoConfig
 makeLenses ''PlivoConfig
-makeLenses ''PermCache

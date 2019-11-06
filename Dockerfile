@@ -8,7 +8,6 @@ COPY keycloak-hs/keycloak-hs.cabal /opt/waziup/keycloak-hs/keycloak-hs.cabal
 COPY orion-hs/stack.yaml           /opt/waziup/orion-hs/stack.yaml
 COPY orion-hs/orion-hs.cabal       /opt/waziup/orion-hs/orion-hs.cabal
 COPY aesonbson/                    /opt/waziup/aesonbson
-COPY twitter-conduit/              /opt/waziup/twitter-conduit
 
 WORKDIR /opt/waziup
 RUN stack build --only-dependencies --system-ghc --fast

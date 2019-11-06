@@ -46,7 +46,7 @@ getDatapoints tok mdids msids limit offset sort dateFrom dateTo calibEn = do
   perms <- getPerms tok (PermReq Nothing [fromScope DevicesDataView])
   let dids' = filter (\did -> isPermittedResource DevicesDataView (PermDeviceId did) perms) dids
   res <- runMongo $ getDatapointsMongo dids' msids limit offset sort dateFrom dateTo
-  res' <- calibrateDatapoints tok dids' res 
+  res' <- if calibEn == Just False then return res else calibrateDatapoints tok dids' res 
   return res'
 
 getDatapointsMongo :: [DeviceId]

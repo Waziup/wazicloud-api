@@ -26,36 +26,96 @@ import           Control.Monad
 import           Orion as O
 
 main :: IO ()
-main = return ()
+main = recreateKCResources
 
 recreateKCResources :: IO ()
 recreateKCResources = do
-
-  --delete all resources
+  hSetBuffering stdin NoBuffering
+  hSetBuffering stdout NoBuffering
+  hSetBuffering stderr NoBuffering
+  liftIO $ putStrLn $ "Delete all resources?"
+  getChar
   flip runKeycloak defaultKCConfig $ getClientAuthToken >>= deleteAllResources 
   
   wi <- configureWaziup 
   flip runWaziup wi $ do
     tok <- postAuth $ AuthBody "cdupont" "password" 
-    devs <- getDevices (Just tok) Nothing (Just 1000) Nothing
-    liftIO $ putStrLn $ "Recreating " ++ (show $ length devs) ++ " Devices"
-    mapM_ (\d -> createResource (Just tok) (PermDeviceId $ devId d) (devVisibility d) (devOwner d)) devs
+    --U.try $ createResource (Just tok) (PermDeviceId $ DeviceId allDevicesId) Nothing Nothing
+    --U.try $ createResource (Just tok) (PermDeviceId $ devId d) Nothing Nothing
+    --U.try $ createResource (Just tok) (PermDeviceId $ devId d) Nothing Nothing
 
-    gws <- getGateways (Just tok) (Just False) 
-    liftIO $ putStrLn $ "Recreating " ++ (show $ length gws) ++ " Gateways"
+    devs <- getAllDevices Nothing
+    liftIO $ putStrLn $ "Recreating " ++ (show $ length devs) ++ " Devices?"
+    liftIO getChar
+    res <- mapM (createDev tok) devs
+    liftIO $ putStrLn $ "\ncreated " ++ (show $ length $ rights res) ++ " devices: " ++ (show $ map unDeviceId $ rights res) ++ 
+                            "\n\n***************failed " ++ (show $ length $ lefts res) ++ " devices: " ++ (show $ map unDeviceId $ lefts res)
+    liftIO getChar
+
+    gws <- getAllGateways 
+    liftIO $ putStrLn $ "Recreating " ++ (show $ length gws) ++ " Gateways?"
+    liftIO getChar
+    res <- mapM (createGateway tok) gws
+    liftIO $ putStrLn $ "\ncreated " ++ (show $ length $ rights res) ++ " gateways: " ++ (show $ map unGatewayId $ rights res) ++ 
+                            "\n\n***************failed " ++ (show $ length $ lefts res) ++ " gateways: " ++ (show $ map unGatewayId $ lefts res)
+    liftIO getChar
+
+    ps <- getAllProjects 
+    liftIO $ putStrLn $ "Recreating " ++ (show $ length ps) ++ " Projects?"
+    liftIO getChar
+    res <- mapM (createProject tok) ps
+    liftIO $ putStrLn $ "\ncreated " ++ (show $ length $ rights res) ++ " projects: " ++ (show $ map unProjectId $ rights res) ++ 
+                            "\n\n***************failed " ++ (show $ length $ lefts res) ++ " projects: " ++ (show $ map unProjectId $ lefts res)
 
     return ()
   return ()
+
+createDev :: Token -> Device -> Waziup (Either DeviceId DeviceId)
+createDev tok d = do
+  liftIO $ putStrLn $ "creating " ++ (show $ unDeviceId $ devId d)
+  --liftIO getChar
+  res <- U.try $ createResource (Just tok) (PermDeviceId $ devId d) (devVisibility d) (devOwner d)
+  case res of
+    Right _ -> liftIO $ putStrLn "Success" >> (return $ Right $ devId d) 
+    Left _ -> liftIO $ putStrLn "Failure"  >> (return $ Left $ devId d)
+
+createGateway :: Token -> Gateway -> Waziup (Either GatewayId GatewayId)
+createGateway tok d = do
+  liftIO $ putStrLn $ "creating " ++ (show $ unGatewayId $ gwId d)
+  --liftIO getChar
+  res <- U.try $ createResource (Just tok) (PermGatewayId $ gwId d) (gwVisibility d) (gwOwner d)
+  case res of
+    Right _ -> liftIO $ putStrLn "Success" >> (return $ Right $ gwId d) 
+    Left _ -> liftIO $ putStrLn "Failure"  >> (return $ Left $ gwId d)
+
+createProject :: Token -> Project -> Waziup (Either ProjectId ProjectId)
+createProject tok d = do
+  liftIO $ putStrLn $ "creating " ++ (show $ unProjectId $ fromJust $ pId d)
+  --liftIO getChar
+  res <- U.try $ createResource (Just tok) (PermProjectId $ fromJust $ pId d) (Just Public) (pOwner d)
+  case res of
+    Right _ -> liftIO $ putStrLn "Success" >> (return $ Right $ fromJust $ pId d) 
+    Left _ -> liftIO $ putStrLn "Failure"  >> (return $ Left $ fromJust $ pId d)
 
 fixVis :: IO ()
 fixVis = do
   wi <- configureWaziup 
   void $ flip runWaziup wi $ do
     tok <- postAuth $ AuthBody "cdupont" "password" 
-    devs <- getDevices (Just tok) Nothing (Just 1000) Nothing
+    devs <- getAllDevices Nothing
     let noVisDevs = filter (\d -> isNothing $ devVisibility d) devs
     liftIO $ putStrLn $ "Fixing visibility on " ++ (show $ length noVisDevs) ++ " devices " ++ " out of " ++ (show $ length devs) ++ " devices"
     forM_ noVisDevs $ \d -> void $ U.try $ liftOrion $ O.postTextAttributeOrion (toEntityId $ devId d) devTyp (AttributeId "visibility") "public"
+
+fixOwner :: IO ()
+fixOwner = do
+  wi <- configureWaziup 
+  void $ flip runWaziup wi $ do
+    tok <- postAuth $ AuthBody "cdupont" "password" 
+    devs <- getAllDevices Nothing
+    let noOwnerDevs = filter (\d -> if (isNothing $ devOwner d) then True else ((fromJust $ devOwner d) == "")) devs
+    liftIO $ putStrLn $ "Fixing owner on " ++ (show $ length noOwnerDevs) ++ " devices out of " ++ (show $ length devs) ++ " devices"
+    forM_ noOwnerDevs $ \d -> void $ U.try $ liftOrion $ O.postTextAttributeOrion (toEntityId $ devId d) devTyp (AttributeId "owner") "guest"
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

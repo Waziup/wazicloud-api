@@ -33,68 +33,57 @@ Library waziup-lib
   ghc-options:       -Wall -fno-warn-orphans
   build-depends:       base
                      , aeson
-                     , text
+                     , aeson-casing
+                     , AesonBson
+                     , bson
+                     , bytestring
+                     , base64-bytestring
+                     , async
+                     , attoparsec
+                     , conduit
+                     , conduit-extra
                      , containers
                      , cassava
-                     , network-uri
-                     , servant
+                     , extra
+                     , exceptions
+                     , filepath
+                     , hashable
+                     , hslogger
+                     , http-client
                      , http-api-data
+                     , http-types
+                     , iso8601-time
+                     , keycloak-hs
+                     , lens
+                     , lens-aeson
+                     , mtl
+                     , mongoDB
+                     , net-mqtt
+                     , orion-hs
+                     , resource-pool
+                     , safe
+                     , scientific
                      , servant
-                     , servant-client
                      , servant-server
                      , servant-flatten
                      , servant-swagger
                      , servant-swagger-ui
-                     , servant-swagger-ui-core
                      , servant-cassava
-                     , swagger2
-                     , warp
-                     , transformers
-                     , mtl
-                     , http-client
-                     , http-types
-                     , wai
-                     , wai-extra
-                     , wai-cors
-                     , wreq
-                     , lens
-                     , lens-aeson
-                     , base64-bytestring
                      , split
-                     , bytestring
-                     , time
-                     , unordered-containers
-                     , safe
-                     , iso8601-time
-                     , aeson-casing
-                     , vector
-                     , scientific
-                     , lifted-base
-                     , exceptions
-                     , hslogger
-                     , filepath
-                     , word8
-                     , base64-bytestring
-                     , unordered-containers
-                     , mongoDB
-                     , AesonBson
-                     , bson
                      , string-conversions
                      , stm
-                     , net-mqtt
-                     , keycloak-hs
-                     , orion-hs
-                     , conduit
-                     , conduit-extra
-                     , async
-                     , attoparsec
+                     , swagger2
+                     , text
+                     , time
+                     , transformers
                      , twitter-conduit
                      , twitter-types
-                     , extra
-                     , hashable
-                     , resource-pool
                      , optparse-applicative
+                     , unordered-containers
                      , validation
+                     , vector
+                     , word8
+                     , wreq
   default-language:    Haskell2010
 
 Executable waziup-servant
@@ -103,25 +92,13 @@ Executable waziup-servant
   ghc-options:        -threaded -Wall
   build-depends:       base
                      , waziup-lib
-                     , hslogger
-                     , aeson
-                     , keycloak-hs
-                     , string-conversions
-                     , time
-                     , stm
-                     , containers
-                     , filepath
-                     , lens
-                     , resource-pool
-                     , bytestring
-                     , twitter-conduit
-                     , mongoDB
-                     , orion-hs
-                     , wai-cors
-                     , wai-extra
                      , warp
-                     , optparse-applicative
-                     , validation
+                     , wai
+                     , wai-extra
+                     , wai-cors
+                     , hslogger
+                     , string-conversions
+                     , lens
   default-language:    Haskell2010
 
 Executable migrate
@@ -129,10 +106,8 @@ Executable migrate
   Main-Is:             Main.hs
   ghc-options:        -threaded -Wall
   build-depends:       base
+                     , waziup-lib
                      , keycloak-hs
                      , orion-hs
                      , hslogger
-                     , aeson
-                     , string-conversions
-                     , waziup-lib
   default-language:    Haskell2010

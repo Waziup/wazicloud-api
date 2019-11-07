@@ -101,7 +101,7 @@ defaultServerConfig = ServerConfig {
   _guestLogin         = "guest",
   _guestPassword      = "guest",
   _notifMinInterval   = 120,
-  _cacheValidDuration = 5 * 60}   -- 5 minutes
+  _cacheValidDuration = 10 * 60}   -- 10 minutes
  
 data MongoConfig = MongoConfig {
   _mongoUrl  :: Text,

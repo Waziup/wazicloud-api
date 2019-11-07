@@ -7,7 +7,6 @@ module Waziup.Socials where
 import           Waziup.Types as T
 import           Waziup.Utils
 import qualified Waziup.Users as Users
-import           Waziup.Devices hiding (info, warn, debug, err)
 import           Control.Monad
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
@@ -19,13 +18,10 @@ import qualified Data.List as L
 import           Data.Aeson as JSON
 import           Data.AesonBson
 import           Data.Time
-import           Data.Time.ISO8601
-import           Servant
 import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
 import           System.Log.Logger
 import           Database.MongoDB as DB hiding (value)
-import           Web.Twitter.Conduit hiding (map)
-import           Web.Twitter.Conduit.Api
+import           Web.Twitter.Conduit
 import           Web.Twitter.Types as TWT
 import           Network.Wreq as W
 import           Control.Lens hiding ((.=))
@@ -36,7 +32,7 @@ import           Network.HTTP.Types.Status as HTS
 
 -- | get all logged social messages
 getSocialMessages :: Maybe Token -> Waziup [SocialMessage]
-getSocialMessages tok = runMongo $ do
+getSocialMessages _ = runMongo $ do
   info "Get social messages"
   let sel = (select [] "waziup_social_msgs") 
   cur <- find sel
@@ -97,9 +93,10 @@ postTwitter user msg = do
       case res of
         Right _ -> return () 
         Left (FromJSONError e) -> debug $ "Twitter FromJSONError: " ++ (show e) 
-        Left (TwitterErrorResponse (HTS.Status code msg) _ tms) -> do
-          debug $ "Twitter Error: " ++ (show code) ++ " " ++ (show msg) ++ " " ++ (show tms)
+        Left (TwitterErrorResponse (HTS.Status code errmsg) _ tms) -> do
+          debug $ "Twitter Error: " ++ (show code) ++ " " ++ (show errmsg) ++ " " ++ (show tms)
           throwError err400 {errBody = convertString $ "Twitter error: " ++ (show tms)}
+        Left e -> throwM e
 
 postSMS :: Maybe Token -> T.User -> Text -> Waziup ()
 postSMS tok user@(T.User _ _ _ _ _ (Just phone) _ _ (Just c)) txt = do
@@ -107,19 +104,19 @@ postSMS tok user@(T.User _ _ _ _ _ (Just phone) _ _ (Just c)) txt = do
   case res of 
     Right _ -> do
       debug $ "Removing one SMS credit, remaining: " ++ (show (c -1))
-      Users.putUserCredit tok (fromJust $ T.userId user) (c - 1)
-    Left (err :: SomeException) -> throwError err400 {errBody = convertString $ "Could not send SMS: " ++ (show err)}
+      void $ Users.putUserCredit tok (fromJust $ T.userId user) (c - 1)
+    Left (er :: SomeException) -> throwError err400 {errBody = convertString $ "Could not send SMS: " ++ (show er)}
   return ()
 postSMS _ _ _ = do
   warn "phone ID or sms credit not found in user profile: update user profile"
   throwError err400 {errBody = "phone ID or sms credit not found in user profile: update user profile"}
 
 postSocialMessageBatch :: Maybe Token -> SocialMessageBatch -> Waziup NoContent
-postSocialMessageBatch tok b@(SocialMessageBatch uns chans msg) = do
+postSocialMessageBatch tok b@(SocialMessageBatch us chans msg) = do
   info $ "Post social message batch: " ++ (show b)
-  forM_ uns $ \un -> do
+  forM_ us $ \u -> do
     forM_ chans $ \chan -> do
-      res <- C.try $ postSocialMessage tok (SocialMessage Nothing un chan msg Nothing Nothing)
+      res <- C.try $ postSocialMessage tok (SocialMessage Nothing u chan msg Nothing Nothing)
       case res of
         Right _ -> debug "Message success"
         Left (e :: SomeException) -> warn $ "Message error: " ++ (show e)
@@ -134,9 +131,9 @@ getSocialMessage tok soc = do
     Nothing -> throwError err404 {errBody = "Could not find social message"}
 
 getSocialMessageMongo :: Maybe Token -> SocialMessageId -> Action IO (Maybe SocialMessage)
-getSocialMessageMongo tok (SocialMessageId id) = do
-  let filter = ["_id" =: ObjId (read $ convertString id)]
-  let sel = (select filter "waziup_social_msgs") 
+getSocialMessageMongo _ (SocialMessageId sid) = do
+  let fil = ["_id" =: ObjId (read $ convertString sid)]
+  let sel = (select fil "waziup_social_msgs") 
   mdoc <- findOne sel
   debug $ "Got docs:" <> (show mdoc)
   case mdoc of
@@ -161,9 +158,9 @@ deleteSocialMessage tok soc = do
     False -> throwError err404 {errBody = "Could not find social message"}
 
 deleteSocialMessageMongo :: Maybe Token -> SocialMessageId -> Action IO Bool 
-deleteSocialMessageMongo tok (SocialMessageId id) = do
-  let filter = ["_id" =: ObjId (read $ convertString id)]
-  res <- DB.deleteMany "waziup_social_msgs" [(filter, [])]
+deleteSocialMessageMongo _ (SocialMessageId sid) = do
+  let fil = ["_id" =: ObjId (read $ convertString sid)]
+  res <- DB.deleteMany "waziup_social_msgs" [(fil, [])]
   return $ not $ failed res 
 
 data PlivoSMS = PlivoSMS {
@@ -176,14 +173,13 @@ instance ToJSON PlivoSMS where
 
 smsPost :: PlivoSMS -> Waziup ()
 smsPost dat = do
-  (PlivoConfig host id token) <- view (waziupConfig.plivoConf)
-  let opts = W.defaults & W.auth ?~ W.basicAuth (convertString id) (convertString token)
-  let path = convertString $ host <> "/v1/Account/" <> id <> "/Message/"
+  (PlivoConfig hos aid token) <- view (waziupConfig.plivoConf)
+  let opts = W.defaults & W.auth ?~ W.basicAuth (convertString aid) (convertString token)
+  let path = convertString $ hos <> "/v1/Account/" <> aid <> "/Message/"
   info $ "Issuing Plivo POST " ++ (show path) 
   debug $ "  data: " ++ (show dat) 
   debug $ "  headers: " ++ (show $ opts ^. W.headers) 
-  liftIO $ W.postWith opts path (toJSON dat)
-  return ()
+  void $ liftIO $ W.postWith opts path (toJSON dat)
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

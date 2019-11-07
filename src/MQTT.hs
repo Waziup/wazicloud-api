@@ -5,6 +5,7 @@
 
 module MQTT where
 
+import           Prelude hiding (id)
 import           Data.Aeson as JSON
 import           Data.String.Conversions
 import qualified Data.List as L
@@ -14,14 +15,11 @@ import qualified Data.Text as T
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as LB
 import           Data.Conduit.Network (runTCPServer, runTCPClient, serverSettings, clientSettings, appSource, appSink, AppData)
-import           Data.Conduit.Attoparsec (conduitParser, sinkParser)
-import           Data.Attoparsec.ByteString
+import           Data.Conduit.Attoparsec (conduitParser)
 import           Control.Concurrent.STM
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
-import           Control.Monad.Except (runExceptT)
 import           Control.Lens
-import           Control.Concurrent (threadDelay, forkIO, killThread)
 import           Control.Concurrent.Async (concurrently)
 import           System.Log.Logger
 import           Waziup.Types
@@ -29,12 +27,11 @@ import           Waziup.Utils
 import           Waziup.Auth hiding (info, warn, debug, err)
 import           Waziup.Devices hiding (info, warn, debug, err)
 import           Orion as O hiding (info, warn, debug, err)
-import           Network.MQTT.Client hiding (info, warn, debug, err, MQTTConfig)
+import           Network.MQTT.Client hiding (MQTTConfig)
 import qualified Network.MQTT.Types as T
 import           Conduit
 import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
-import           Servant.Server.Internal.Handler
-import           Database.MongoDB as DB hiding (Username, Password)
+import           Database.MongoDB as DB hiding (Username, Password, host)
 import           Data.Time
 
 -- | Cache for the connection
@@ -77,57 +74,57 @@ handleStreams wi extClient intServer = do
   void $ liftIO $ runWaziup (putConnect tvConnCache False) wi
 
 -- | traffic going downstream (from external client to internal MQTT server)
-filterMQTTin :: WaziupInfo -> TVar (Maybe ConnCache) -> AppData -> ConduitT (_, T.MQTTPkt) B.ByteString IO ()
+filterMQTTin :: WaziupInfo -> TVar (Maybe ConnCache) -> AppData -> ConduitT (w, T.MQTTPkt) B.ByteString IO ()
 filterMQTTin wi tvConnCache extClient = awaitForever $ \(_,res) -> do 
   connCache <- liftIO $ atomically $ readTVar tvConnCache
   debug $ "Received: " ++ (show res) ++ " ID= " ++ (show $ connId <$> connCache)
   case res of
     -- Decode Connect request
-    (T.ConnPkt (T.ConnectRequest user pass _ _ _ connId)) -> do
+    (T.ConnPkt (T.ConnectRequest user pass _ _ _ cid)) -> do
       -- store user and connection ID
-      liftIO $ atomically $ writeTVar tvConnCache (Just $ ConnCache (convertString <$> user) (convertString <$> pass) connId) 
+      liftIO $ atomically $ writeTVar tvConnCache (Just $ ConnCache (convertString <$> user) (convertString <$> pass) cid) 
       -- putting the gateway connect
-      lift $ runWaziup (putConnect tvConnCache True) wi
+      void $ lift $ runWaziup (putConnect tvConnCache True) wi
       yield $ convertString $ T.toByteString res
     T.DisconnectPkt -> do
-      lift $ runWaziup (putConnect tvConnCache False) wi
+      void $ lift $ runWaziup (putConnect tvConnCache False) wi
       yield $ convertString $ T.toByteString res
     -- Decode Publish
-    (T.PublishPkt (T.PublishRequest _ _ _ topic id body)) -> do
+    (T.PublishPkt (T.PublishRequest _ _ _ topic pid body)) -> do
       -- Decode MQTT message
       case decodePub topic body of
-        MQTTSen devId senId senVal -> do
+        MQTTSen did sid senVal -> do
           -- check authorization
-          perms <- lift $ runWaziup (getPerms' tvConnCache (PermReq (Just $ getKCResourceId $ PermDeviceId devId) [fromScope DevicesDataCreate])) wi
-          let auth = isPermittedResource DevicesDataCreate (PermDeviceId devId) (fromRight [] perms)
-          debug $ "Perm check: " ++ (show auth)
-          if auth 
+          perms <- lift $ runWaziup (getPerms' tvConnCache (PermReq (Just $ getKCResourceId $ PermDeviceId did) [fromScope DevicesDataCreate])) wi
+          let isAuth = isPermittedResource DevicesDataCreate (PermDeviceId did) (fromRight [] perms)
+          debug $ "Perm check: " ++ (show isAuth)
+          if isAuth 
             then do
               -- Store the value
-              lift $ runWaziup (postSensorValue devId senId senVal) wi
+              void $ lift $ runWaziup (postSensorValue did sid senVal) wi
               -- pass value to MQTT server
               yield $ convertString $ T.toByteString res
             else do
               -- return PUBACK directly to client (MQTT offers no way to inform the client about the failure)
-              yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink extClient
+              yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK pid)) .| appSink extClient
 
-        MQTTAct devId actId actVal -> do 
-          perms <- lift $ runWaziup (getPerms' tvConnCache (PermReq (Just $ getKCResourceId $ PermDeviceId devId) [fromScope DevicesDataCreate])) wi
-          let auth = isPermittedResource DevicesDataCreate (PermDeviceId devId) (fromRight [] perms)
-          debug $ "Perm check: " ++ (show auth)
-          if auth 
+        MQTTAct did aid actVal -> do 
+          perms <- lift $ runWaziup (getPerms' tvConnCache (PermReq (Just $ getKCResourceId $ PermDeviceId did) [fromScope DevicesDataCreate])) wi
+          let isAuth = isPermittedResource DevicesDataCreate (PermDeviceId did) (fromRight [] perms)
+          debug $ "Perm check: " ++ (show isAuth)
+          if isAuth 
             then do
-              lift $ runWaziup (putActuatorValue devId actId actVal) wi
+              void $ lift $ runWaziup (putActuatorValue did aid actVal) wi
               yield $ convertString $ T.toByteString res
             else do
-              yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink extClient
+              yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK pid)) .| appSink extClient
         MQTTError e -> do
           err e
         MQTTOther -> yield $ convertString $ T.toByteString res
     _ -> yield $ convertString $ T.toByteString res
       
 -- | traffic going upstream (from internal MQTT server to external client)
-filterMQTTout :: WaziupInfo -> TVar (Maybe ConnCache) -> AppData -> ConduitT (_, T.MQTTPkt) B.ByteString IO ()
+filterMQTTout :: WaziupInfo -> TVar (Maybe ConnCache) -> AppData -> ConduitT (w, T.MQTTPkt) B.ByteString IO ()
 filterMQTTout wi tvConnCache intServer = awaitForever $ \(_, res) -> do
   debug $ "Received downstream: " ++ (show res)
   case res of
@@ -135,26 +132,26 @@ filterMQTTout wi tvConnCache intServer = awaitForever $ \(_, res) -> do
     (T.PublishPkt (T.PublishRequest _ _ _ topic id body)) -> do
       -- Decode MQTT message
       case decodePub topic body of
-        MQTTSen devId senId senVal -> do
+        MQTTSen did _ _ -> do
           -- check authorization
-          perms <- lift $ runWaziup (getPerms' tvConnCache (PermReq (Just $ getKCResourceId $ PermDeviceId devId) [fromScope DevicesDataView])) wi
-          let auth = isPermittedResource DevicesDataView (PermDeviceId devId) (fromRight [] perms)
-          debug $ "Perm check downstream: " ++ (show auth)
-          if auth 
+          perms <- lift $ runWaziup (getPerms' tvConnCache (PermReq (Just $ getKCResourceId $ PermDeviceId did) [fromScope DevicesDataView])) wi
+          let isAuth = isPermittedResource DevicesDataView (PermDeviceId did) (fromRight [] perms)
+          debug $ "Perm check downstream: " ++ (show isAuth)
+          if isAuth 
             then yield $ convertString $ T.toByteString res
             else yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink intServer
-        MQTTAct devId actId actVal -> do 
-          perms <- lift $ runWaziup (getPerms' tvConnCache (PermReq (Just $ getKCResourceId $ PermDeviceId devId) [fromScope DevicesDataView])) wi
-          let auth = isPermittedResource DevicesDataView (PermDeviceId devId) (fromRight [] perms)
-          debug $ "Perm check downstream: " ++ (show auth)
-          if auth 
+        MQTTAct did _ _ -> do 
+          perms <- lift $ runWaziup (getPerms' tvConnCache (PermReq (Just $ getKCResourceId $ PermDeviceId did) [fromScope DevicesDataView])) wi
+          let isAuth = isPermittedResource DevicesDataView (PermDeviceId did) (fromRight [] perms)
+          debug $ "Perm check downstream: " ++ (show isAuth)
+          if isAuth 
             then yield $ convertString $ T.toByteString res
             else yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink intServer
         MQTTError e -> do
           err e
         MQTTOther -> yield $ convertString $ T.toByteString res
     T.DisconnectPkt -> do
-      lift $ runWaziup (putConnect tvConnCache False) wi
+      void $ lift $ runWaziup (putConnect tvConnCache False) wi
       yield $ convertString $ T.toByteString res
     _ -> yield $ convertString $ T.toByteString res
   
@@ -223,9 +220,9 @@ putConnect :: TVar (Maybe ConnCache) -> Bool -> Waziup ()
 putConnect connCache isConnected = do
   mCon <- liftIO $ atomically $ readTVar connCache
   case mCon of
-    (Just (ConnCache _ _ connId)) -> do
-      debug $ "Putting connected=" ++ (show isConnected) ++ " on gateway " ++ (show connId)
-      void $ runMongo $ modify (select ["_id" =: (convertString connId :: T.Text)] "gateways") [ "$set" =: Doc ["connected" =: val isConnected]]
+    (Just (ConnCache _ _ cid)) -> do
+      debug $ "Putting connected=" ++ (show isConnected) ++ " on gateway " ++ (show cid)
+      void $ runMongo $ modify (select ["_id" =: (convertString cid :: T.Text)] "gateways") [ "$set" =: Doc ["connected" =: val isConnected]]
     Nothing -> return ()
 
 publishSensorValue :: DeviceId -> SensorId -> SensorValue -> Waziup ()

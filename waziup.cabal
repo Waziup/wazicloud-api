@@ -30,7 +30,7 @@ Library waziup-lib
                      , Waziup.Config
                      , Paths_Waziup_Servant
                      , MQTT
-  ghc-options:       -Wall
+  ghc-options:       -Wall -fno-warn-orphans
   build-depends:       base
                      , aeson
                      , text

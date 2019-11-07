@@ -4,17 +4,14 @@
 module Waziup.Projects where
 
 import           Waziup.Types
-import           Waziup.API
 import           Waziup.Utils
 import           Waziup.Auth hiding (info, warn, debug, err) 
 import           Waziup.Devices hiding (info, warn, debug, err) 
 import           Waziup.Gateways hiding (info, warn, debug, err) 
-import           Keycloak as KC hiding (info, warn, debug, err, try, createResource, updateResource, deleteResource, deleteResoure') 
-import qualified Keycloak as K (Scope(..)) 
-import           Control.Monad.Except (throwError, catchError, MonadError)
+import           Keycloak as KC hiding (info, warn, debug, err, try, createResource, updateResource, deleteResource) 
+import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
 import           Control.Monad
-import           Control.Monad.Extra
 import           Data.String.Conversions
 import           Data.Either
 import           Data.Maybe
@@ -22,10 +19,8 @@ import           Servant
 import           System.Log.Logger
 import           Database.MongoDB as DB
 import           Data.Aeson as JSON
-import           Data.Bson as BSON
 import           Data.AesonBson
 import           Data.Text hiding (find, map, filter, any)
-import           Safe
 
 -- * Projects API
 
@@ -60,7 +55,7 @@ postProject tok proj = do
          JSON.Object o -> o
          _ -> error "Wrong object format"
     insert "projects" (bsonify ob)
-  createResource tok
+  void $ createResource tok
                  (PermProjectId $ ProjectId $ convertString $ show res)
                  (Just Public)
                  Nothing
@@ -129,8 +124,8 @@ putProjectName tok pid name = do
 getFullProject :: Maybe Token -> Project -> Waziup Project
 getFullProject tok p@(Project _ _ _ devids gtwids _ _) = do
   devs <- mapM (try . getDevice tok) (maybe [] id devids)
-  gtwids <- mapM (try . (\id -> getGateway tok id Nothing)) (maybe [] id gtwids)
-  return $ p {pDevices = Just $ rights devs, pGateways = Just $ rights gtwids}
+  gtwids' <- mapM (try . (\gid -> getGateway tok gid Nothing)) (maybe [] id gtwids)
+  return $ p {pDevices = Just $ rights devs, pGateways = Just $ rights gtwids'}
 
 getProjectMongo :: ProjectId -> Action IO (Maybe Project)
 getProjectMongo (ProjectId pid) = do

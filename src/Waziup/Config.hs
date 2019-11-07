@@ -5,12 +5,8 @@
 
 module Waziup.Config where
 
-import           Network.Wai.Handler.Warp
-import           Network.Wai.Middleware.RequestLogger (logStdout, logStdoutDev)
-import           Network.Wai.Middleware.Cors
-import           Waziup.Server hiding (info, warn, debug, err)
-import           Waziup.Types hiding (info, warn, debug, err)
-import           Waziup.Utils hiding (info, warn, debug, err)
+import           Waziup.Types
+import           Waziup.Utils
 import           Data.String.Conversions
 import           Data.Aeson hiding (Success)
 import qualified Data.ByteString as BS
@@ -31,15 +27,12 @@ import           Options.Applicative as Opts hiding (Success, Failure)
 import           Control.Exception as C
 import           Control.Lens
 import           Control.Monad.IO.Class
-import           Control.Concurrent
 import           System.FilePath ((</>))
 import           System.Environment
 import           Paths_Waziup_Servant
-import           MQTT hiding (info, warn, debug, err)
-import           Web.Twitter.Conduit hiding (map)
+import           Web.Twitter.Conduit
 import           Data.Map as M hiding (map)
 import           Control.Concurrent.STM
-import           Data.Time
 
 configureWaziup :: IO WaziupInfo
 configureWaziup = do
@@ -74,7 +67,7 @@ configureWaziup = do
                                          & cacheValidDuration .~? (fromInteger.read <$> envCacheDuration)
   let mqttConfig   = defaultMQTTConfig   & mqttHost           .~? (convertString    <$> envMosqHost)
                                          & mqttPort           .~? (read             <$> envMosqPort)
-  let twitterConf = 
+  let twitterConfig = 
         if isJust envTwitKey && isJust envTwitSec && isJust envTwitTok && isJust envTwitTokSec 
           then def { twProxy = Nothing,
                      twToken = def { twOAuth = twitterOAuth { oauthConsumerKey    = convertString $ fromJust envTwitKey, 
@@ -82,16 +75,16 @@ configureWaziup = do
                                      twCredential = Credential [ ("oauth_token",        convertString $ fromJust envTwitTok),
                                                                  ("oauth_token_secret", convertString $ fromJust envTwitTokSec)]}}
           else defaultTwitterConf
-  let plivoConf = defaultPlivoConf & plivoID    .~? (convertString <$> envPlivoID)
+  let plivoConfig = defaultPlivoConf & plivoID    .~? (convertString <$> envPlivoID)
                                    & plivoToken .~? (convertString <$> envPlivoToken)
-  let confParser = waziupConfigParser serverConfig mongoConfig kcConfig orionConfig mqttConfig twitterConf plivoConf
+  let confParser = waziupConfigParser serverConfig mongoConfig kcConfig orionConfig mqttConfig twitterConfig plivoConfig
   let confParser' = Opts.info (confParser <**> helper) (fullDesc <> progDesc "Create a server for Waziup API" <> header "Waziup API server")
   conf <- execParser confParser'
   let mongUrl = conf ^. mongoConf.mongoUrl
   pool <- createPool (DB.connect $ readHostPort (convertString mongUrl)) DB.close 1 300 5
-  ontologies <- loadOntologies
+  onto <- loadOntologies
   permsCache <- atomically $ newTVar M.empty 
-  return $ WaziupInfo pool conf ontologies permsCache
+  return $ WaziupInfo pool conf onto permsCache
 
 waziupConfigParser :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> MQTTConfig -> TWInfo -> PlivoConfig -> Parser WaziupConfig
 waziupConfigParser servDef mDef kcDef oDef mqttDef twittDef plivoDef = do
@@ -106,19 +99,19 @@ serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass
   url           <- strOption   (long "url"         <> metavar "<url>"      <> help "url of this server"  <> value defUrl)
   port          <- option auto (long "port"        <> metavar "<port>"     <> help "HTTP port of this server" <> value defPort) 
   portMQTT      <- option auto (long "portMQTT"    <> metavar "<portMQTT>" <> help "MQTT port of this server" <> value defPortMQTT) 
-  guestLogin    <- strOption   (long "kcGuestLog"  <> metavar "<login>"    <> help "Guest login of Keycloak"    <> value defGueLog)
-  guestPassword <- strOption   (long "kcGuestPass" <> metavar "<password>" <> help "Guest password of Keycloak" <> value defGuePass)
+  guestLog      <- strOption   (long "kcGuestLog"  <> metavar "<login>"    <> help "Guest login of Keycloak"    <> value defGueLog)
+  guestPass    <- strOption   (long "kcGuestPass" <> metavar "<password>" <> help "Guest password of Keycloak" <> value defGuePass)
   notifInterval <- option auto (long "notif"       <> metavar "<notif>"    <> help "minimum interval for notifications (in seconds)" <> value (floor defNotif)) 
   cacheDuration <- option auto (long "cache"       <> metavar "<cache>"    <> help "duration of the cache valididy (in seconds)" <> value (floor defCache)) 
-  return $ ServerConfig url port portMQTT guestLogin guestPassword (fromInteger notifInterval) (fromInteger cacheDuration)
+  return $ ServerConfig url port portMQTT guestLog guestPass (fromInteger notifInterval) (fromInteger cacheDuration)
 
 kcConfigParser :: KCConfig -> Parser KCConfig
 kcConfigParser (KCConfig defUrl defRealm defCID defCSec) = do
-  baseUrl       <- strOption (long "kcUrl"       <> metavar "<url>"      <> help "url of Keycloak"            <> value defUrl)
-  realm         <- strOption (long "kcRealm"     <> metavar "<realm>"    <> help "realm of Keycloak"          <> value defRealm) 
-  clientId      <- strOption (long "kcClientId"  <> metavar "<id>"       <> help "Client ID of Keycloak"      <> value defCID)
-  clientSecret  <- strOption (long "kcClientSec" <> metavar "<secret>"   <> help "Client Secret of Keycloak"  <> value defCSec)
-  return $ KCConfig baseUrl realm clientId clientSecret
+  pBaseUrl       <- strOption (long "kcUrl"       <> metavar "<url>"      <> help "url of Keycloak"            <> value defUrl)
+  pRealm         <- strOption (long "kcRealm"     <> metavar "<realm>"    <> help "realm of Keycloak"          <> value defRealm) 
+  pClientId      <- strOption (long "kcClientId"  <> metavar "<id>"       <> help "Client ID of Keycloak"      <> value defCID)
+  pClientSecret  <- strOption (long "kcClientSec" <> metavar "<secret>"   <> help "Client Secret of Keycloak"  <> value defCSec)
+  return $ KCConfig pBaseUrl pRealm pClientId pClientSecret
 
 orionConfigParser :: OrionConfig -> Parser OrionConfig
 orionConfigParser (OrionConfig defUrl defServ) = do
@@ -127,11 +120,11 @@ orionConfigParser (OrionConfig defUrl defServ) = do
   return $ OrionConfig url service
 
 mongoConfigParser :: MongoConfig -> Parser MongoConfig
-mongoConfigParser def = do
-  url     <- strOption (long "mongoUrl"  <> metavar "<url>"  <> help "url of Mongo DB"            <> (value $ _mongoUrl def))
+mongoConfigParser d = do
+  url     <- strOption (long "mongoUrl"  <> metavar "<url>"  <> help "url of Mongo DB"            <> (value $ _mongoUrl d))
   user    <- optional $ strOption (long "mongoUser" <> metavar "<user>" <> help "admin user of Mongo DB")
   pass    <- optional $ strOption (long "mongoPass" <> metavar "<pass>" <> help "admin password of Mongo DB")
-  return $ MongoConfig url (user <|> _mongoUser def) (user <|>  _mongoPass def) 
+  return $ MongoConfig url (user <|> _mongoUser d) (pass <|> _mongoPass d) 
 
 startLog :: FilePath -> IO ()
 startLog fp = do
@@ -195,19 +188,19 @@ checkSensingDevices :: [SensorKind] -> [QuantityKind] -> Validation [String] ()
 checkSensingDevices sds qks = sequenceA_ $ map (isSDValid qks) sds
 
 isSDValid :: [QuantityKind] -> SensorKind -> Validation [String] ()
-isSDValid qks (SensorKind id _ qks') = sequenceA_ $ map (\qk -> if isQKValid qks qk then Success () else Failure [("quantity kind " ++ (show $ qk) ++ " referenced by sensing device " ++ (show id) ++ " is not defined")]) qks' 
+isSDValid qks (SensorKind i _ qks') = sequenceA_ $ map (\qk -> if isQKValid qks qk then Success () else Failure [("quantity kind " ++ (show $ qk) ++ " referenced by sensing device " ++ (show i) ++ " is not defined")]) qks' 
 
 isQKValid :: [QuantityKind] -> QuantityKindId -> Bool
-isQKValid qks id = any (\(QuantityKind id' _ _) -> id == id') qks
+isQKValid qks i = any (\(QuantityKind id' _ _) -> i == id') qks
 
 checkQuantityKinds :: [QuantityKind] -> [Unit] -> Validation [String] ()
 checkQuantityKinds qks us = sequenceA_ $ map (isQKInfoValid us) qks
 
 isQKInfoValid :: [Unit] -> QuantityKind -> Validation [String] ()
-isQKInfoValid us (QuantityKind id _ us') = sequenceA_ $ map (\u -> if isUnitValid us u then Success () else Failure [("unit " ++ (show $ u) ++ " referenced by quantity kind " ++ (show id) ++ " is not defined")]) us' 
+isQKInfoValid us (QuantityKind i _ us') = sequenceA_ $ map (\u -> if isUnitValid us u then Success () else Failure [("unit " ++ (show $ u) ++ " referenced by quantity kind " ++ (show i) ++ " is not defined")]) us' 
 
 isUnitValid :: [Unit] -> UnitId -> Bool
-isUnitValid us id = any (\(Unit id' _) -> id == id') us
+isUnitValid us i = any (\(Unit id' _) -> i == id') us
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

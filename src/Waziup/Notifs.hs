@@ -7,37 +7,21 @@ module Waziup.Notifs where
 import           Waziup.Types as T
 import           Waziup.Utils
 import           Waziup.Auth hiding (info, warn, debug, err)
-import qualified Waziup.Users as Users
-import           Waziup.Devices hiding (info, warn, debug, err)
-import           Control.Monad
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
-import           Control.Monad.Catch as C
 import           Data.Maybe
 import           Data.Text hiding (map, filter, foldl, any, find)
 import           Data.String.Conversions
 import qualified Data.List as L
 import           Data.Aeson as JSON
-import           Data.AesonBson
 import           Data.Time
-import           Data.Time.ISO8601
 import           Data.Map as M hiding (map)
 import           Servant
 import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
 import           System.Log.Logger
-import           Database.MongoDB as DB hiding (value, (!?))
-import           Web.Twitter.Conduit hiding (map)
-import           Web.Twitter.Conduit.Api
-import           Web.Twitter.Types as TWT
-import           Network.Wreq as W
 import           Control.Lens hiding ((.=))
-import           GHC.Generics (Generic)
-import           Data.Bson as BSON hiding ((!?))
-import           Servant
-import           Network.HTTP.Types.Status as HTS
 import           Orion as O hiding (info, warn, debug, err)
 import           Network.HTTP.Types.URI as URI
-import           Safe
 
 -- * Notif API
 
@@ -56,10 +40,10 @@ getNotifs tok = do
     a:_ -> isPermittedResource DevicesView (PermDeviceId a) ps --Only the first device is used to check permission 
                                               
 postNotif :: Maybe Token -> Notif -> Waziup NotifId
-postNotif tok not = do
-  info $ "Post notif: " ++ (show not)
-  notifMinInterval <- view (waziupConfig.serverConf.notifMinInterval)
-  let not2 = not {notifThrottling = max notifMinInterval (notifThrottling not)}
+postNotif _ notif = do
+  info $ "Post notif: " ++ (show notif)
+  interval <- view (waziupConfig.serverConf.notifMinInterval)
+  let not2 = notif {notifThrottling = max interval (notifThrottling notif)}
   host <- view (waziupConfig.serverConf.serverHost)
   sub <- getSubFromNotif not2 host
   debug $ "sub: " ++ (convertString $ (encode sub) :: String)
@@ -67,9 +51,9 @@ postNotif tok not = do
   return $ NotifId res 
 
 getNotif :: Maybe Token -> NotifId -> Waziup Notif
-getNotif tok (NotifId id) = do
+getNotif _ (NotifId nid) = do
   info "Get notif"
-  sub <- liftOrion $ O.getSub (SubId id) 
+  sub <- liftOrion $ O.getSub (SubId nid) 
   let mnotif = getNotifFromSub sub
   case mnotif of
     Just n -> return n
@@ -78,20 +62,20 @@ getNotif tok (NotifId id) = do
       throwError err400 {errBody = "Not a Waziup notification"}
 
 patchNotif :: Maybe Token -> NotifId -> Notif -> Waziup NoContent
-patchNotif tok (NotifId id) not = do
-  info $ "Patch notif: " ++ (show not)
-  notifMinInterval <- view (waziupConfig.serverConf.notifMinInterval)
-  let not2 = not {notifThrottling = max notifMinInterval (notifThrottling not)}
+patchNotif _ (NotifId nid) notif = do
+  info $ "Patch notif: " ++ (show notif)
+  interval <- view (waziupConfig.serverConf.notifMinInterval)
+  let not2 = notif {notifThrottling = max interval (notifThrottling notif)}
   host <- view (waziupConfig.serverConf.serverHost)
   sub <- getSubFromNotif not2 host
   debug $ "sub: " ++ (convertString $ (encode sub) :: String)
-  liftOrion $ O.patchSub (SubId id) sub
+  liftOrion $ O.patchSub (SubId nid) sub
   return NoContent
 
 deleteNotif :: Maybe Token -> NotifId -> Waziup NoContent
-deleteNotif tok (NotifId id) = do
+deleteNotif _ (NotifId nid) = do
   info "Delete notif"
-  liftOrion $ O.deleteSub (SubId id)
+  liftOrion $ O.deleteSub (SubId nid)
   return NoContent
 
 putNotifStatus :: Maybe Token -> NotifId -> SubStatus -> Waziup NoContent
@@ -107,40 +91,40 @@ putNotifStatus tok nid status = do
 -- * Helpers
 
 getNotifFromSub :: Subscription -> Maybe Notif
-getNotifFromSub (Subscription subId subDesc subSubject subNotif subThrottling subStat subExp) = 
-  case getNotifAction subNotif of
-    Just action -> Just $ Notif { notifId                = getNotifId <$> subId 
-                                , notifDescription       = subDesc 
-                                , notifCondition         = getNotifCondition subSubject 
+getNotifFromSub (Subscription sid desc subj notif throt stat expir) = 
+  case getNotifAction notif of
+    Just action -> Just $ Notif { notifId                = getNotifId <$> sid 
+                                , notifDescription       = desc 
+                                , notifCondition         = getNotifCondition subj 
                                 , notifAction            = action 
-                                , notifThrottling        = subThrottling
-                                , notifStatus            = subStat 
-                                , notifTimesSent         = subTimesSent subNotif 
-                                , notifLastNotif         = subLastNotification subNotif
-                                , notifLastSuccess       = subLastSuccess subNotif
-                                , notifLastSuccessCode   = subLastSuccessCode subNotif
-                                , notifLastFailure       = subLastFailure subNotif
-                                , notifLastFailureReason = subLastFailureReason subNotif
-                                , notifExpires           = subExp}
+                                , notifThrottling        = throt
+                                , notifStatus            = stat 
+                                , notifTimesSent         = subTimesSent notif 
+                                , notifLastNotif         = subLastNotification notif
+                                , notifLastSuccess       = subLastSuccess notif
+                                , notifLastSuccessCode   = subLastSuccessCode notif
+                                , notifLastFailure       = subLastFailure notif
+                                , notifLastFailureReason = subLastFailureReason notif
+                                , notifExpires           = expir}
     Nothing -> Nothing
 
 getNotifId :: SubId -> NotifId
 getNotifId (SubId sid) = NotifId sid
 
 getNotifCondition :: SubSubject -> NotifCondition
-getNotifCondition (SubSubject ents (SubCondition attrs exp)) = NotifCondition
+getNotifCondition (SubSubject ents (SubCondition attrs expir)) = NotifCondition
   { notifDevices    = map getDeviceId (map subEntId ents)
   , notifSensors    = map getSensorId attrs
-  , notifExpression = q} where
-    q = case convertString <$> exp !? "q" of
+  , notifExpression = qExpr} where
+    qExpr = case convertString <$> expir !? "q" of
           Just q -> q
           Nothing -> error "Cannot find q expression"
 
 getDeviceId :: EntityId -> DeviceId
-getDeviceId (EntityId id) = DeviceId id
+getDeviceId (EntityId eid) = DeviceId eid
 
 getSensorId :: AttributeId -> SensorId
-getSensorId (AttributeId id) = SensorId id
+getSensorId (AttributeId aid) = SensorId aid
 
 getNotifAction :: SubNotif -> Maybe SocialMessageBatch
 getNotifAction subNot = 
@@ -149,15 +133,15 @@ getNotifAction subNot =
     else Nothing
 
 getSubFromNotif :: Notif -> Text -> Waziup Subscription
-getSubFromNotif (Notif nid desc sub not throt stat ts ln ls lsc lf lfr exp) host = do
+getSubFromNotif (Notif nid desc sub notif throt stat ts ln ls lsc lf lfr expi) host = do
   return Subscription {
   subId           = getSubId <$> nid, 
   subDescription  = desc,
   subSubject      = getSubSubject sub, 
-  subNotification = getSubNotif not ts ln ls lsc lf lfr host,
+  subNotification = getSubNotif notif ts ln ls lsc lf lfr host,
   subThrottling   = throt,
   subStatus       = stat,
-  subExpires      = exp}
+  subExpires      = expi}
 
 getSubSubject :: NotifCondition -> SubSubject
 getSubSubject (NotifCondition devs sens expr) = 
@@ -182,7 +166,7 @@ getSubNotif smb ts ln ls lsc lf lfr host = do
              subLastFailureReason = lfr}
 
 getSubId :: NotifId -> SubId
-getSubId (NotifId id) = SubId id
+getSubId (NotifId nid) = SubId nid
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

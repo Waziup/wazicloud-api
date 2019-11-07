@@ -3,16 +3,8 @@
 
 module Waziup.Ontologies where
 
-import           Waziup.Utils
 import           Waziup.Types
-import           Control.Monad.Except (throwError)
-import           Control.Monad.IO.Class
 import           Control.Monad.Reader
-import           Data.String.Conversions
-import qualified Data.ByteString as BS
-import           Servant
-import           System.FilePath ((</>))
-import           Paths_Waziup_Servant
 
 
 -- * Ontologies

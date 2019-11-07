@@ -9,22 +9,15 @@ import           Waziup.Auth hiding (info, warn, debug, err)
 import           Waziup.Devices hiding (info, warn, debug, err)
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
-import           Control.Monad.Catch as C
-import           Control.Monad
 import           Data.Maybe
-import           Data.Text hiding (map, filter, foldl, any, find)
-import           Data.String.Conversions
 import qualified Data.List as L
 import           Data.Aeson as JSON
 import           Data.AesonBson
 import           Data.Time
-import           Data.Time.ISO8601
 import           Servant
 import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
-import           Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
 import           Database.MongoDB as DB hiding (value)
-import           Safe
 import           Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 
 
@@ -38,14 +31,14 @@ getDatapoints :: Maybe Token
               -> Maybe UTCTime
               -> Maybe Bool
               -> Waziup [Datapoint]
-getDatapoints tok mdids msids limit offset sort dateFrom dateTo calibEn = do
+getDatapoints tok mdids msids lim offset srt dateFrom dateTo calibEn = do
   info "Get datapoints"
   dids <- case mdids of
     Nothing -> throwError err400 {errBody = "parameters 'devices' must be present"}
     Just dids -> return dids
   perms <- getPerms tok (PermReq Nothing [fromScope DevicesDataView])
   let dids' = filter (\did -> isPermittedResource DevicesDataView (PermDeviceId did) perms) dids
-  res <- runMongo $ getDatapointsMongo dids' msids limit offset sort dateFrom dateTo
+  res <- runMongo $ getDatapointsMongo dids' msids lim offset srt dateFrom dateTo
   res' <- if calibEn == Just False then return res else calibrateDatapoints tok dids' res 
   return res'
 
@@ -57,7 +50,7 @@ getDatapointsMongo :: [DeviceId]
                    -> Maybe UTCTime
                    -> Maybe UTCTime
                    -> Action IO [Datapoint]
-getDatapointsMongo dids msids limit offset sort dateFrom dateTo = do
+getDatapointsMongo dids msids lim offset srt dateFrom dateTo = do
   info $ "Get datapoints from Mongo"
   let filterDev = ["device_id" =: ["$in" =: map unDeviceId dids]]
   let filterSen = case msids of
@@ -71,11 +64,11 @@ getDatapointsMongo dids msids limit offset sort dateFrom dateTo = do
                         then ["_id" =: filterDateFrom <> filterDateTo] 
                         else []
   let filters = filterDev <> filterSen <> filterTimestamp
-  let sort' = case sort of
+  let sort' = case srt of
                Just Asc -> 1
                Just Dsc -> -1
                Nothing  -> 1 :: Int
-  let limit' = if isJust limit  then fromJust limit else 20
+  let limit' = if isJust lim  then fromJust lim else 20
   let skip'  = if isJust offset then fromJust offset else 0
   debug $ show filterSen
   debug $ show filterDev
@@ -94,9 +87,9 @@ calibrateDatapoints tok dids ds = do
   return $ map (calibrateDatapoint devices) ds
 
 calibrateDatapoint :: [Device] -> Datapoint -> Datapoint
-calibrateDatapoint devs d = calib (getCalib devs d) d where
-  calib :: Maybe Calib -> Datapoint -> Datapoint
-  calib cal d@(Datapoint _ _ val _ _) = d {dataValue = getCalibratedValue val cal}
+calibrateDatapoint devs d@(Datapoint _ _ value _ _) = calib (getCalib devs d) where
+  calib :: Maybe Calib -> Datapoint
+  calib cal = d {dataValue = getCalibratedValue value cal}
 
 getCalib :: [Device] -> Datapoint -> Maybe Calib
 getCalib devs (Datapoint did sid _ _ _) = do

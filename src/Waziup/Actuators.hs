@@ -9,7 +9,6 @@ import           Waziup.Devices hiding (info, warn, debug, err)
 import           Waziup.Auth hiding (info, warn, debug, err)
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
-import           Data.Text hiding (map, filter, foldl, any)
 import qualified Data.List as L
 import           Data.Aeson as JSON
 import           Servant

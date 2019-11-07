@@ -13,46 +13,33 @@ module Waziup.Types where
 import           Data.List (stripPrefix)
 import           Data.Maybe (fromMaybe)
 import           Data.Aeson as Aeson
-import           Data.Aeson.Types as AT (Options(..), defaultOptions, Pair)
-import           Data.Aeson.Casing (snakeCase, aesonDrop)
+import           Data.Aeson.Types as AT (Options(..), defaultOptions)
+import           Data.Aeson.Casing (snakeCase)
 import           Data.Text (Text) 
 import qualified Data.Text as T
-import qualified Data.Map as Map
-import qualified Data.HashMap.Strict as HM
 import           Data.Function ((&))
 import           Data.Time
 import           Data.Time.ISO8601
 import           Data.Maybe
 import           Data.Char
-import           Data.Monoid
-import           Data.Time.ISO8601
 import           Data.Swagger hiding (fieldLabelModifier)
 import qualified Data.Swagger as SW
-import           Data.Swagger.Internal
-import           Data.Swagger.Lens
 import           Data.String.Conversions
 import           Data.Pool
-import           Data.Either
 import qualified Data.Csv as CSV
 import           Control.Lens hiding ((.=))
 import           Control.Monad
-import           Control.Monad.Except (ExceptT, throwError, runExceptT)
-import           Control.Monad.Catch as C
+import           Control.Monad.Except (runExceptT)
 import           Control.Monad.Reader
-import           Control.Applicative
 import           Servant
-import           Servant.Swagger
-import           Servant.API.Flatten
 import           Keycloak as KC hiding (info, warn, debug, Scope, User(..), UserId, unCapitalize) 
 import           GHC.Generics (Generic)
 import qualified Database.MongoDB as DB
 import qualified Orion.Types as O
-import           Web.Twitter.Conduit hiding (map)
-import           Debug.Trace
+import           Web.Twitter.Conduit
 import           Safe
 import           Data.Map hiding (drop, map, foldl)
 import           Control.Concurrent.STM
-import           Data.Time
 
 type Limit  = Int
 type Offset = Int
@@ -121,6 +108,8 @@ data MongoConfig = MongoConfig {
   _mongoUser :: Maybe Text,
   _mongoPass :: Maybe Text} deriving (Show, Eq)
 
+
+defaultMongoConfig :: MongoConfig
 defaultMongoConfig = MongoConfig {
   _mongoUrl  = "127.0.0.1",
   _mongoUser = Nothing,
@@ -130,6 +119,7 @@ data MQTTConfig = MQTTConfig {
   _mqttHost :: Text,
   _mqttPort :: Int } deriving (Show, Eq)
 
+defaultMQTTConfig :: MQTTConfig
 defaultMQTTConfig = MQTTConfig {
   _mqttHost = "127.0.0.1",
   _mqttPort = 1883 }
@@ -148,6 +138,7 @@ data PlivoConfig = PlivoConfig {
   _plivoID    :: Text,
   _plivoToken :: Text} deriving (Show, Eq)
 
+defaultPlivoConf :: PlivoConfig
 defaultPlivoConf = PlivoConfig {
   _plivoHost  = "https://api.plivo.com",
   _plivoID    = "<Your Plivo ID>",
@@ -188,24 +179,26 @@ instance ToSchema PermResource where
 
 
 --Conversions with KC Resource Type
+deviceKCPrefix, gatewayKCPrefix, projectKCPrefix :: Text
 deviceKCPrefix  = "device-"
 gatewayKCPrefix = "gateway-"
 projectKCPrefix = "project-"
 
 --Resource ID is extracted from the KC ID.
 getPermResource :: ResourceId -> PermResource
-getPermResource (ResourceId (T.stripPrefix deviceKCPrefix  -> Just id)) = PermDeviceId  $ DeviceId id
-getPermResource (ResourceId (T.stripPrefix gatewayKCPrefix -> Just id)) = PermGatewayId $ GatewayId id
-getPermResource (ResourceId (T.stripPrefix projectKCPrefix -> Just id)) = PermProjectId $ ProjectId id
+getPermResource (ResourceId (T.stripPrefix deviceKCPrefix  -> Just rid)) = PermDeviceId  $ DeviceId  rid
+getPermResource (ResourceId (T.stripPrefix gatewayKCPrefix -> Just rid)) = PermGatewayId $ GatewayId rid
+getPermResource (ResourceId (T.stripPrefix projectKCPrefix -> Just rid)) = PermProjectId $ ProjectId rid
+getPermResource (ResourceId _) = error "Keycloak resource ID not recognized"
 
 -- opposite conversion: from Waziup Ids to KC IDs.
 getKCResourceId :: PermResource -> KC.ResourceId
-getKCResourceId (PermDeviceId  (DeviceId id))  = ResourceId $ deviceKCPrefix  <> id
-getKCResourceId (PermGatewayId (GatewayId id)) = ResourceId $ gatewayKCPrefix <> id
-getKCResourceId (PermProjectId (ProjectId id)) = ResourceId $ projectKCPrefix <> id
+getKCResourceId (PermDeviceId  (DeviceId  rid)) = ResourceId $ deviceKCPrefix  <> rid
+getKCResourceId (PermGatewayId (GatewayId rid)) = ResourceId $ gatewayKCPrefix <> rid
+getKCResourceId (PermProjectId (ProjectId rid)) = ResourceId $ projectKCPrefix <> rid
 
 getPerm :: KC.Permission -> Perm
-getPerm (Permission rid _ scopes) = Perm (getPermResource <$> rid) (catMaybes $ map toScope scopes)
+getPerm (Permission rid _ scs) = Perm (getPermResource <$> rid) (catMaybes $ map toScope scs)
 
 data Perm = Perm
   { permResource :: Maybe PermResource 
@@ -237,6 +230,7 @@ data Scope = DevicesCreate
 allScopes :: [Scope]
 allScopes = [toEnum 0 ..]
 
+deviceScopes, projectScopes, gatewayScopes :: [Scope]
 deviceScopes  = [DevicesUpdate, DevicesView, DevicesDelete, DevicesDataCreate, DevicesDataView]
 projectScopes = [ProjectsUpdate, ProjectsView, ProjectsDelete]
 gatewayScopes = [GatewaysUpdate, GatewaysView, GatewaysDelete]
@@ -344,6 +338,7 @@ data Device = Device
   , devDateModified :: Maybe UTCTime    -- ^ last update date of the device node (output only)
   } deriving (Show, Eq, Generic)
 
+defaultDevice :: Device
 defaultDevice = Device
   { devId           = DeviceId "MyDevice"
   , devGatewayId    = Just $ GatewayId "MyGW" 
@@ -478,6 +473,7 @@ data Sensor = Sensor
   , senCalib         :: Maybe Calib
   } deriving (Show, Eq, Generic)
 
+defaultSensor :: Sensor
 defaultSensor = Sensor
   { senId            = SensorId "TC1" 
   , senName          = Just "My garden temperature" 
@@ -506,6 +502,7 @@ data SensorValue = SensorValue
   , senValDateReceived :: Maybe UTCTime  -- ^ time at which the measurement has been received on the Cloud
   } deriving (Show, Eq, Generic)
 
+defaultSensorValue :: SensorValue 
 defaultSensorValue = SensorValue 
   { senValValue        = Number 25
   , senValTimestamp    = parseISO8601 "2016-06-08T18:20:27.873Z"
@@ -550,6 +547,7 @@ data CalibLinear = CalibLinear
   , calValueMax :: CalibValue
   } deriving (Show, Eq, Generic)
 
+defaultCalibLinear :: CalibLinear
 defaultCalibLinear = CalibLinear
   { calEnabled  = True
   , calValueMin = CalibValue 900 100
@@ -614,6 +612,7 @@ data Datapoint = Datapoint
   , dataDateReceived :: Maybe UTCTime  -- ^ time at which the measurement has been received on the Cloud
   } deriving (Show, Eq, Generic)
 
+defaultDatapoint :: Datapoint 
 defaultDatapoint = Datapoint 
   { dataDeviceId     = DeviceId "MyDevice90"   -- ^ ID of the device
   , dataSensorId     = SensorId "TC1"          -- ^ ID of the sensor
@@ -631,6 +630,7 @@ instance FromJSON Datapoint where
     tim <- v .:? "timestamp"
     id_ <- v .: "_id"
     return $ Datapoint dev sen val tim (Just $ DB.timestamp $ read id_)
+  parseJSON _ = error "Not an object"
 
 instance ToJSON Datapoint where
   toJSON = genericToJSON $ snakeDrop 4
@@ -723,6 +723,7 @@ data Actuator = Actuator
   , actValue              :: Maybe Value
   } deriving (Show, Eq, Generic)
 
+defaultActuator :: Actuator
 defaultActuator = Actuator
   { actId                = ActuatorId "Act1" 
   , actName              = Just "My buzzer" 
@@ -764,10 +765,10 @@ instance FromHttpApiData GatewayId where
 
 -- GatewayId is used as plain text body
 instance MimeRender PlainText GatewayId where
-  mimeRender proxy (GatewayId p) = convertString p 
+  mimeRender _ (GatewayId p) = convertString p 
 
 instance MimeUnrender PlainText GatewayId where
-  mimeUnrender proxy bs = Right $ GatewayId $ convertString bs 
+  mimeUnrender _ bs = Right $ GatewayId $ convertString bs 
 
 -- Rendering in Swagger
 instance ToSchema GatewayId where
@@ -790,6 +791,7 @@ data Gateway = Gateway
   , gwLastSeen     :: Maybe UTCTime
   } deriving (Show, Eq, Generic)
 
+defaultGateway :: Gateway 
 defaultGateway = Gateway 
   { gwId           = GatewayId "GW1" 
   , gwName         = Just "My gateway"
@@ -830,8 +832,11 @@ instance ToSchema GatewayTunnel where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON (GatewayTunnel 9999) 
 
-instance MimeUnrender PlainText Int
-instance MimeUnrender PlainText Bool
+instance MimeUnrender PlainText Int where
+  mimeUnrender = undefined
+
+instance MimeUnrender PlainText Bool where
+  mimeUnrender = undefined
 
 ---------------------
 -- * Notifications --
@@ -853,7 +858,7 @@ instance FromHttpApiData NotifId where
 
 -- is used as plain text body
 instance MimeRender PlainText NotifId where
-  mimeRender proxy (NotifId p) = convertString p 
+  mimeRender _ (NotifId p) = convertString p 
 
 -- Rendering in Swagger
 instance ToSchema NotifId
@@ -876,6 +881,7 @@ data Notif = Notif
   , notifExpires           :: Maybe UTCTime
   } deriving (Show, Eq, Generic)
 
+defaultNotif :: Notif
 defaultNotif = Notif
   { notifId                = Nothing 
   , notifDescription       = "Test"               
@@ -957,7 +963,7 @@ instance FromHttpApiData SocialMessageId where
 
 -- is used as plain text body
 instance MimeRender PlainText SocialMessageId where
-  mimeRender proxy (SocialMessageId p) = convertString p 
+  mimeRender _ (SocialMessageId p) = convertString p 
 
 -- Rendering in Swagger
 instance ToSchema SocialMessageId
@@ -984,6 +990,7 @@ data SocialMessage = SocialMessage
   , socSuccess   :: Maybe Bool
   } deriving (Show, Eq, Generic)
 
+defaultSocialMessage :: SocialMessage
 defaultSocialMessage = SocialMessage
   { socId        = Nothing 
   , socUsername  = "cdupont" 
@@ -1019,6 +1026,7 @@ data SocialMessageBatch = SocialMessageBatch
   , socBatchMessage   :: SocialMessageText -- ^ Text of the message 
   } deriving (Show, Eq, Generic)
 
+defaultSocialMessageBatch :: SocialMessageBatch 
 defaultSocialMessageBatch = SocialMessageBatch 
   { socBatchUsernames = ["cdupont"]
   , socBatchChannels  = [Twitter, SMS] 
@@ -1074,6 +1082,7 @@ data User = User
   , userSmsCredit :: Maybe Int
   } deriving (Show, Eq, Generic)
 
+defaultUser :: User
 defaultUser = User
   { userId        = Nothing 
   , userUsername  = "cdupont"
@@ -1118,7 +1127,7 @@ instance FromHttpApiData ProjectId where
 
 -- ProjectId is used as plain text body
 instance MimeRender PlainText ProjectId where
-  mimeRender proxy (ProjectId p) = convertString p 
+  mimeRender _ (ProjectId p) = convertString p 
 
 instance ToSchema ProjectId where
   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
@@ -1138,6 +1147,7 @@ data Project = Project
     pGateways    :: Maybe [Gateway]
   } deriving (Show, Eq, Generic)
 
+defaultProject :: Project
 defaultProject = Project
   { pId          = Nothing,
     pName        = "MyProject",
@@ -1169,7 +1179,7 @@ instance ToSchema Project where
 newtype SensorKindId = SensorKindId {unSensorKindId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 instance MimeUnrender PlainText SensorKindId where
-  mimeUnrender proxy bs = Right $ SensorKindId $ convertString bs 
+  mimeUnrender _ bs = Right $ SensorKindId $ convertString bs 
 
 instance ToSchema SensorKindId
 
@@ -1203,7 +1213,7 @@ instance FromJSON ActuatorKindId where
   parseJSON = genericParseJSON (defaultOptions {AT.unwrapUnaryRecords = True})
 
 instance MimeUnrender PlainText ActuatorKindId where
-  mimeUnrender proxy bs = Right $ ActuatorKindId $ convertString bs 
+  mimeUnrender _ bs = Right $ ActuatorKindId $ convertString bs 
 
 instance ToSchema ActuatorKindId where
   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
@@ -1271,7 +1281,7 @@ instance ToParamSchema ActuatorValueTypeId
 newtype QuantityKindId = QuantityKindId {unQuantityKindId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 instance MimeUnrender PlainText QuantityKindId where
-  mimeUnrender proxy bs = Right $ QuantityKindId $ convertString bs 
+  mimeUnrender _ bs = Right $ QuantityKindId $ convertString bs 
 
 instance ToSchema QuantityKindId
 
@@ -1298,7 +1308,7 @@ instance ToSchema QuantityKind
 newtype UnitId = UnitId {unUnitId :: Text} deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 instance MimeUnrender PlainText UnitId where
-  mimeUnrender proxy bs = Right $ UnitId $ convertString bs 
+  mimeUnrender _ bs = Right $ UnitId $ convertString bs 
 
 instance ToSchema UnitId
 
@@ -1344,7 +1354,7 @@ instance ToSchema Error
 -- * Helpers
 
 unCapitalize :: String -> String
-unCapitalize (c:cs) = toLower c : cs
+unCapitalize (a:as) = toLower a : as
 unCapitalize [] = []
 
 snakeDrop :: Int -> Options
@@ -1355,8 +1365,8 @@ instance ToSchema ResourceId
 -- Remove a field label prefix during JSON parsing.
 -- Also perform any replacements for special characters.
 removeFieldLabelPrefix :: Bool -> String -> Options
-removeFieldLabelPrefix forParsing prefix =
-  defaultOptions {fieldLabelModifier = fromMaybe (error ("did not find prefix " ++ prefix)) . fmap unCapitalize . stripPrefix prefix . replaceSpecialChars}
+removeFieldLabelPrefix forParsing pref =
+  defaultOptions {fieldLabelModifier = fromMaybe (error ("did not find prefix " ++ pref)) . fmap unCapitalize . stripPrefix pref . replaceSpecialChars}
   where
     replaceSpecialChars field = foldl (&) field (map mkCharReplacement specialChars)
     specialChars =

@@ -7,11 +7,6 @@ module Main where
 import           System.IO
 import           Keycloak hiding (createResource)
 import           System.Log.Logger
-import           System.Log.Formatter
-import           System.Log.Handler hiding (setLevel)
-import           System.Log.Handler.Simple
-import           Data.Aeson
-import           Data.String.Conversions
 import           Data.Either
 import           Data.Maybe
 import           Waziup.Devices
@@ -30,42 +25,43 @@ main = recreateKCResources
 
 recreateKCResources :: IO ()
 recreateKCResources = do
-  hSetBuffering stdin NoBuffering
   hSetBuffering stdout NoBuffering
   hSetBuffering stderr NoBuffering
+
+  liftIO $ putStrLn $ "fixing missing visibility and owners (press any key or CTRL-C)?"
+  void $ getChar
+  fixVis
+  fixOwner
   liftIO $ putStrLn $ "Delete all resources?"
-  getChar
-  flip runKeycloak defaultKCConfig $ getClientAuthToken >>= deleteAllResources 
+  void $ getChar
+  void $ flip runKeycloak defaultKCConfig $ getClientAuthToken >>= deleteAllResources 
   
   wi <- configureWaziup 
-  flip runWaziup wi $ do
+  void $ flip runWaziup wi $ do
     tok <- postAuth $ AuthBody "cdupont" "password" 
-    --U.try $ createResource (Just tok) (PermDeviceId $ DeviceId allDevicesId) Nothing Nothing
-    --U.try $ createResource (Just tok) (PermDeviceId $ devId d) Nothing Nothing
-    --U.try $ createResource (Just tok) (PermDeviceId $ devId d) Nothing Nothing
 
     devs <- getAllDevices Nothing
     liftIO $ putStrLn $ "Recreating " ++ (show $ length devs) ++ " Devices?"
-    liftIO getChar
-    res <- mapM (createDev tok) devs
-    liftIO $ putStrLn $ "\ncreated " ++ (show $ length $ rights res) ++ " devices: " ++ (show $ map unDeviceId $ rights res) ++ 
-                            "\n\n***************failed " ++ (show $ length $ lefts res) ++ " devices: " ++ (show $ map unDeviceId $ lefts res)
-    liftIO getChar
+    void $ liftIO getChar
+    res1 <- mapM (createDev tok) devs
+    liftIO $ putStrLn $ "\ncreated " ++ (show $ length $ rights res1) ++ " devices: " ++ (show $ map unDeviceId $ rights res1) ++ 
+                            "\n\n***************failed " ++ (show $ length $ lefts res1) ++ " devices: " ++ (show $ map unDeviceId $ lefts res1)
+    void $ liftIO getChar
 
     gws <- getAllGateways 
     liftIO $ putStrLn $ "Recreating " ++ (show $ length gws) ++ " Gateways?"
-    liftIO getChar
-    res <- mapM (createGateway tok) gws
-    liftIO $ putStrLn $ "\ncreated " ++ (show $ length $ rights res) ++ " gateways: " ++ (show $ map unGatewayId $ rights res) ++ 
-                            "\n\n***************failed " ++ (show $ length $ lefts res) ++ " gateways: " ++ (show $ map unGatewayId $ lefts res)
-    liftIO getChar
+    void $ liftIO getChar
+    res2 <- mapM (createGateway tok) gws
+    liftIO $ putStrLn $ "\ncreated " ++ (show $ length $ rights res2) ++ " gateways: " ++ (show $ map unGatewayId $ rights res2) ++ 
+                            "\n\n***************failed " ++ (show $ length $ lefts res2) ++ " gateways: " ++ (show $ map unGatewayId $ lefts res2)
+    void $ liftIO getChar
 
     ps <- getAllProjects 
     liftIO $ putStrLn $ "Recreating " ++ (show $ length ps) ++ " Projects?"
-    liftIO getChar
-    res <- mapM (createProject tok) ps
-    liftIO $ putStrLn $ "\ncreated " ++ (show $ length $ rights res) ++ " projects: " ++ (show $ map unProjectId $ rights res) ++ 
-                            "\n\n***************failed " ++ (show $ length $ lefts res) ++ " projects: " ++ (show $ map unProjectId $ lefts res)
+    void $ liftIO getChar
+    res3 <- mapM (createProject tok) ps
+    liftIO $ putStrLn $ "\ncreated " ++ (show $ length $ rights res3) ++ " projects: " ++ (show $ map unProjectId $ rights res3) ++ 
+                            "\n\n***************failed " ++ (show $ length $ lefts res3) ++ " projects: " ++ (show $ map unProjectId $ lefts res3)
 
     return ()
   return ()
@@ -101,7 +97,6 @@ fixVis :: IO ()
 fixVis = do
   wi <- configureWaziup 
   void $ flip runWaziup wi $ do
-    tok <- postAuth $ AuthBody "cdupont" "password" 
     devs <- getAllDevices Nothing
     let noVisDevs = filter (\d -> isNothing $ devVisibility d) devs
     liftIO $ putStrLn $ "Fixing visibility on " ++ (show $ length noVisDevs) ++ " devices " ++ " out of " ++ (show $ length devs) ++ " devices"
@@ -111,7 +106,6 @@ fixOwner :: IO ()
 fixOwner = do
   wi <- configureWaziup 
   void $ flip runWaziup wi $ do
-    tok <- postAuth $ AuthBody "cdupont" "password" 
     devs <- getAllDevices Nothing
     let noOwnerDevs = filter (\d -> if (isNothing $ devOwner d) then True else ((fromJust $ devOwner d) == "")) devs
     liftIO $ putStrLn $ "Fixing owner on " ++ (show $ length noOwnerDevs) ++ " devices out of " ++ (show $ length devs) ++ " devices"

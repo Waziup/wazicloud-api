@@ -7,13 +7,11 @@ module Waziup.Utils where
 import           Waziup.Types
 import qualified Orion as O
 import           Keycloak as KC hiding (try)
-import           Control.Monad.Except (throwError, catchError, runExceptT, MonadError)
+import           Control.Monad.Except (throwError, catchError, MonadError)
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 import           Control.Lens
-import           Control.Exception.Lifted as L (throwIO, catch) 
 import           Control.Exception as C 
-import           Data.String.Conversions
 import           Data.Aeson
 import           Data.Maybe
 import           Data.Hashable
@@ -34,7 +32,7 @@ liftOrion orion = do
  e <- liftIO $ O.runOrion orion conf
  case e of
    Right res -> return res
-   Left err -> throwError $ fromOrionError err
+   Left er -> throwError $ fromOrionError er
 
 -- * Run a Keycloak function with default guest token
 liftKeycloak :: Maybe KC.Token -> (Token -> KC.Keycloak a) -> Waziup a
@@ -58,16 +56,15 @@ liftKeycloak' kc = do
  e <- liftIO $ runKeycloak kc conf
  case e of
    Right res -> return res
-   Left err -> throwError $ fromKCError err
+   Left er -> throwError $ fromKCError er
 
 -- * run Mongo function
 runMongo :: Action IO a -> Waziup a
 runMongo dbAction = do
-  (WaziupInfo dBPool conf _ _) <- ask
-  dBPool <- view dbPool 
+  pool <- view dbPool
   muser  <- view $ waziupConfig.mongoConf.mongoUser
   mpass  <- view $ waziupConfig.mongoConf.mongoPass
-  liftIO $ P.withResource dBPool $ \p -> DB.access p DB.master "waziup" $ do
+  liftIO $ P.withResource pool $ \p -> DB.access p DB.master "waziup" $ do
      case (muser, mpass) of
        (Just user, Just pass) -> do 
          res <- DB.auth user pass

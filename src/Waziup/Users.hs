@@ -35,16 +35,16 @@ postUser tok user = do
   return $ UserId $ KC.unUserId uid
 
 putUserCredit :: Maybe KC.Token -> UserId -> Int -> Waziup NoContent
-putUserCredit tok uid@(UserId id) c = do
+putUserCredit tok uid@(UserId i) c = do
   info "Put user credit"
   u <- getUser tok uid 
   let u' = u {userSmsCredit = Just c}
-  liftKeycloak tok $ KC.putUser (KC.UserId id) (fromUser u')
+  liftKeycloak tok $ KC.putUser (KC.UserId i) (fromUser u')
   return NoContent
 
 toUser :: KC.User -> User
-toUser (KC.User id un fn ln mail subs) = 
-  User { userId        = maybe Nothing (Just . UserId . KC.unUserId) id 
+toUser (KC.User i un fn ln mail subs) = 
+  User { userId        = maybe Nothing (Just . UserId . KC.unUserId) i 
        , userUsername  = un
        , userFirstName = fn
        , userLastName  = ln 
@@ -56,8 +56,8 @@ toUser (KC.User id un fn ln mail subs) =
        }
 
 fromUser :: User -> KC.User
-fromUser (User id usern fn ln email ph fb tw smsc) =
-  KC.User { KC.userId = maybe Nothing (Just . KC.UserId . unUserId) id
+fromUser (User i usern fn ln email ph fb tw smsc) =
+  KC.User { KC.userId = maybe Nothing (Just . KC.UserId . unUserId) i
           , KC.userUsername = usern
           , KC.userFirstName = fn
           , KC.userLastName = ln

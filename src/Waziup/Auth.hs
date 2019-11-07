@@ -7,28 +7,15 @@ import           Waziup.Types as W
 import           Waziup.Utils as U
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
-import           Control.Monad.Catch as C
 import           Control.Monad
 import           Data.Maybe
 import           Data.Map as M hiding (map, mapMaybe, filter, delete)
-import           Data.Text as T hiding (map, filter, foldl, any)
-import           Data.String.Conversions
-import qualified Data.List as L
-import qualified Data.Vector as V
-import           Data.Scientific
-import qualified Data.HashMap.Strict as H
-import           Data.Time.ISO8601
 import           Data.Time
 import           Servant
 import           Keycloak as KC hiding (info, warn, debug, err, try) 
-import           Orion as O hiding (info, warn, debug, err, try)
 import           System.Log.Logger
-import           Paths_Waziup_Servant
-import           Database.MongoDB as DB hiding (at, value, Limit, Array, lookup, Value, Null, (!?))
-import           Data.AesonBson
 import           Control.Lens
 import           Control.Concurrent.STM
-import           Control.Monad
 
 -- | get a token
 postAuth :: AuthBody -> Waziup Token
@@ -59,18 +46,18 @@ getPermsGateways tok = do
 
 -- | Throws error 403 if `perms` if there is no permission for the resource under the corresponding scope.
 checkPermResource :: Maybe Token -> W.Scope -> W.PermResource -> Waziup ()
-checkPermResource tok scope rid = do
-  perms <- getPerms tok (PermReq (Just $ getKCResourceId rid) [fromScope scope])
-  if isPermittedResource scope rid perms 
+checkPermResource tok scp rid = do
+  perms <- getPerms tok (PermReq (Just $ getKCResourceId rid) [fromScope scp])
+  if isPermittedResource scp rid perms 
     then return ()
     else throwError err403 {errBody = "Forbidden: Cannot access resource"}
 
 -- | Check that `perms` contain a permission for the resource with the corresponding scope.
 isPermittedResource :: W.Scope -> W.PermResource -> [Perm] -> Bool
-isPermittedResource scope rid perms = any (isPermitted rid scope) perms where
-  isPermitted :: PermResource -> W.Scope -> Perm -> Bool
-  isPermitted rid scope (Perm (Just rid') scopes) = rid == rid' && scope `elem` scopes
-  isPermitted rid scope (Perm Nothing    scopes) = False
+isPermittedResource scp rid perms = any isPermitted perms where
+  isPermitted :: Perm -> Bool
+  isPermitted (Perm (Just rid') scopes) = rid == rid' && scp `elem` scopes
+  isPermitted (Perm Nothing _) = False
 
 
 getPerms :: Maybe Token -> PermReq -> Waziup [Perm]
@@ -83,8 +70,8 @@ getPerms tok permReq = do
     Just ps  -> return ps
     --No cached permission or outdated permission; getting from Keycloak and updating cache
     Nothing -> do
-      res <- U.try $ liftKeycloak tok $ getPermissions [permReq]
-      case res of
+      res2 <- U.try $ liftKeycloak tok $ getPermissions [permReq]
+      case res2 of
         Right kcPerms -> do
           let perms = map getPerm kcPerms
           writeCache username permReq perms 
@@ -121,11 +108,11 @@ createResource tok permRes vis muser = do
   liftKeycloak tok $ KC.createResource kcres
 
 deleteResource :: Maybe Token -> PermResource -> Waziup ()
-deleteResource tok pr = do
+deleteResource _ pr = do
   --invalidate all cache
   invalidateCache
   --delete all resources
-  liftIO $ flip runKeycloak defaultKCConfig $ do
+  void $ liftIO $ flip runKeycloak defaultKCConfig $ do
     tok2 <- KC.getClientAuthToken
     KC.deleteResource (getKCResourceId pr) tok2
   return ()
@@ -169,11 +156,11 @@ getCachedPerms username perm = do
 writeCache :: KC.Username -> PermReq -> [Perm] -> Waziup ()
 writeCache username permReq perms = do
   permsTV <- view permCache
-  permCache <- liftIO $ atomically $ readTVar permsTV
+  cache <- liftIO $ atomically $ readTVar permsTV
   now <- liftIO getCurrentTime
   debug "update cache"
-  let permsCache' = permCache & at (username, permReq) ?~ (perms, now)
-  liftIO $ atomically $ writeTVar permsTV permsCache'
+  let cache' = cache & at (username, permReq) ?~ (perms, now)
+  liftIO $ atomically $ writeTVar permsTV cache'
   return ()
 
 invalidateCache :: Waziup ()

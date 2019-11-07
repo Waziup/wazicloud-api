@@ -4,27 +4,22 @@
 module Waziup.Gateways where
 
 import           Waziup.Types
-import           Waziup.API
 import           Waziup.Utils
-import           Waziup.Devices hiding (info, warn, debug, err, Scope) 
-import           Waziup.Auth hiding (info, warn, debug, err, Scope) 
-import           Keycloak as KC hiding (info, warn, debug, err, Scope, createResource, updateResource, deleteResource, deleteResoure')
+import           Waziup.Devices hiding (info, warn, debug, err) 
+import           Waziup.Auth hiding (info, warn, debug, err) 
+import           Keycloak as KC hiding (info, warn, debug, err, Scope, createResource, updateResource, deleteResource)
 import           Control.Monad.IO.Class
 import           Control.Monad.Catch as C
 import           Control.Monad
-import           Control.Exception
 import           Data.String.Conversions
 import           Servant
 import           System.Log.Logger
 import           Database.MongoDB as DB
 import           Data.Aeson as JSON
-import           Data.Bson as BSON
 import           Data.AesonBson
 import           Data.Maybe
-import           Data.Typeable
 import           Data.Time
 import           Data.Text hiding (find, map, filter)
-import           Safe
 
 -- * Projects API
 
@@ -66,10 +61,11 @@ postGateway tok g = do
          _ -> error "Wrong object format"
     debug $ "id: " ++ (show ob)
     insert "gateways" (bsonify ob)
-  res <- case eres of
-    Right a -> return a
-    Left (CompoundFailure [WriteFailure _ e _]) -> throwError err422 {errBody = "Gateway ID already exists"}
-  createResource tok (PermGatewayId $ gwId g) (gwVisibility g) (Just username)
+  case eres of
+    Right _ -> return ()
+    Left (CompoundFailure [WriteFailure _ _ _]) -> throwError err422 {errBody = "Gateway ID already exists"}
+    Left e -> throwError err500 {errBody = (convertString $ show e)}
+  void $ createResource tok (PermGatewayId $ gwId g) (gwVisibility g) (Just username)
   return NoContent
 
 getGateway :: Maybe Token -> GatewayId -> Maybe Bool -> Waziup Gateway
@@ -130,7 +126,7 @@ putGatewayOwner :: Maybe Token -> GatewayId -> KC.Username -> Waziup NoContent
 putGatewayOwner tok gid owner = do
   info "Put gateway owner"
   checkPermResource tok GatewaysUpdate (PermGatewayId gid)
-  res <- runMongo $ do 
+  void $ runMongo $ do 
     let sel = ["_id" =: unGatewayId gid]
     mdoc <- findOne (select sel "gateways")
     case mdoc of
@@ -140,7 +136,7 @@ putGatewayOwner tok gid owner = do
        _ -> return False 
   info "Delete Keycloak resource"
   deleteResource tok (PermGatewayId gid)
-  createResource tok
+  void $ createResource tok
                  (PermGatewayId gid)
                  (Just Private)
                  (Just owner)

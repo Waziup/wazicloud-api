@@ -43,8 +43,8 @@ server = serverWaziup
 -- redirect root queries to docs
 redir :: ServerT Redir Waziup
 redir = do
-  info <- ask
-  let host = _serverHost $ _serverConf $ _waziupConfig info
+  wi <- ask
+  let host = _serverHost $ _serverConf $ _waziupConfig wi
   throwError $ err301 { errHeaders = [("Location", convertString $ host <> "/docs")] }
 
 -- All API servers

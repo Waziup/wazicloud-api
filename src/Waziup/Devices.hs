@@ -6,9 +6,7 @@ module Waziup.Devices where
 import           Waziup.Types as W
 import           Waziup.Utils as U
 import           Waziup.Auth hiding (info, warn, debug, err) 
-import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
-import           Control.Monad.Catch as C
 import           Control.Monad
 import           Data.Maybe
 import           Data.Map as M hiding (map, mapMaybe, filter, lookup, insert, delete)
@@ -21,10 +19,9 @@ import qualified Data.HashMap.Strict as H
 import           Data.Aeson as JSON hiding (Options)
 import           Data.Time.ISO8601
 import           Servant
-import           Keycloak as KC hiding (info, warn, debug, err, createResource, updateResource, deleteResource, deleteResoure') 
+import           Keycloak as KC hiding (info, warn, debug, err, createResource, updateResource, deleteResource) 
 import           Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
-import           Paths_Waziup_Servant
 import           Database.MongoDB as DB hiding (value, Limit, Array, lookup, Value, Null, (!?))
 import           Data.AesonBson
 
@@ -71,8 +68,8 @@ postDevice tok d = do
        Nothing -> "guest"
   debug $ "Owner: " <> (show username)
   let entity = getEntityFromDevice (d {devOwner = Just username})
-  liftOrion $ O.postEntity entity
-  createResource tok (PermDeviceId $ devId d) (devVisibility d) (Just username)
+  void $ liftOrion $ O.postEntity entity
+  void $ createResource tok (PermDeviceId $ devId d) (devVisibility d) (Just username)
   return NoContent
 
 deleteDevice :: Maybe Token -> DeviceId -> Waziup NoContent
@@ -123,7 +120,7 @@ putDeviceVisibility mtok did vis = do
   debug "Update Orion resource"
   liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "visibility") (fromVisibility vis)
   --update visibility in KEYCLOAK
-  createResource mtok (PermDeviceId did) (Just vis) Nothing
+  void $ createResource mtok (PermDeviceId did) (Just vis) Nothing
   return NoContent
 
 putDeviceDeployed :: Maybe Token -> DeviceId -> Bool -> Waziup NoContent
@@ -145,7 +142,7 @@ putDeviceOwner tok did owner = do
   liftOrion $ O.postAttribute (toEntityId did) devTyp (AttributeId "owner", O.Attribute "String" (Just $ toJSON owner) M.empty)
   info "Replace Keycloak resource"
   deleteResource tok (PermDeviceId did)
-  createResource tok (PermDeviceId did) (devVisibility d) (Just owner)
+  void $ createResource tok (PermDeviceId did) (devVisibility d) (Just owner)
   return NoContent
 
 -- * From Orion to Waziup types
@@ -158,7 +155,7 @@ getDeviceOrion :: DeviceId -> Waziup Device
 getDeviceOrion did = getDeviceFromEntity <$> (liftOrion $ O.getEntity (EntityId $ unDeviceId did) devTyp)
 
 getDeviceFromEntity :: O.Entity -> Device
-getDeviceFromEntity (O.Entity (EntityId eId) eType attrs) = 
+getDeviceFromEntity (O.Entity (EntityId eId) _ attrs) = 
   Device { devId           = DeviceId eId,
            devGatewayId    = GatewayId <$> O.fromSimpleAttribute (AttributeId "gateway_id") attrs,
            devName         = fromSimpleAttribute (AttributeId "name") attrs,
@@ -181,27 +178,27 @@ getLocation attrs = do
     return $ Location (Latitude $ toRealFloat lat) (Longitude $ toRealFloat lon)
 
 getSensorFromAttribute :: (O.AttributeId, O.Attribute) -> Maybe Sensor
-getSensorFromAttribute (AttributeId name, O.Attribute aType val mets) =
+getSensorFromAttribute (AttributeId name, O.Attribute aType value mets) =
   if (aType == "Sensor") 
     then Just $ Sensor { senId            = SensorId name,
                          senName          = fromSimpleMetadata (MetadataId "name") mets,
                          senQuantityKind  = QuantityKindId <$> fromSimpleMetadata (MetadataId "quantity_kind") mets,
                          senSensorKind    = SensorKindId   <$> fromSimpleMetadata (MetadataId "sensing_device") mets,
                          senUnit          = UnitId         <$> fromSimpleMetadata (MetadataId "unit") mets,
-                         senValue         = getSensorValue val mets cal,
+                         senValue         = getSensorValue value mets cal,
                          senCalib         = cal}
     else Nothing where
       cal = getSensorCalib mets
 
 
 getActuatorFromAttribute :: (AttributeId, O.Attribute) -> Maybe Actuator
-getActuatorFromAttribute (AttributeId name, O.Attribute aType val mets) =
+getActuatorFromAttribute (AttributeId name, O.Attribute aType value mets) =
   if (aType == "Actuator") 
     then Just $ Actuator { actId                = ActuatorId name,
                            actName              = fromSimpleMetadata (MetadataId "name") mets,
                            actActuatorKind      = ActuatorKindId <$> fromSimpleMetadata (MetadataId "actuator_kind") mets,
                            actActuatorValueType = join $ readValueType  <$> fromSimpleMetadata (MetadataId "actuator_value_type") mets,
-                           actValue             = val}
+                           actValue             = value}
     else Nothing
 
 getSensorValue :: Maybe Value -> Map O.MetadataId O.Metadata -> Maybe Calib -> Maybe SensorValue
@@ -216,20 +213,21 @@ getSensorValue mval mets cal = do
 getSensorCalib :: Map O.MetadataId O.Metadata -> Maybe Calib
 getSensorCalib mets = do
    (Metadata _ mval) <- mets !? "calib"
-   val <- mval
-   case fromJSON val of
+   value <- mval
+   case fromJSON value of
      Success a -> Just a
      JSON.Error _ -> Nothing
 
 getCalibratedValue :: Value -> Maybe Calib -> Value
-getCalibratedValue (Number val) (Just cal) = Number $ fromFloatDigits $ getCalibratedValue' (toRealFloat val) cal
+getCalibratedValue (Number value) (Just cal) = Number $ fromFloatDigits $ getCalibratedValue' (toRealFloat value) cal
 getCalibratedValue a _ = a
 
 getCalibratedValue' :: Double -> Calib -> Double
-getCalibratedValue' val (Linear (CalibLinear enabled (CalibValue maxSen maxReal) (CalibValue minSen minReal))) = 
+getCalibratedValue' value (Linear (CalibLinear enabled (CalibValue maxSen maxReal) (CalibValue minSen minReal))) = 
   if enabled 
-    then (val - minSen) * (maxReal - minReal) / (maxSen - minSen) + minReal 
-    else val
+    then (value - minSen) * (maxReal - minReal) / (maxSen - minSen) + minReal 
+    else value
+getCalibratedValue' _ (W.Function _) = error "Function calibration not yet supported" 
 
 isNull :: Value -> Bool
 isNull Null = True
@@ -254,8 +252,8 @@ getLocationAttr :: Location -> (O.AttributeId, O.Attribute)
 getLocationAttr (Location (Latitude lat) (Longitude lon)) = (AttributeId "location", O.Attribute "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) M.empty)
 
 getAttFromSensor :: Sensor -> (O.AttributeId, O.Attribute)
-getAttFromSensor (Sensor (SensorId senId) name sd qk u lv cal) = 
-  (AttributeId senId, O.Attribute "Sensor"
+getAttFromSensor (Sensor (SensorId sid) name sd qk u lv cal) = 
+  (AttributeId sid, O.Attribute "Sensor"
                      (senValValue <$> lv)
                      (fromList $ catMaybes [getTextMetadata (MetadataId "name")           <$> name,
                                             getTextMetadata (MetadataId "quantity_kind")  <$> unQuantityKindId <$> qk,
@@ -265,8 +263,8 @@ getAttFromSensor (Sensor (SensorId senId) name sd qk u lv cal) =
                                             if (isJust cal) then Just $ (MetadataId "calib", Metadata  (Just "Calib") (toJSON <$> cal)) else Nothing]))
 
 getAttFromActuator :: Actuator -> (O.AttributeId, O.Attribute)
-getAttFromActuator (Actuator (ActuatorId actId) name ak avt av) = 
-  (AttributeId actId, O.Attribute "Actuator"
+getAttFromActuator (Actuator (ActuatorId aid) name ak avt av) = 
+  (AttributeId aid, O.Attribute "Actuator"
                      av
                      (fromList $ catMaybes [getTextMetadata (MetadataId "name")           <$> name,
                                             getTextMetadata (MetadataId "actuator_kind")  <$> unActuatorKindId <$> ak,
@@ -285,28 +283,24 @@ postDatapoint d = do
   let ob = case toJSON d of
        JSON.Object o -> o
        _ -> error "Wrong object format"
-  res <- insert "waziup_history" (bsonify ob)
-  return ()
+  void $ insert "waziup_history" (bsonify ob)
 
 postDatapointFromSensor :: DeviceId -> Sensor -> Action IO ()
 postDatapointFromSensor did (Sensor sid _ _ _ _ (Just (SensorValue v t rt)) _) = postDatapoint $ Datapoint did sid v t rt
-postDatapointFromSensor did _ = return ()
+postDatapointFromSensor _ _ = return ()
 
 postDatapointsFromDevice :: Device -> Action IO ()
 postDatapointsFromDevice (Device did _ _ _ _ _ ss _ _ _ _ _) = void $ forM (maybeToList' ss) $ postDatapointFromSensor did
-postDatapointsFromDevice _ = return ()
 
 deleteSensorDatapoints :: DeviceId -> SensorId -> Action IO ()
 deleteSensorDatapoints (DeviceId did) (SensorId sid) = do
   debug "delete datapoints from Mongo"
-  res <- delete $ select ["device_id" =: did, "sensor_id" := val sid] "waziup_history"
-  return ()
+  void $ delete $ select ["device_id" =: did, "sensor_id" := val sid] "waziup_history"
 
 deleteDeviceDatapoints :: DeviceId -> Action IO ()
 deleteDeviceDatapoints (DeviceId did) = do
   debug "delete datapoints from Mongo"
-  res <- delete $ select ["device_id" =: did] "waziup_history"
-  return ()
+  void $ delete $ select ["device_id" =: did] "waziup_history"
 
 
 -- Logging

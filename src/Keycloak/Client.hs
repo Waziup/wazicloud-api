@@ -14,6 +14,7 @@ import           Data.Aeson.Types hiding ((.=))
 import           Data.Text as T hiding (head, tail, map, lookup)
 import           Data.Text.Encoding
 import           Data.Maybe
+import           Data.Either
 import           Data.List as L
 import           Data.Map hiding (map, lookup)
 import           Data.String.Conversions
@@ -30,19 +31,9 @@ import           Network.Wreq.Types
 import           System.Log.Logger
 import           System.IO.Unsafe
 import           Web.JWT as JWT
+import           Safe
 
 -- * Permissions
-
--- | Checks if a scope is permitted on a resource. An HTTP Exception 403 will be thrown if not.
-checkPermission :: ResourceId -> ScopeName -> Token -> Keycloak ()
-checkPermission (ResourceId res) scope tok = do
-  debug $ "Checking permissions: " ++ (show res) ++ " " ++ (show scope)
-  client <- asks _clientId
-  let dat = ["grant_type" := ("urn:ietf:params:oauth:grant-type:uma-ticket" :: Text),
-             "audience" := client,
-             "permission"  := res <> "#" <> scope]
-  keycloakPost "protocol/openid-connect/token" dat tok
-  return ()
 
 -- | Returns true id the resource is authorized under the given scope.
 isAuthorized :: ResourceId -> ScopeName -> Token -> Keycloak Bool
@@ -54,14 +45,14 @@ isAuthorized res scope tok = do
     Left e -> throwError e --rethrow the error
 
 -- | Return the permissions for all resources, under the given scopes.
-getAllPermissions :: [ScopeName] -> Token -> Keycloak [Permission]
-getAllPermissions scopes tok = do
+getPermissions :: [PermReq] -> Token -> Keycloak [Permission]
+getPermissions reqs tok = do
   debug "Get all permissions"
   client <- asks _clientId
   let dat = ["grant_type" := ("urn:ietf:params:oauth:grant-type:uma-ticket" :: Text),
              "audience" := client,
-             "response_mode" := ("permissions" :: Text)]
-             <> map (\s -> "permission" := ("#" <> s)) scopes
+             "response_mode" := ("permissions" :: Text)] 
+             <> map (\p -> "permission" := p) (join $ map getPermString reqs)
   body <- keycloakPost "protocol/openid-connect/token" dat tok
   case eitherDecode body of
     Right ret -> do
@@ -69,6 +60,22 @@ getAllPermissions scopes tok = do
     Left (err2 :: String) -> do
       debug $ "Keycloak parse error: " ++ (show err2) 
       throwError $ ParseError $ pack (show err2)
+
+getPermString :: PermReq -> [Text]
+getPermString (PermReq (Just (ResourceId id)) []) = [id]
+getPermString (PermReq (Just (ResourceId id)) scopes) = map (\(ScopeName s) -> (id <> "#" <> s)) scopes
+getPermString (PermReq Nothing scopes) = map (\(ScopeName s) -> ("#" <> s)) scopes
+
+-- | Checks if a scope is permitted on a resource. An HTTP Exception 403 will be thrown if not.
+checkPermission :: ResourceId -> ScopeName -> Token -> Keycloak ()
+checkPermission (ResourceId res) (ScopeName scope) tok = do
+  debug $ "Checking permissions: " ++ (show res) ++ " " ++ (show scope)
+  client <- asks _clientId
+  let dat = ["grant_type" := ("urn:ietf:params:oauth:grant-type:uma-ticket" :: Text),
+             "audience" := client,
+             "permission"  := res <> "#" <> scope]
+  keycloakPost "protocol/openid-connect/token" dat tok
+  return ()
 
 
 -- * Tokens
@@ -136,8 +143,8 @@ createResource r tok = do
   debug $ convertString $ "Created resource: " ++ convertString body
   case eitherDecode body of
     Right ret -> do
-      debug $ "Keycloak success: " ++ (show ret) 
-      return $ fromJust $ resId ret
+      debug $ "Keycloak success: " ++ (show ret)
+      return $ fromJustNote "create" $ resId ret
     Left err2 -> do
       debug $ "Keycloak parse error: " ++ (show err2) 
       throwError $ ParseError $ pack (show err2)
@@ -145,9 +152,39 @@ createResource r tok = do
 -- | Delete the resource
 deleteResource :: ResourceId -> Token -> Keycloak ()
 deleteResource (ResourceId rid) tok = do
-  tok2 <- getClientAuthToken 
-  keycloakDelete ("authz/protection/resource_set/" <> rid) tok2 
+  --tok2 <- getClientAuthToken 
+  keycloakDelete ("authz/protection/resource_set/" <> rid) tok
   return ()
+
+deleteAllResources :: Token -> Keycloak ()
+deleteAllResources tok = do
+  debug "Deleting all Keycloak resources..."
+  ids <- getAllResourceIds
+  res <- mapM (\rid -> try $ deleteResource rid tok) ids
+  debug $ "Deleted " ++ (show $ L.length $ rights res) ++ " resources out of " ++ (show $ L.length ids)
+
+getResource :: ResourceId -> Keycloak Resource
+getResource (ResourceId rid) = do
+  tok2 <- getClientAuthToken 
+  body <- keycloakGet ("authz/protection/resource_set/" <> rid) tok2
+  case eitherDecode body of
+    Right ret -> do
+      return ret
+    Left (err2 :: String) -> do
+      debug $ "Keycloak parse error: " ++ (show err2) 
+      throwError $ ParseError $ pack (show err2)
+
+getAllResourceIds :: Keycloak [ResourceId]
+getAllResourceIds = do
+  debug "Get all resources"
+  tok2 <- getClientAuthToken 
+  body <- keycloakGet ("authz/protection/resource_set?max=1000") tok2
+  case eitherDecode body of
+    Right ret -> do
+      return ret
+    Left (err2 :: String) -> do
+      debug $ "Keycloak parse error: " ++ (show err2) 
+      throwError $ ParseError $ pack (show err2)
 
 -- | Update a resource
 updateResource :: Resource -> Token -> Keycloak ResourceId
@@ -245,6 +282,22 @@ keycloakDelete path tok = do
   eRes <- C.try $ liftIO $ W.deleteWith opts url
   case eRes of 
     Right res -> return ()
+    Left err -> do
+      warn $ "Keycloak HTTP error: " ++ (show err)
+      throwError $ HTTPError err
+
+-- | Perform get to Keycloak on admin API
+keycloakGet :: Path -> Token -> Keycloak BL.ByteString
+keycloakGet path tok = do 
+  (KCConfig baseUrl realm _ _) <- ask
+  let opts = W.defaults & W.header "Authorization" .~ ["Bearer " <> (unToken tok)]
+  let url = (unpack $ baseUrl <> "/realms/" <> realm <> "/" <> path) 
+  info $ "Issuing KEYCLOAK GET with url: " ++ (show url) 
+  debug $ "  headers: " ++ (show $ opts ^. W.headers) 
+  eRes <- C.try $ liftIO $ W.getWith opts url
+  case eRes of 
+    Right res -> do
+      return $ fromJust $ res ^? responseBody
     Left err -> do
       warn $ "Keycloak HTTP error: " ++ (show err)
       throwError $ HTTPError err

@@ -104,7 +104,7 @@ Executable waziup-servant
 Executable migrate
   hs-source-dirs:      migrate
   Main-Is:             Main.hs
-  ghc-options:        -threaded -Wall
+  ghc-options:        -threaded -Wall -optl-static -fPIC
   build-depends:       base
                      , waziup-lib
                      , keycloak-hs

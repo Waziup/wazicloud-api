@@ -29,7 +29,7 @@ getProjects tok mfull = do
   info "Get projects"
   projects <- getAllProjects
   info $ "Got projects: " ++ (show projects)
-  ps <- getPerms tok (PermReq Nothing [fromScope ProjectsView])
+  ps <- getPerms tok (getPermReq Nothing [ProjectsView])
   let projects2 = filter (\p -> isPermittedResource ProjectsView (PermProjectId $ fromJust $ pId p) ps) projects -- TODO limits
   projects3 <- case mfull of
     Just True -> mapM (getFullProject tok) projects2

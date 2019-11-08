@@ -95,7 +95,7 @@ filterMQTTin wi tvConnCache extClient = awaitForever $ \(_,res) -> do
       case decodePub topic body of
         MQTTSen did sid senVal -> do
           -- check authorization
-          perms <- lift $ runWaziup (getPerms' tvConnCache (PermReq (Just $ getKCResourceId $ PermDeviceId did) [fromScope DevicesDataCreate])) wi
+          perms <- lift $ runWaziup (getPerms' tvConnCache (getPermReq (Just $ PermDeviceId did) [DevicesDataCreate])) wi
           let isAuth = isPermittedResource DevicesDataCreate (PermDeviceId did) (fromRight [] perms)
           debug $ "Perm check: " ++ (show isAuth)
           if isAuth 
@@ -109,7 +109,7 @@ filterMQTTin wi tvConnCache extClient = awaitForever $ \(_,res) -> do
               yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK pid)) .| appSink extClient
 
         MQTTAct did aid actVal -> do 
-          perms <- lift $ runWaziup (getPerms' tvConnCache (PermReq (Just $ getKCResourceId $ PermDeviceId did) [fromScope DevicesDataCreate])) wi
+          perms <- lift $ runWaziup (getPerms' tvConnCache (getPermReq (Just $ PermDeviceId did) [DevicesDataCreate])) wi
           let isAuth = isPermittedResource DevicesDataCreate (PermDeviceId did) (fromRight [] perms)
           debug $ "Perm check: " ++ (show isAuth)
           if isAuth 
@@ -134,14 +134,14 @@ filterMQTTout wi tvConnCache intServer = awaitForever $ \(_, res) -> do
       case decodePub topic body of
         MQTTSen did _ _ -> do
           -- check authorization
-          perms <- lift $ runWaziup (getPerms' tvConnCache (PermReq (Just $ getKCResourceId $ PermDeviceId did) [fromScope DevicesDataView])) wi
+          perms <- lift $ runWaziup (getPerms' tvConnCache (getPermReq (Just $ PermDeviceId did) [DevicesDataView])) wi
           let isAuth = isPermittedResource DevicesDataView (PermDeviceId did) (fromRight [] perms)
           debug $ "Perm check downstream: " ++ (show isAuth)
           if isAuth 
             then yield $ convertString $ T.toByteString res
             else yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink intServer
         MQTTAct did _ _ -> do 
-          perms <- lift $ runWaziup (getPerms' tvConnCache (PermReq (Just $ getKCResourceId $ PermDeviceId did) [fromScope DevicesDataView])) wi
+          perms <- lift $ runWaziup (getPerms' tvConnCache (getPermReq (Just $ PermDeviceId did) [DevicesDataView])) wi
           let isAuth = isPermittedResource DevicesDataView (PermDeviceId did) (fromRight [] perms)
           debug $ "Perm check downstream: " ++ (show isAuth)
           if isAuth 

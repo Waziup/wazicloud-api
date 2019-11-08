@@ -31,12 +31,9 @@ getGateways tok mfull = do
   gws' <- case mfull of
     Just True -> mapM (getFullGateway tok) gws 
     _ -> return gws
-  gs <- getPerms tok gatewaysViewReq
+  gs <- getPerms tok (getPermReq Nothing [GatewaysView])
   let gws'' = filter (\g -> isPermittedResource GatewaysView (PermGatewayId $ gwId g) gs) gws'
   return gws''
-
-gatewaysViewReq :: PermReq
-gatewaysViewReq = PermReq Nothing [fromScope GatewaysView]
 
 getAllGateways :: Waziup [Gateway]
 getAllGateways = do

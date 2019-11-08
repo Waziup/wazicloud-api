@@ -30,24 +30,24 @@ postAuth (AuthBody username password) = do
 getPermsDevices :: Maybe Token -> Waziup [Perm]
 getPermsDevices tok = do
   info "Get devices permissions"
-  getPerms tok (PermReq Nothing (map fromScope deviceScopes))
+  getPerms tok (getPermReq Nothing deviceScopes)
 
 -- | Get all permissions. If no token is passed, the guest token will be used.
 getPermsProjects :: Maybe Token -> Waziup [Perm]
 getPermsProjects tok = do
   info "Get projects permissions"
-  getPerms tok (PermReq Nothing (map fromScope projectScopes))
+  getPerms tok (getPermReq Nothing projectScopes)
 
 -- | Get all permissions. If no token is passed, the guest token will be used.
 getPermsGateways :: Maybe Token -> Waziup [Perm]
 getPermsGateways tok = do
   info "Get gateways permissions"
-  getPerms tok (PermReq Nothing (map fromScope gatewayScopes))
+  getPerms tok (getPermReq Nothing gatewayScopes)
 
 -- | Throws error 403 if `perms` if there is no permission for the resource under the corresponding scope.
 checkPermResource :: Maybe Token -> W.Scope -> W.PermResource -> Waziup ()
 checkPermResource tok scp rid = do
-  perms <- getPerms tok (PermReq (Just $ getKCResourceId rid) [fromScope scp])
+  perms <- getPerms tok (getPermReq (Just rid) [scp])
   if isPermittedResource scp rid perms 
     then return ()
     else throwError err403 {errBody = "Forbidden: Cannot access resource"}
@@ -57,8 +57,10 @@ isPermittedResource :: W.Scope -> W.PermResource -> [Perm] -> Bool
 isPermittedResource scp rid perms = any isPermitted perms where
   isPermitted :: Perm -> Bool
   isPermitted (Perm (Just rid') scopes) = rid == rid' && scp `elem` scopes
-  isPermitted (Perm Nothing _) = False
+  isPermitted (Perm Nothing scopes) = scp `elem` scopes
 
+getPermReq :: Maybe PermResource -> [W.Scope] -> PermReq
+getPermReq pr scopes = PermReq (getKCResourceId <$> pr) (map fromScope scopes)
 
 getPerms :: Maybe Token -> PermReq -> Waziup [Perm]
 getPerms tok permReq = do
@@ -85,7 +87,7 @@ getPerms tok permReq = do
 createResource :: Maybe Token -> PermResource -> Maybe Visibility -> Maybe KC.Username -> Waziup ResourceId
 createResource tok permRes vis muser = do
   --creating a new resource in Keycloak invalidates the cache
-  invalidateCache
+  invalidateCache permRes
   let (resTyp, scopes) = case permRes of
        PermDeviceId _  -> ("Device" , deviceScopes)
        PermGatewayId _ -> ("Gateway", gatewayScopes)
@@ -110,20 +112,15 @@ createResource tok permRes vis muser = do
 deleteResource :: Maybe Token -> PermResource -> Waziup ()
 deleteResource _ pr = do
   --invalidate all cache
-  invalidateCache
+  invalidateCache pr
   --delete all resources
   void $ liftIO $ flip runKeycloak defaultKCConfig $ do
     tok2 <- KC.getClientAuthToken
     KC.deleteResource (getKCResourceId pr) tok2
   return ()
 
--- | Update a resource
-updateResource :: Maybe Token -> KC.Resource ->  Waziup ResourceId
-updateResource tok res = do 
-  --invalidate all cache
-  invalidateCache
-  liftKeycloak tok $ KC.createResource res 
-
+updateResource :: Maybe Token -> PermResource -> Maybe Visibility -> Maybe KC.Username -> Waziup ResourceId
+updateResource = Waziup.Auth.createResource
 
 --Cache management
 
@@ -138,9 +135,9 @@ getCachedPerms username perm = do
   case M.lookup (username, perm) permsM of
     Just (perms, retrievedTime) -> do
       debug "cache found"
-      let delay = 60 --seconds
+      cacheDuration <- view (waziupConfig.serverConf.cacheValidDuration)
       --checl if not expired
-      if now < addUTCTime delay retrievedTime
+      if now < addUTCTime cacheDuration retrievedTime
         --return permissions
         then do
           debug "cache valid"
@@ -163,11 +160,20 @@ writeCache username permReq perms = do
   liftIO $ atomically $ writeTVar permsTV cache'
   return ()
 
-invalidateCache :: Waziup ()
-invalidateCache = do
+-- invalidate cache on resource actions (create, update, delete)
+invalidateCache :: PermResource -> Waziup ()
+invalidateCache rid = do
   permsTV <- view permCache
-  liftIO $ atomically $ writeTVar permsTV M.empty 
+  perms <- liftIO $ atomically $ readTVar permsTV
+  let rid' = getKCResourceId rid
+  let perms' = M.filterWithKey (\(_, req) _ -> isValidPermReq rid' req) perms
+  liftIO $ atomically $ writeTVar permsTV perms'
   
+-- filter perm reqs
+isValidPermReq :: ResourceId -> PermReq -> Bool
+isValidPermReq rid (PermReq (Just rid') _ )  = rid /= rid' -- Remove "resource" perm request
+isValidPermReq _   (PermReq _           [])  = False       -- Remove "all scopes" perm requests
+isValidPermReq _   (PermReq Nothing     _ )  = False       -- Remove "all resources" perm requests
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

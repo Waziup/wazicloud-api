@@ -30,7 +30,8 @@ getDevices :: Maybe Token -> Maybe DevicesQuery -> Maybe Limit -> Maybe Offset -
 getDevices tok mq mlimit moffset = do
   info "Get devices"
   devices <- getAllDevices mq
-  ps <- getPerms tok devicesViewReq
+  info "Got devices Orion"
+  ps <- getPerms tok (getPermReq Nothing [DevicesView])
   -- filter devices not permitted
   let devices2 = filter (\d -> isPermittedResource DevicesView (PermDeviceId $ devId d) ps) devices
   -- remove offset devices
@@ -38,9 +39,6 @@ getDevices tok mq mlimit moffset = do
   -- cut at the limit
   let devices4 = maybe' devices3 L.take mlimit
   return devices4
-
-devicesViewReq :: PermReq
-devicesViewReq = PermReq Nothing [fromScope DevicesView]
 
 getAllDevices :: Maybe DevicesQuery -> Waziup [Device]
 getAllDevices mq = do
@@ -120,7 +118,7 @@ putDeviceVisibility mtok did vis = do
   debug "Update Orion resource"
   liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "visibility") (fromVisibility vis)
   --update visibility in KEYCLOAK
-  void $ createResource mtok (PermDeviceId did) (Just vis) Nothing
+  void $ updateResource mtok (PermDeviceId did) (Just vis) Nothing
   return NoContent
 
 putDeviceDeployed :: Maybe Token -> DeviceId -> Bool -> Waziup NoContent

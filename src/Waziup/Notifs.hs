@@ -30,7 +30,7 @@ getNotifs tok = do
   info "Get notifs"
   subs <- liftOrion $ O.getSubs
   let notifs = catMaybes $ map getNotifFromSub subs
-  ps <- getPerms tok (PermReq Nothing [fromScope DevicesView]) 
+  ps <- getPerms tok (getPermReq Nothing [DevicesView]) 
   debug $ "Perms" ++ (show ps)
   let notifs2 = L.filter (isPermitted ps) notifs
   return notifs2 where

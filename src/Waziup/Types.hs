@@ -32,7 +32,7 @@ import           Control.Monad
 import           Control.Monad.Except (runExceptT)
 import           Control.Monad.Reader
 import           Servant
-import           Keycloak as KC hiding (info, warn, debug, Scope, User(..), UserId, unCapitalize) 
+import           Keycloak as KC hiding (Scope, User(..), UserId, unCapitalize) 
 import           GHC.Generics (Generic)
 import qualified Database.MongoDB as DB
 import qualified Orion.Types as O
@@ -62,7 +62,9 @@ data WaziupInfo = WaziupInfo {
   }
 
 --Cache for each permission request result
-type PermCache = Map (KC.Username, PermReq) ([Perm], UTCTime)
+type CacheIndex = (KC.Username, PermReq)
+type CacheValue = ([Perm], UTCTime)
+type PermCache = Map CacheIndex CacheValue 
   
 -- | run a Waziup monad
 runWaziup :: Waziup a -> WaziupInfo -> IO (Either ServantErr a)
@@ -90,6 +92,7 @@ data ServerConfig = ServerConfig {
   _guestLogin         :: Username,
   _guestPassword      :: Password,
   _notifMinInterval   :: NominalDiffTime,  -- ^ minimum interval between two notifications (seconds)
+  _cacheActivated     :: Bool,             -- ^ activate permission cache
   _cacheValidDuration :: NominalDiffTime   -- ^ duration of cache validity (seconds)
   } deriving (Eq, Show)
 
@@ -101,6 +104,7 @@ defaultServerConfig = ServerConfig {
   _guestLogin         = "guest",
   _guestPassword      = "guest",
   _notifMinInterval   = 120,
+  _cacheActivated     = True,
   _cacheValidDuration = 10 * 60}   -- 10 minutes
  
 data MongoConfig = MongoConfig {
@@ -169,7 +173,7 @@ instance ToSchema AuthBody where
 data PermResource = PermDeviceId DeviceId
                   | PermGatewayId GatewayId
                   | PermProjectId ProjectId
-                  deriving (Show, Eq, Generic, Ord)
+                  deriving (Eq, Generic, Ord)
 
 instance ToJSON PermResource where
   toJSON = genericToJSON defaultOptions {sumEncoding = UntaggedValue}
@@ -177,6 +181,10 @@ instance ToJSON PermResource where
 instance ToSchema PermResource where
   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
 
+instance Show PermResource where
+  show (PermDeviceId (DeviceId rid)) = "Device " ++ (convertString rid)
+  show (PermGatewayId (GatewayId rid)) = "Gateway " ++ (convertString rid)
+  show (PermProjectId (ProjectId rid)) = "Project " ++ (convertString rid)
 
 --Conversions with KC Resource Type
 deviceKCPrefix, gatewayKCPrefix, projectKCPrefix :: Text
@@ -197,19 +205,23 @@ getKCResourceId (PermDeviceId  (DeviceId  rid)) = ResourceId $ deviceKCPrefix  <
 getKCResourceId (PermGatewayId (GatewayId rid)) = ResourceId $ gatewayKCPrefix <> rid
 getKCResourceId (PermProjectId (ProjectId rid)) = ResourceId $ projectKCPrefix <> rid
 
-getPerm :: KC.Permission -> Perm
-getPerm (Permission rid _ scs) = Perm (getPermResource <$> rid) (catMaybes $ map toScope scs)
-
 data Perm = Perm
   { permResource :: Maybe PermResource 
   , permScopes   :: [Scope] --Not empty
-  } deriving (Show, Eq, Generic)
+  } deriving (Eq, Generic)
 
 instance ToJSON Perm where
   toJSON = genericToJSON $ snakeDrop 4
 
 instance ToSchema Perm where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.fieldLabelModifier = snakeCase . drop 4} proxy
+
+instance Show Perm where
+  show (Perm Nothing scopes) = "none " ++ (show $ map fromScope scopes)
+  show (Perm (Just pr) scopes) = (show pr) ++ " " ++ (show $ map fromScope scopes)
+
+getPerm :: KC.Permission -> Perm
+getPerm (Permission rid _ scs) = Perm (getPermResource <$> rid) (catMaybes $ map toScope scs)
 
 data Scope = DevicesCreate
            | DevicesUpdate

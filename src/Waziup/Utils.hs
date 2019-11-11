@@ -6,7 +6,7 @@ module Waziup.Utils where
 
 import           Waziup.Types
 import qualified Orion as O
-import           Keycloak as KC hiding (try)
+import           Keycloak as KC
 import           Control.Monad.Except (throwError, catchError, MonadError)
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
@@ -40,15 +40,6 @@ liftKeycloak mtok kc = do
  tok <- fromMaybeToken mtok 
  liftKeycloak' (kc tok)
 
-fromMaybeToken :: Maybe Token -> Waziup Token
-fromMaybeToken mtok = case mtok of
-   Just tok2 -> return tok2
-   Nothing -> do
-     guestId   <- view (waziupConfig.serverConf.guestLogin)
-     guestPass <- view (waziupConfig.serverConf.guestPassword)
-     -- retrieve guest token
-     liftKeycloak' (getUserAuthToken guestId guestPass)
-
 -- * Run Keycloak function
 liftKeycloak' :: KC.Keycloak a -> Waziup a
 liftKeycloak' kc = do
@@ -57,6 +48,15 @@ liftKeycloak' kc = do
  case e of
    Right res -> return res
    Left er -> throwError $ fromKCError er
+
+fromMaybeToken :: Maybe Token -> Waziup Token
+fromMaybeToken mtok = case mtok of
+   Just tok2 -> return tok2
+   Nothing -> do
+     guestId   <- view (waziupConfig.serverConf.guestLogin)
+     guestPass <- view (waziupConfig.serverConf.guestPassword)
+     -- retrieve guest token
+     liftKeycloak' (getUserAuthToken guestId guestPass)
 
 -- * run Mongo function
 runMongo :: Action IO a -> Waziup a

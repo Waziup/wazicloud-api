@@ -7,7 +7,6 @@ import           Waziup.Types
 import           Waziup.Utils
 import           System.Log.Logger
 import           Control.Monad.IO.Class
---import           Keycloak as KC hiding (info, warn, debug, err, Scope, User, UserId) 
 import qualified Keycloak as KC
 import           Data.Maybe
 import           Data.Map hiding (map)
@@ -31,7 +30,7 @@ getUser tok (UserId uid) = do
 postUser :: Maybe KC.Token -> User -> Waziup UserId
 postUser tok user = do 
   info "Post users"
-  uid <- liftKeycloak tok $ KC.postUser (fromUser user)
+  uid <- liftKeycloak tok $ KC.createUser (fromUser user)
   return $ UserId $ KC.unUserId uid
 
 putUserCredit :: Maybe KC.Token -> UserId -> Int -> Waziup NoContent
@@ -39,7 +38,7 @@ putUserCredit tok uid@(UserId i) c = do
   info "Put user credit"
   u <- getUser tok uid 
   let u' = u {userSmsCredit = Just c}
-  liftKeycloak tok $ KC.putUser (KC.UserId i) (fromUser u')
+  liftKeycloak tok $ KC.updateUser (KC.UserId i) (fromUser u')
   return NoContent
 
 toUser :: KC.User -> User

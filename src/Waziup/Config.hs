@@ -20,7 +20,7 @@ import           System.Log.Handler hiding (setLevel)
 import           System.Log.Handler.Simple
 import           System.Log.Handler.Log4jXML
 import           System.IO
-import           Keycloak hiding (try, info, warn, debug, err)
+import           Keycloak
 import           Orion hiding (try, info, warn, debug, err)
 import           Database.MongoDB as DB hiding (value)
 import           Options.Applicative as Opts hiding (Success, Failure)
@@ -54,8 +54,9 @@ configureWaziup = do
   envPlivoID          <- lookupEnv "PLIVO_ID"
   envPlivoToken       <- lookupEnv "PLIVO_TOKEN"
   envNotifMinInterval <- lookupEnv "NOTIF_MIN_INTERVAL"
-  envCacheDuration    <- lookupEnv "NOTIF_CACHE_DURATION"
-  let kcConfig     = defaultKCConfig     & baseUrl            .~? (convertString    <$> envKCUrl)
+  envCacheActivated   <- lookupEnv "CACHE_ACTIVATED"
+  envCacheDuration    <- lookupEnv "CACHE_DURATION"
+  let kcConfig     = defaultKCConfig     & confBaseUrl        .~? (convertString    <$> envKCUrl)
   let orionConfig  = defaultOrionConfig  & orionUrl           .~? (convertString    <$> envOrUrl)
   let mongoConfig  = defaultMongoConfig  & mongoUrl           .~? (convertString    <$> envMongUrl)
                                          & mongoUser          .~  (convertString    <$> envMongUser)
@@ -65,6 +66,7 @@ configureWaziup = do
                                          & serverPortMQTT     .~? (read             <$> envPortMQTT)
                                          & notifMinInterval   .~? (fromInteger.read <$> envNotifMinInterval)
                                          & cacheValidDuration .~? (fromInteger.read <$> envCacheDuration)
+                                         & cacheActivated     .~? (read             <$> envCacheActivated)
   let mqttConfig   = defaultMQTTConfig   & mqttHost           .~? (convertString    <$> envMosqHost)
                                          & mqttPort           .~? (read             <$> envMosqPort)
   let twitterConfig = 
@@ -95,15 +97,16 @@ waziupConfigParser servDef mDef kcDef oDef mqttDef twittDef plivoDef = do
   return $ WaziupConfig serv m kc o mqttDef twittDef plivoDef
 
 serverConfigParser :: ServerConfig -> Parser ServerConfig
-serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass defNotif defCache) = do
-  url           <- strOption   (long "url"         <> metavar "<url>"      <> help "url of this server"  <> value defUrl)
-  port          <- option auto (long "port"        <> metavar "<port>"     <> help "HTTP port of this server" <> value defPort) 
-  portMQTT      <- option auto (long "portMQTT"    <> metavar "<portMQTT>" <> help "MQTT port of this server" <> value defPortMQTT) 
-  guestLog      <- strOption   (long "kcGuestLog"  <> metavar "<login>"    <> help "Guest login of Keycloak"    <> value defGueLog)
-  guestPass    <- strOption   (long "kcGuestPass" <> metavar "<password>" <> help "Guest password of Keycloak" <> value defGuePass)
-  notifInterval <- option auto (long "notif"       <> metavar "<notif>"    <> help "minimum interval for notifications (in seconds)" <> value (floor defNotif)) 
-  cacheDuration <- option auto (long "cache"       <> metavar "<cache>"    <> help "duration of the cache valididy (in seconds)" <> value (floor defCache)) 
-  return $ ServerConfig url port portMQTT guestLog guestPass (fromInteger notifInterval) (fromInteger cacheDuration)
+serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass defNotif defActCache defCacheVal) = do
+  url           <- strOption   (long "url"            <> metavar "<url>"      <> help "url of this server"  <> value defUrl)
+  port          <- option auto (long "port"           <> metavar "<port>"     <> help "HTTP port of this server" <> value defPort) 
+  portMQTT      <- option auto (long "portMQTT"       <> metavar "<portMQTT>" <> help "MQTT port of this server" <> value defPortMQTT) 
+  guestLog      <- strOption   (long "kcGuestLog"     <> metavar "<login>"    <> help "Guest login of Keycloak"    <> value defGueLog)
+  guestPass     <- strOption   (long "kcGuestPass"    <> metavar "<password>" <> help "Guest password of Keycloak" <> value defGuePass)
+  notifInterval <- option auto (long "notif"          <> metavar "<notif>"    <> help "minimum interval for notifications (in seconds)" <> value (floor defNotif)) 
+  cacheAct      <- option auto (long "cacheActivated" <> help "activate the cache" <> value defActCache) 
+  cacheDuration <- option auto (long "cacheDuration"  <> metavar "<cache>"    <> help "duration of the cache valididy (in seconds)" <> value (floor defCacheVal)) 
+  return $ ServerConfig url port portMQTT guestLog guestPass (fromInteger notifInterval) cacheAct (fromInteger cacheDuration)
 
 kcConfigParser :: KCConfig -> Parser KCConfig
 kcConfigParser (KCConfig defUrl defRealm defCID defCSec) = do

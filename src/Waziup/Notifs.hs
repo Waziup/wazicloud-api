@@ -17,7 +17,7 @@ import           Data.Aeson as JSON
 import           Data.Time
 import           Data.Map as M hiding (map)
 import           Servant
-import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
+import           Keycloak as KC hiding (Scope) 
 import           System.Log.Logger
 import           Control.Lens hiding ((.=))
 import           Orion as O hiding (info, warn, debug, err)

@@ -8,7 +8,7 @@ import           Waziup.Utils
 import           Waziup.Auth hiding (info, warn, debug, err) 
 import           Waziup.Devices hiding (info, warn, debug, err) 
 import           Waziup.Gateways hiding (info, warn, debug, err) 
-import           Keycloak as KC hiding (info, warn, debug, err, try, createResource, updateResource, deleteResource) 
+import           Keycloak as KC hiding (try, createResource, updateResource, deleteResource) 
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
 import           Control.Monad

@@ -53,6 +53,7 @@ Library waziup-lib
                      , http-api-data
                      , http-types
                      , iso8601-time
+                     , jwt >= 0.10
                      , keycloak-hs
                      , lens
                      , lens-aeson
@@ -110,4 +111,17 @@ Executable migrate
                      , keycloak-hs
                      , orion-hs
                      , hslogger
+  default-language:    Haskell2010
+
+Executable test
+  hs-source-dirs:      test
+  Main-Is:             Main.hs
+  ghc-options:        -threaded -Wall
+  build-depends:       base
+                     , waziup-lib
+                     , keycloak-hs
+                     , orion-hs
+                     , hslogger
+                     , time
+                     , containers
   default-language:    Haskell2010

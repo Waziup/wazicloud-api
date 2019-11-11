@@ -15,7 +15,7 @@ import           Data.Aeson as JSON
 import           Data.AesonBson
 import           Data.Time
 import           Servant
-import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
+import           Keycloak as KC hiding (Scope) 
 import           System.Log.Logger
 import           Database.MongoDB as DB hiding (value)
 import           Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)

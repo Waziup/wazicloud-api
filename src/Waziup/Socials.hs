@@ -18,7 +18,7 @@ import qualified Data.List as L
 import           Data.Aeson as JSON
 import           Data.AesonBson
 import           Data.Time
-import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
+import           Keycloak as KC hiding (Scope) 
 import           System.Log.Logger
 import           Database.MongoDB as DB hiding (value)
 import           Web.Twitter.Conduit

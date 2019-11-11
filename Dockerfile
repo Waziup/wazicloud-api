@@ -14,6 +14,7 @@ RUN stack build --only-dependencies --system-ghc --fast
 
 COPY src/         /opt/waziup/src
 COPY main/        /opt/waziup/main
+COPY test/        /opt/waziup/test
 COPY migrate/     /opt/waziup/migrate
 COPY orion-hs/    /opt/waziup/orion-hs/
 COPY keycloak-hs/ /opt/waziup/keycloak-hs

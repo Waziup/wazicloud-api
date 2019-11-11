@@ -12,7 +12,7 @@ import           Control.Monad.IO.Class
 import qualified Data.List as L
 import           Data.Aeson as JSON
 import           Servant
-import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
+import           Keycloak as KC hiding (Scope) 
 import           Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
 import           MQTT hiding (info, warn, debug, err) 

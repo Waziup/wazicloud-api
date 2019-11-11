@@ -67,10 +67,12 @@ handleExternalStream wi extClient = do
 handleStreams :: WaziupInfo -> AppData -> AppData -> IO ()
 handleStreams wi extClient intServer = do
   tvConnCache <- atomically $ newTVar Nothing 
+  debug $ "Starting streams"
   void $ concurrently
     (runConduit $ appSource extClient .| conduitParser T.parsePacket .| filterMQTTin  wi tvConnCache extClient .| appSink intServer) --traffic downstream
     (runConduit $ appSource intServer .| conduitParser T.parsePacket .| filterMQTTout wi tvConnCache intServer .| appSink extClient) --traffic upstream
   --write disconnect in DB
+  debug $ "Ending streams"
   void $ liftIO $ runWaziup (putConnect tvConnCache False) wi
 
 -- | traffic going downstream (from external client to internal MQTT server)
@@ -158,7 +160,7 @@ filterMQTTout wi tvConnCache intServer = awaitForever $ \(_, res) -> do
   
 getPerms' :: TVar (Maybe ConnCache) -> PermReq -> Waziup [Perm]
 getPerms' tvConnCache permReq = do
-  res <- liftIO $ atomically $ readTVar tvConnCache
+  res <- liftIO $ atomically $ readTVar tvConnCache 
   case res of
     Just (ConnCache user pass _) -> do
       debug $ "Get perms with user: " ++ (show user)
@@ -231,7 +233,7 @@ publishSensorValue (DeviceId d) (SensorId s) v = do
   (MQTTConfig host port) <- view $ waziupConfig.mqttConf
   info $ "Publish sensor value: " ++ (convertString $ encode v) ++ " to topic: " ++ (show topic)
   liftIO $ do
-    mc <- runClient mqttConfig { _connID = "pub", _hostname = convertString host, _port = port}
+    mc <- runClient mqttConfig { _hostname = convertString host, _port = port}
     liftIO $ publish mc topic (convertString $ encode v) False
 
 publishActuatorValue :: DeviceId -> ActuatorId -> JSON.Value -> Waziup ()
@@ -240,7 +242,7 @@ publishActuatorValue (DeviceId d) (ActuatorId a) v = do
   (MQTTConfig host port) <- view $ waziupConfig.mqttConf
   info $ "Publish actuator value: " ++ (convertString $ encode v) ++ " to topic: " ++ (show topic)
   liftIO $ do
-    mc <- runClient mqttConfig { _connID = "pub", _hostname = convertString host, _port = port}
+    mc <- runClient mqttConfig { _hostname = convertString host, _port = port}
     liftIO $ publish mc topic (convertString $ encode v) False
 
 -- Logging

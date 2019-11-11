@@ -30,7 +30,7 @@ import           Orion as O hiding (info, warn, debug, err)
 import           Network.MQTT.Client hiding (MQTTConfig)
 import qualified Network.MQTT.Types as T
 import           Conduit
-import           Keycloak as KC hiding (info, warn, debug, err, Scope) 
+import           Keycloak as KC hiding (Scope) 
 import           Database.MongoDB as DB hiding (Username, Password, host)
 import           Data.Time
 
@@ -80,16 +80,16 @@ filterMQTTin :: WaziupInfo -> TVar (Maybe ConnCache) -> AppData -> ConduitT (w, 
 filterMQTTin wi tvConnCache extClient = awaitForever $ \(_,res) -> do 
   connCache <- liftIO $ atomically $ readTVar tvConnCache
   debug $ "Received: " ++ (show res) ++ " ID= " ++ (show $ connId <$> connCache)
+  -- putting the gateway connect
+  void $ lift $ runWaziup (putConnect tvConnCache True) wi
   case res of
     -- Decode Connect request
     (T.ConnPkt (T.ConnectRequest user pass _ _ _ cid)) -> do
       -- store user and connection ID
       liftIO $ atomically $ writeTVar tvConnCache (Just $ ConnCache (convertString <$> user) (convertString <$> pass) cid) 
-      -- putting the gateway connect
       void $ lift $ runWaziup (putConnect tvConnCache True) wi
       yield $ convertString $ T.toByteString res
     T.DisconnectPkt -> do
-      void $ lift $ runWaziup (putConnect tvConnCache False) wi
       yield $ convertString $ T.toByteString res
     -- Decode Publish
     (T.PublishPkt (T.PublishRequest _ _ _ topic pid body)) -> do
@@ -153,7 +153,6 @@ filterMQTTout wi tvConnCache intServer = awaitForever $ \(_, res) -> do
           err e
         MQTTOther -> yield $ convertString $ T.toByteString res
     T.DisconnectPkt -> do
-      void $ lift $ runWaziup (putConnect tvConnCache False) wi
       yield $ convertString $ T.toByteString res
     _ -> yield $ convertString $ T.toByteString res
   

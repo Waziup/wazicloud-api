@@ -37,16 +37,19 @@ import           Debug.Trace
 
 -- * Entities
 
-getEntities :: Maybe Text -> Orion [Entity]
-getEntities mq = do
+getEntities :: Maybe Text -> Maybe EntityType -> Orion [Entity]
+getEntities mq mtyp = do
   let qq = case mq of
        Just q -> [("q", Just $ encodeUtf8 q)]
        Nothing -> []
-  let (query :: Query) = qq ++ [("limit", Just $ encodeUtf8 "1000")]
+  let typ = case mtyp of
+       Just t -> [("type", Just $ encodeUtf8 t)]
+       Nothing -> []
+  let (query :: Query) = typ ++ qq ++ [("limit", Just $ encodeUtf8 "1000")]
   body <- orionGet (decodeUtf8 $ "/v2/entities" <> (renderQuery True query))
   case eitherDecode body of
     Right ret -> do
-      debug $ "Orion success: " ++ (show ret) 
+      --debug $ "Orion success: " ++ (show ret) 
       return ret
     Left (e :: String) -> do
       debug $ "Orion parse error: " ++ (show e) 
@@ -59,9 +62,12 @@ postEntity e = do
   res <- orionPost "/v2/entities" (toJSON e)
   return $ SubId $ convertString res
 
-getEntity :: EntityId -> Orion Entity
-getEntity (EntityId eid) = do
-  body <- orionGet ("/v2/entities/" <> eid)
+getEntity :: EntityId -> Maybe EntityType -> Orion Entity
+getEntity (EntityId eid) mtyp = do
+  let typ = case mtyp of
+       Just t -> [("type", Just $ encodeUtf8 t)]
+       Nothing -> []
+  body <- orionGet ("/v2/entities/" <> eid <> (convertString $ renderQuery True typ))
   case eitherDecode body of
     Right ret -> do
       debug $ "Orion success: " ++ (show ret) 
@@ -70,23 +76,36 @@ getEntity (EntityId eid) = do
       debug $ "Orion parse error: " ++ (show e) 
       throwError $ ParseError $ pack (show e)
 
-deleteEntity :: EntityId -> Orion ()
-deleteEntity (EntityId eid) = orionDelete ("/v2/entities/" <> eid)
+deleteEntity :: EntityId -> Maybe EntityType -> Orion ()
+deleteEntity (EntityId eid) mtyp = do
+  let typ = case mtyp of
+       Just t -> [("type", Just $ encodeUtf8 t)]
+       Nothing -> []
+  orionDelete ("/v2/entities/" <> eid <> (convertString $ renderQuery True typ))
 
-postAttribute :: EntityId -> (AttributeId, Attribute) -> Orion ()
-postAttribute (EntityId eid) (attId, att) = do
+postAttribute :: EntityId -> Maybe EntityType -> (AttributeId, Attribute) -> Orion ()
+postAttribute (EntityId eid) mtyp (attId, att) = do
   debug $ "Post attribute: " <> (convertString $ JSON.encode att)
-  void $ orionPost ("/v2/entities/" <> eid <> "/attrs") (toJSON $ singleton attId att)
+  let typ = case mtyp of
+       Just t -> [("type", Just $ encodeUtf8 t)]
+       Nothing -> []
+  void $ orionPost ("/v2/entities/" <> eid <> "/attrs" <> (convertString $ renderQuery True typ)) (toJSON $ singleton attId att)
 
-postTextAttributeOrion :: EntityId -> AttributeId -> Text -> Orion ()
-postTextAttributeOrion (EntityId eid) attId val = do
+postTextAttributeOrion :: EntityId -> Maybe EntityType -> AttributeId -> Text -> Orion ()
+postTextAttributeOrion (EntityId eid) mtyp attId val = do
   debug $ convertString $ "put attribute in Orion: " <> val
-  void $ orionPost ("/v2/entities/" <> eid <> "/attrs") (toJSON $ fromList [getSimpleAttr attId val])
+  let typ = case mtyp of
+       Just t -> [("type", Just $ encodeUtf8 t)]
+       Nothing -> []
+  void $ orionPost ("/v2/entities/" <> eid <> "/attrs" <> (convertString $ renderQuery True typ)) (toJSON $ fromList [getSimpleAttr attId val])
 
-deleteAttribute :: EntityId -> AttributeId -> Orion ()
-deleteAttribute (EntityId eid) (AttributeId attId) = do
+deleteAttribute :: EntityId -> Maybe EntityType -> AttributeId -> Orion ()
+deleteAttribute (EntityId eid) mtyp (AttributeId attId) = do
   debug $ "Delete attribute"
-  orionDelete ("/v2/entities/" <> eid <> "/attrs/" <> attId)
+  let typ = case mtyp of
+       Just t -> [("type", Just $ encodeUtf8 t)]
+       Nothing -> []
+  orionDelete ("/v2/entities/" <> eid <> "/attrs/" <> attId <> (convertString $ renderQuery True typ))
 
 
 -- * Subscriptions
@@ -94,11 +113,10 @@ deleteAttribute (EntityId eid) (AttributeId attId) = do
 getSubs :: Orion [Subscription]
 getSubs = do 
   debug $ "Get subscriptions"
-  body <- orionGet ("/v2/subscriptions/")
-  debug $ "Orion body : " ++ (show body) 
+  body <- orionGet ("/v2/subscriptions?limit=1000")
   case eitherDecode body of
     Right ret -> do
-      debug $ "Orion success: " ++ (show ret) 
+      debug $ "Orion success" 
       return ret
     Left (err2 :: String) -> do
       debug $ "Orion parse error: " ++ (show err2) 
@@ -123,12 +141,15 @@ getSub (SubId eid) = do
       debug $ "Orion parse error: " ++ (show err2) 
       throwError $ ParseError $ pack (show err2)
 
+patchSub :: SubId -> Subscription -> Orion () 
+patchSub (SubId eid) e = do
+  debug $ convertString $ "PatchSubscription: " <> (JSON.encode e)
+  res <- orionPatch ("/v2/subscriptions/" <> eid) (toJSON e)
+  debug $ "Orion resp: " ++ (show res)
+  return () 
+
 deleteSub :: SubId -> Orion ()
 deleteSub (SubId sid) = orionDelete ("/v2/subscriptions/" <> sid)
-
-patchSub :: SubId -> Map Text Text -> Orion () 
-patchSub (SubId eid) patch = do
-  orionPatch ("/v2/subscriptions/" <> eid) (toJSON patch)
 
 -- * Requests to Orion.
 
@@ -211,6 +232,13 @@ orionPatch path dat = do
       throwError $ HTTPError err
 
 -- * Helpers
+fromBoolAttribute :: AttributeId -> Map AttributeId Attribute -> Maybe Bool
+fromBoolAttribute attId attrs = do
+  (Attribute _ mval _) <- attrs !? attId
+  val <- mval
+  case fromJSON val of
+    Success a -> return a
+    Error _ -> Nothing
 
 fromSimpleAttribute :: AttributeId -> Map AttributeId Attribute -> Maybe Text
 fromSimpleAttribute attId attrs = do

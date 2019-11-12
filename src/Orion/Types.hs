@@ -121,7 +121,7 @@ data Subscription = Subscription {
   subDescription  :: Text,              -- ^ Description
   subSubject      :: SubSubject,        -- ^ what is subscribed on, and conditions for triggering
   subNotification :: SubNotif,          -- ^ what to do when triggered
-  subThrottling   :: Double,            -- ^ minimum interval between two messages in seconds
+  subThrottling   :: NominalDiffTime,   -- ^ minimum interval between two messages in seconds
   subStatus       :: Maybe SubStatus,
   subExpires      :: Maybe UTCTime
   } deriving (Show, Eq, Generic)
@@ -155,14 +155,16 @@ instance FromJSON SubEntity where
   parseJSON = genericParseJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 6, omitNothingFields = True}
 
 data SubNotif = SubNotif {
-  subHttpCustom       :: SubHttpCustom, 
-  subAttrs            :: [AttributeId],
-  subAttrsFormat      :: Text,
-  subMetadata         :: [Text],
-  subTimesSent        :: Maybe Int,
-  subLastNotification :: Maybe UTCTime,
-  subLastSuccess      :: Maybe UTCTime,
-  subLastFailure      :: Maybe UTCTime
+  subHttpCustom        :: SubHttpCustom, 
+  subAttrs             :: [AttributeId],
+  subAttrsFormat       :: Text,
+  subMetadata          :: [Text],
+  subTimesSent         :: Maybe Int,
+  subLastNotification  :: Maybe UTCTime,
+  subLastSuccess       :: Maybe UTCTime,
+  subLastSuccessCode   :: Maybe Int,
+  subLastFailure       :: Maybe UTCTime,
+  subLastFailureReason :: Maybe String
   } deriving (Show, Eq, Generic)
 
 instance ToJSON SubNotif where

@@ -40,6 +40,7 @@ import           Web.Twitter.Conduit
 import           Safe
 import           Data.Map hiding (drop, map, foldl)
 import           Control.Concurrent.STM
+import           System.Log.Logger as Log
 
 type Limit  = Int
 type Offset = Int
@@ -93,7 +94,8 @@ data ServerConfig = ServerConfig {
   _guestPassword      :: Password,
   _notifMinInterval   :: NominalDiffTime,  -- ^ minimum interval between two notifications (seconds)
   _cacheActivated     :: Bool,             -- ^ activate permission cache
-  _cacheValidDuration :: NominalDiffTime   -- ^ duration of cache validity (seconds)
+  _cacheValidDuration :: NominalDiffTime,  -- ^ duration of cache validity (seconds)
+  _logLevel           :: Log.Priority
   } deriving (Eq, Show)
 
 defaultServerConfig :: ServerConfig
@@ -105,7 +107,8 @@ defaultServerConfig = ServerConfig {
   _guestPassword      = "guest",
   _notifMinInterval   = 120,
   _cacheActivated     = True,
-  _cacheValidDuration = 10 * 60}   -- 10 minutes
+  _cacheValidDuration = 10 * 60,   -- 10 minutes
+  _logLevel           = Log.INFO}
  
 data MongoConfig = MongoConfig {
   _mongoUrl  :: Text,

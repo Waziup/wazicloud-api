@@ -36,7 +36,6 @@ import           Control.Concurrent.STM
 
 configureWaziup :: IO WaziupInfo
 configureWaziup = do
-  (C.try $ startLog "Waziup-log.xml") :: IO (Either SomeException ())
   envUrl              <- lookupEnv "HTTP_URL"
   envPort             <- lookupEnv "HTTP_PORT" 
   envPortMQTT         <- lookupEnv "MQTT_PORT"
@@ -56,6 +55,7 @@ configureWaziup = do
   envNotifMinInterval <- lookupEnv "NOTIF_MIN_INTERVAL"
   envCacheActivated   <- lookupEnv "CACHE_ACTIVATED"
   envCacheDuration    <- lookupEnv "CACHE_DURATION"
+  envLogLevel         <- lookupEnv "LOG_LEVEL"
   let kcConfig     = defaultKCConfig     & confBaseUrl        .~? (convertString    <$> envKCUrl)
   let orionConfig  = defaultOrionConfig  & orionUrl           .~? (convertString    <$> envOrUrl)
   let mongoConfig  = defaultMongoConfig  & mongoUrl           .~? (convertString    <$> envMongUrl)
@@ -67,6 +67,7 @@ configureWaziup = do
                                          & notifMinInterval   .~? (fromInteger.read <$> envNotifMinInterval)
                                          & cacheValidDuration .~? (fromInteger.read <$> envCacheDuration)
                                          & cacheActivated     .~? (read             <$> envCacheActivated)
+                                         & logLevel           .~? (read             <$> envLogLevel)
   let mqttConfig   = defaultMQTTConfig   & mqttHost           .~? (convertString    <$> envMosqHost)
                                          & mqttPort           .~? (read             <$> envMosqPort)
   let twitterConfig = 
@@ -82,8 +83,10 @@ configureWaziup = do
   let confParser = waziupConfigParser serverConfig mongoConfig kcConfig orionConfig mqttConfig twitterConfig plivoConfig
   let confParser' = Opts.info (confParser <**> helper) (fullDesc <> progDesc "Create a server for Waziup API" <> header "Waziup API server")
   conf <- execParser confParser'
+  let logLev = conf ^. serverConf . logLevel  
+  startLog "Waziup-log.xml" logLev
   let mongUrl = conf ^. mongoConf.mongoUrl
-  pool <- createPool (DB.connect $ readHostPort (convertString mongUrl)) DB.close 1 300 5
+  pool <- createPool (DB.connect $ readHostPort $ convertString mongUrl) DB.close 1 300 5
   onto <- loadOntologies
   permsCache <- atomically $ newTVar M.empty 
   return $ WaziupInfo pool conf onto permsCache
@@ -97,16 +100,17 @@ waziupConfigParser servDef mDef kcDef oDef mqttDef twittDef plivoDef = do
   return $ WaziupConfig serv m kc o mqttDef twittDef plivoDef
 
 serverConfigParser :: ServerConfig -> Parser ServerConfig
-serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass defNotif defActCache defCacheVal) = do
-  url           <- strOption   (long "url"            <> metavar "<url>"      <> help "url of this server"  <> value defUrl)
-  port          <- option auto (long "port"           <> metavar "<port>"     <> help "HTTP port of this server" <> value defPort) 
-  portMQTT      <- option auto (long "portMQTT"       <> metavar "<portMQTT>" <> help "MQTT port of this server" <> value defPortMQTT) 
-  guestLog      <- strOption   (long "kcGuestLog"     <> metavar "<login>"    <> help "Guest login of Keycloak"    <> value defGueLog)
-  guestPass     <- strOption   (long "kcGuestPass"    <> metavar "<password>" <> help "Guest password of Keycloak" <> value defGuePass)
-  notifInterval <- option auto (long "notif"          <> metavar "<notif>"    <> help "minimum interval for notifications (in seconds)" <> value (floor defNotif)) 
-  cacheAct      <- option auto (long "cacheActivated" <> help "activate the cache" <> value defActCache) 
-  cacheDuration <- option auto (long "cacheDuration"  <> metavar "<cache>"    <> help "duration of the cache valididy (in seconds)" <> value (floor defCacheVal)) 
-  return $ ServerConfig url port portMQTT guestLog guestPass (fromInteger notifInterval) cacheAct (fromInteger cacheDuration)
+serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass defNotif defActCache defCacheVal defLog) = do
+  url           <- strOption   (long "url"            <> metavar "<url>"      <> help "url of this server (default: http://localhost:800)"  <> value defUrl)
+  port          <- option auto (long "port"           <> metavar "<port>"     <> help "HTTP port of this server (default: 800)" <> value defPort) 
+  portMQTT      <- option auto (long "portMQTT"       <> metavar "<portMQTT>" <> help "MQTT port of this server (default: 3883)" <> value defPortMQTT) 
+  guestLog      <- strOption   (long "kcGuestLog"     <> metavar "<login>"    <> help "Guest login of Keycloak (default: guest)"    <> value defGueLog)
+  guestPass     <- strOption   (long "kcGuestPass"    <> metavar "<password>" <> help "Guest password of Keycloak (default: guest)" <> value defGuePass)
+  notifInterval <- option auto (long "notif"          <> metavar "<notif>"    <> help "minimum interval for notifications (in seconds, default: 120)" <> value (floor defNotif)) 
+  cacheAct      <- option auto (long "cacheActivated" <>                         help "activate the cache (default: True)" <> value defActCache) 
+  cacheDuration <- option auto (long "cacheDuration"  <> metavar "<cache>"    <> help "duration of the cache valididy (in seconds, default: 600)" <> value (floor defCacheVal)) 
+  logLevel      <- option auto (long "logLevel"       <> metavar "<logLevel>" <> help "log level (DEBUG, INFO, WARNING, ERROR, default: INFO)" <> value defLog) 
+  return $ ServerConfig url port portMQTT guestLog guestPass (fromInteger notifInterval) cacheAct (fromInteger cacheDuration) logLevel
 
 kcConfigParser :: KCConfig -> Parser KCConfig
 kcConfigParser (KCConfig defUrl defRealm defCID defCSec) = do
@@ -129,15 +133,15 @@ mongoConfigParser d = do
   pass    <- optional $ strOption (long "mongoPass" <> metavar "<pass>" <> help "admin password of Mongo DB")
   return $ MongoConfig url (user <|> _mongoUser d) (pass <|> _mongoPass d) 
 
-startLog :: FilePath -> IO ()
-startLog fp = do
+startLog :: FilePath -> Priority -> IO ()
+startLog fp prio = do
    stdoutHandler <- do
-        lh <- streamHandler stdout DEBUG
-        return $ setFormatter lh (tfLogFormatter "%Y-%m-%dT%H:%M:%S.%q" "[$time : $loggername : $prio] $msg")
+        lh <- streamHandler stdout prio
+        return $ setFormatter lh (tfLogFormatter "%Y-%m-%dT%H:%M:%S.%6q" "[$time : $tid : $loggername : $prio] $msg")
    log4jHandler <- log4jFileHandler fp DEBUG
    updateGlobalLogger rootLoggerName removeHandler
    updateGlobalLogger rootLoggerName (addHandler stdoutHandler)
-   updateGlobalLogger rootLoggerName (addHandler log4jHandler)
+   --updateGlobalLogger rootLoggerName (addHandler log4jHandler)
    updateGlobalLogger rootLoggerName (setLevel DEBUG)
 
 loadOntologies :: IO Ontologies

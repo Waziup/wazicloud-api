@@ -6,10 +6,10 @@ extra-deps:
 - twitter-conduit-0.4.0
 - jwt-0.10.0
 - servant-flatten-0.2
+- AesonBson-0.4.0
 # - keycloak-hs-0.0.0.2
 packages:
 - '.'
-- './aesonbson'
 - './keycloak-hs'
 - './orion-hs'
 allow-newer: true

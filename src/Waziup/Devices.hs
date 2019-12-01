@@ -281,7 +281,7 @@ postDatapoint d = do
   let ob = case toJSON d of
        JSON.Object o -> o
        _ -> error "Wrong object format"
-  void $ insert "waziup_history" (bsonify ob)
+  void $ insert "waziup_history" (bsonifyBound ob)
 
 postDatapointFromSensor :: DeviceId -> Sensor -> Action IO ()
 postDatapointFromSensor did (Sensor sid _ _ _ _ (Just (SensorValue v t rt)) _) = postDatapoint $ Datapoint did sid v t rt

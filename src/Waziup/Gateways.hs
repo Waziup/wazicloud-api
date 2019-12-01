@@ -57,7 +57,7 @@ postGateway tok g = do
          JSON.Object o -> replaceKey "id" "_id" o
          _ -> error "Wrong object format"
     debug $ "id: " ++ (show ob)
-    insert "gateways" (bsonify ob)
+    insert "gateways" (bsonifyBound ob)
   case eres of
     Right _ -> return ()
     Left (CompoundFailure [WriteFailure _ _ _]) -> throwError err422 {errBody = "Gateway ID already exists"}

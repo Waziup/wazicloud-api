@@ -54,7 +54,7 @@ postProject tok proj = do
     let ob = case toJSON $ proj' of
          JSON.Object o -> o
          _ -> error "Wrong object format"
-    insert "projects" (bsonify ob)
+    insert "projects" (bsonifyBound ob)
   void $ createResource tok
                  (PermProjectId $ ProjectId $ convertString $ show res)
                  (Just Public)

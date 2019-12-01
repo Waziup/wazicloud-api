@@ -71,7 +71,7 @@ logSocialMessage msg = do
   let ob = case toJSON msg' of
        JSON.Object o -> o
        _ -> error "Wrong object format"
-  res <- insert "waziup_social_msgs" (bsonify ob)
+  res <- insert "waziup_social_msgs" (bsonifyBound ob)
   debug $ (show res)
   case res of 
     BSON.ObjId a -> return $ SocialMessageId $ convertString $ show a

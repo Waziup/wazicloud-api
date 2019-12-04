@@ -11,6 +11,7 @@ import           Data.String.Conversions
 import qualified Data.List as L
 import           Data.Maybe
 import           Data.Either
+import           Data.Time
 import qualified Data.Text as T
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as LB
@@ -32,7 +33,13 @@ import qualified Network.MQTT.Types as T
 import           Conduit
 import           Keycloak as KC hiding (Scope) 
 import           Database.MongoDB as DB hiding (Username, Password, host)
-import           Data.Time
+
+-- | MQTT topics
+dev_topic, sen_topic, act_topic :: T.Text
+dev_topic = "devices"
+sen_topic = "sensors"
+act_topic = "actuators"
+val_topic = "value"
 
 -- | Cache for the connection
 data ConnCache = ConnCache {
@@ -174,11 +181,11 @@ getPerms' tvConnCache permReq = do
 decodePub :: LB.ByteString -> LB.ByteString -> MQTTData
 decodePub topic body = do
   case T.split (== '/') (convertString topic) of
-    ["devices", d, "sensors", s, "value"] -> do
+    [dev_topic, d, sen_topic, s, val_topic] -> do
       case decode body of
         Just senVal -> MQTTSen (DeviceId d) (SensorId s) senVal
         Nothing -> MQTTError "Wrong body" 
-    ["devices", d, "actuators", s, "value"] -> do
+    [dev_topic, d, act_topic, s, val_topic] -> do
       case decode body of
         Just actVal -> MQTTAct (DeviceId d) (ActuatorId s) actVal
         Nothing -> MQTTError "Wrong body" 
@@ -228,7 +235,7 @@ putConnect connCache isConnected = do
 
 publishSensorValue :: DeviceId -> SensorId -> SensorValue -> Waziup ()
 publishSensorValue (DeviceId d) (SensorId s) v = do
-  let topic = "devices/" <> d <> "/sensors/" <> s <> "/value"
+  let topic = T.intercalate "/" [dev_topic, d, sen_topic, s, val_topic]
   (MQTTConfig host port) <- view $ waziupConfig.mqttConf
   info $ "Publish sensor value: " ++ (convertString $ encode v) ++ " to topic: " ++ (show topic)
   liftIO $ do
@@ -237,7 +244,7 @@ publishSensorValue (DeviceId d) (SensorId s) v = do
 
 publishActuatorValue :: DeviceId -> ActuatorId -> JSON.Value -> Waziup ()
 publishActuatorValue (DeviceId d) (ActuatorId a) v = do
-  let topic = "devices/" <> d <> "/actuator/" <> a <> "/value"
+  let topic = T.intercalate "/" [dev_topic, d, act_topic, a, val_topic]
   (MQTTConfig host port) <- view $ waziupConfig.mqttConf
   info $ "Publish actuator value: " ++ (convertString $ encode v) ++ " to topic: " ++ (show topic)
   liftIO $ do

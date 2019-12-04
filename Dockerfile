@@ -7,7 +7,6 @@ COPY keycloak-hs/stack.yaml        /opt/waziup/keycloak-hs/stack.yaml
 COPY keycloak-hs/keycloak-hs.cabal /opt/waziup/keycloak-hs/keycloak-hs.cabal
 COPY orion-hs/stack.yaml           /opt/waziup/orion-hs/stack.yaml
 COPY orion-hs/orion-hs.cabal       /opt/waziup/orion-hs/orion-hs.cabal
-COPY aesonbson/                    /opt/waziup/aesonbson
 
 WORKDIR /opt/waziup
 RUN stack build --only-dependencies --system-ghc --fast

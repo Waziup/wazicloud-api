@@ -100,8 +100,8 @@ data ServerConfig = ServerConfig {
 
 defaultServerConfig :: ServerConfig
 defaultServerConfig = ServerConfig {
-  _serverHost         = "http://localhost:800",
-  _serverPort         = 800,
+  _serverHost         = "http://localhost:8008",
+  _serverPort         = 8008,
   _serverPortMQTT     = 3883,
   _guestLogin         = "guest",
   _guestPassword      = "guest",

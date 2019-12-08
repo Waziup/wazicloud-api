@@ -35,7 +35,7 @@ import           Keycloak as KC hiding (Scope)
 import           Database.MongoDB as DB hiding (Username, Password, host)
 
 -- | MQTT topics
-dev_topic, sen_topic, act_topic :: T.Text
+dev_topic, sen_topic, act_topic, val_topic :: T.Text
 dev_topic = "devices"
 sen_topic = "sensors"
 act_topic = "actuators"
@@ -86,7 +86,7 @@ handleStreams wi extClient intServer = do
 filterMQTTin :: WaziupInfo -> TVar (Maybe ConnCache) -> AppData -> ConduitT (w, T.MQTTPkt) B.ByteString IO ()
 filterMQTTin wi tvConnCache extClient = awaitForever $ \(_,res) -> do 
   connCache <- liftIO $ atomically $ readTVar tvConnCache
-  debug $ "Received: " ++ (show res) ++ " ID= " ++ (show $ connId <$> connCache)
+  debug $ "Received downstream: " ++ (show res) ++ " ID= " ++ (show $ connId <$> connCache)
   -- putting the gateway connect
   void $ lift $ runWaziup (putConnect tvConnCache True) wi
   case res of
@@ -135,7 +135,7 @@ filterMQTTin wi tvConnCache extClient = awaitForever $ \(_,res) -> do
 -- | traffic going upstream (from internal MQTT server to external client)
 filterMQTTout :: WaziupInfo -> TVar (Maybe ConnCache) -> AppData -> ConduitT (w, T.MQTTPkt) B.ByteString IO ()
 filterMQTTout wi tvConnCache intServer = awaitForever $ \(_, res) -> do
-  debug $ "Received downstream: " ++ (show res)
+  debug $ "Received upstream: " ++ (show res)
   case res of
     -- Decode Publish
     (T.PublishPkt (T.PublishRequest _ _ _ topic id body)) -> do
@@ -145,14 +145,14 @@ filterMQTTout wi tvConnCache intServer = awaitForever $ \(_, res) -> do
           -- check authorization
           perms <- lift $ runWaziup (getPerms' tvConnCache (getPermReq (Just $ PermDeviceId did) [DevicesDataView])) wi
           let isAuth = isPermittedResource DevicesDataView (PermDeviceId did) (fromRight [] perms)
-          debug $ "Perm check downstream: " ++ (show isAuth)
+          debug $ "Perm check upstream: " ++ (show isAuth)
           if isAuth 
             then yield $ convertString $ T.toByteString res
             else yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink intServer
         MQTTAct did _ _ -> do 
           perms <- lift $ runWaziup (getPerms' tvConnCache (getPermReq (Just $ PermDeviceId did) [DevicesDataView])) wi
           let isAuth = isPermittedResource DevicesDataView (PermDeviceId did) (fromRight [] perms)
-          debug $ "Perm check downstream: " ++ (show isAuth)
+          debug $ "Perm check upstream: " ++ (show isAuth)
           if isAuth 
             then yield $ convertString $ T.toByteString res
             else yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink intServer
@@ -181,14 +181,14 @@ getPerms' tvConnCache permReq = do
 decodePub :: LB.ByteString -> LB.ByteString -> MQTTData
 decodePub topic body = do
   case T.split (== '/') (convertString topic) of
-    [dev_topic, d, sen_topic, s, val_topic] -> do
-      case decode body of
-        Just senVal -> MQTTSen (DeviceId d) (SensorId s) senVal
-        Nothing -> MQTTError "Wrong body" 
-    [dev_topic, d, act_topic, s, val_topic] -> do
-      case decode body of
-        Just actVal -> MQTTAct (DeviceId d) (ActuatorId s) actVal
-        Nothing -> MQTTError "Wrong body" 
+    [dt, d, st, s, vt] | dt == dev_topic && st == sen_topic && vt == val_topic -> do
+      case eitherDecode body of
+        Right senVal -> MQTTSen (DeviceId d) (SensorId s) senVal
+        Left e -> MQTTError $ "Decode sensor value publish: " ++ (show e) 
+    [dt, d, act, a, vt] | dt == dev_topic && act == act_topic && vt == val_topic -> do
+      case eitherDecode body of
+        Right actVal -> MQTTAct (DeviceId d) (ActuatorId a) actVal
+        Left e -> MQTTError $ "Decode actuator value publish: " ++ (show e) 
     _ -> MQTTOther 
 
 -- Post sensor value to DBs

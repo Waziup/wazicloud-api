@@ -7,6 +7,8 @@ COPY keycloak-hs/stack.yaml        /opt/waziup/keycloak-hs/stack.yaml
 COPY keycloak-hs/keycloak-hs.cabal /opt/waziup/keycloak-hs/keycloak-hs.cabal
 COPY orion-hs/stack.yaml           /opt/waziup/orion-hs/stack.yaml
 COPY orion-hs/orion-hs.cabal       /opt/waziup/orion-hs/orion-hs.cabal
+COPY haskell-cache/stack.yaml      /opt/waziup/haskell-cache/stack.yaml
+COPY haskell-cache/cache.cabal     /opt/waziup/haskell-cache/cache.cabal
 
 WORKDIR /opt/waziup
 RUN stack build --only-dependencies --system-ghc --fast
@@ -17,11 +19,11 @@ COPY test/        /opt/waziup/test
 COPY migrate/     /opt/waziup/migrate
 COPY orion-hs/    /opt/waziup/orion-hs/
 COPY keycloak-hs/ /opt/waziup/keycloak-hs
+COPY haskell-cache/ /opt/waziup/haskell-cache
 RUN stack build --system-ghc --fast waziup:waziup-servant
 
 # Deploy stage
 FROM ubuntu
-
 
 WORKDIR /opt/waziup
 COPY --from=build /opt/waziup/.stack-work/install/x86_64-linux/lts-13.5/8.6.3/bin/waziup-servant .

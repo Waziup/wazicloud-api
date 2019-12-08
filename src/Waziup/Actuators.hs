@@ -113,8 +113,8 @@ toAttributeId (ActuatorId sid) = AttributeId sid
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()
-debug s = liftIO $ debugM   "Sensors" s
-info  s = liftIO $ infoM    "Sensors" s
-warn  s = liftIO $ warningM "Sensors" s
-err   s = liftIO $ errorM   "Sensors" s
+debug s = liftIO $ debugM   "Actuators" s
+info  s = liftIO $ infoM    "Actuators" s
+warn  s = liftIO $ warningM "Actuators" s
+err   s = liftIO $ errorM   "Actuators" s
 

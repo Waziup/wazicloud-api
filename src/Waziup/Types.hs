@@ -27,6 +27,7 @@ import qualified Data.Swagger as SW
 import           Data.String.Conversions
 import           Data.Pool
 import qualified Data.Csv as CSV
+import           Data.Cache
 import           Control.Lens hiding ((.=))
 import           Control.Monad
 import           Control.Monad.Except (runExceptT)
@@ -59,13 +60,12 @@ data WaziupInfo = WaziupInfo {
   _dbPool       :: Pool DB.Pipe,
   _waziupConfig :: WaziupConfig,
   _ontologies   :: Ontologies,
-  _permCache    :: TVar PermCache 
+  _permCache    :: Cache CacheIndex CacheValue
   }
 
 --Cache for each permission request result
 type CacheIndex = (KC.Username, PermReq)
 type CacheValue = ([Perm], UTCTime)
-type PermCache = Map CacheIndex CacheValue 
   
 -- | run a Waziup monad
 runWaziup :: Waziup a -> WaziupInfo -> IO (Either ServantErr a)
@@ -129,7 +129,7 @@ data MQTTConfig = MQTTConfig {
 defaultMQTTConfig :: MQTTConfig
 defaultMQTTConfig = MQTTConfig {
   _mqttHost = "127.0.0.1",
-  _mqttPort = 1883 }
+  _mqttPort = 6883 }
 
 defaultTwitterConf :: TWInfo
 defaultTwitterConf = 

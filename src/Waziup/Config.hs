@@ -5,8 +5,10 @@
 
 module Waziup.Config where
 
-import           Waziup.Types
-import           Waziup.Utils
+import           Control.Exception as C
+import           Control.Lens
+import           Control.Monad.IO.Class
+import           Control.Concurrent.STM
 import           Data.String.Conversions
 import           Data.Aeson hiding (Success)
 import qualified Data.ByteString as BS
@@ -14,25 +16,26 @@ import           Data.Validation
 import           Data.Foldable
 import           Data.Maybe
 import           Data.Pool
+import           Data.Cache
+import           Data.Time.Clock
+import           Data.Map as M hiding (map)
+import           Database.MongoDB as DB hiding (value)
+import           Keycloak
+import           Orion hiding (try, info, warn, debug, err)
+import           Options.Applicative as Opts hiding (Success, Failure)
+import           Paths_Waziup_Servant
+import           System.Clock
 import           System.Log.Logger
 import           System.Log.Formatter
 import           System.Log.Handler hiding (setLevel)
 import           System.Log.Handler.Simple
 import           System.Log.Handler.Log4jXML
 import           System.IO
-import           Keycloak
-import           Orion hiding (try, info, warn, debug, err)
-import           Database.MongoDB as DB hiding (value)
-import           Options.Applicative as Opts hiding (Success, Failure)
-import           Control.Exception as C
-import           Control.Lens
-import           Control.Monad.IO.Class
 import           System.FilePath ((</>))
 import           System.Environment
-import           Paths_Waziup_Servant
 import           Web.Twitter.Conduit
-import           Data.Map as M hiding (map)
-import           Control.Concurrent.STM
+import           Waziup.Types
+import           Waziup.Utils
 
 configureWaziup :: IO WaziupInfo
 configureWaziup = do
@@ -79,7 +82,7 @@ configureWaziup = do
                                                                  ("oauth_token_secret", convertString $ fromJust envTwitTokSec)]}}
           else defaultTwitterConf
   let plivoConfig = defaultPlivoConf & plivoID    .~? (convertString <$> envPlivoID)
-                                   & plivoToken .~? (convertString <$> envPlivoToken)
+                                     & plivoToken .~? (convertString <$> envPlivoToken)
   let confParser = waziupConfigParser serverConfig mongoConfig kcConfig orionConfig mqttConfig twitterConfig plivoConfig
   let confParser' = Opts.info (confParser <**> helper) (fullDesc <> progDesc "Create a server for Waziup API" <> header "Waziup API server")
   conf <- execParser confParser'
@@ -88,7 +91,8 @@ configureWaziup = do
   let mongUrl = conf ^. mongoConf.mongoUrl
   pool <- createPool (DB.connect $ readHostPort $ convertString mongUrl) DB.close 1 300 5
   onto <- loadOntologies
-  permsCache <- atomically $ newTVar M.empty 
+  let cacheDuration = conf ^. serverConf . cacheValidDuration
+  permsCache <- newCache (Just $ TimeSpec (floor cacheDuration) 0) 
   return $ WaziupInfo pool conf onto permsCache
 
 waziupConfigParser :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> MQTTConfig -> TWInfo -> PlivoConfig -> Parser WaziupConfig

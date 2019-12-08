@@ -40,10 +40,12 @@ Library waziup-lib
                      , base64-bytestring
                      , async
                      , attoparsec
+                     , cache == 0.1.2.0
                      , conduit
                      , conduit-extra
                      , containers
                      , cassava
+                     , clock
                      , extra
                      , exceptions
                      , filepath

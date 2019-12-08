@@ -3,19 +3,22 @@
 
 module Waziup.Auth where
 
-import           Waziup.Types as W
-import           Waziup.Utils as U
+import           Control.Concurrent.STM
+import           Control.Lens
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
+import           Control.Monad
 import           Data.String.Conversions
 import           Data.Maybe
-import           Data.Map as M hiding (map, mapMaybe, filter, delete)
 import           Data.Time
-import           Servant
+import           Data.Cache as C
+import           Data.Cache.Internal as CI
+import qualified Data.Map as M
 import           Keycloak as KC
+import           Servant
 import           System.Log.Logger
-import           Control.Lens
-import           Control.Concurrent.STM
+import           Waziup.Types as W
+import           Waziup.Utils as U
 
 -- | get a token
 postAuth :: AuthBody -> Waziup Token
@@ -67,10 +70,20 @@ getPerms tok permReq = do
        Nothing -> "guest"
   useCache <- view (waziupConfig.serverConf.cacheActivated)
   if useCache
-    then getPermsWithCache tok username permReq
+    then do
+      cache <- view permCache
+      debug "fetchWithCache"
+      fst <$> fetchWithCache cache (username, permReq) (fetch tok)
     else do
       kcPerms <- liftKeycloak tok $ getPermissions [permReq]
       return $ map getPerm kcPerms
+
+fetch :: Maybe Token -> CacheIndex -> Waziup CacheValue
+fetch tok (_, req) = do
+  kcPerms <- liftKeycloak tok $ getPermissions [req]
+  let perms = map getPerm kcPerms
+  now <- liftIO getCurrentTime
+  return (perms, now)
 
 -- * Permission resources
 
@@ -111,69 +124,14 @@ updateResource = Waziup.Auth.createResource
 
 --Cache management
 
--- Get perms using cache management
-getPermsWithCache :: Maybe Token -> KC.Username -> PermReq -> Waziup [Perm]
-getPermsWithCache tok username permReq = do
-  debug "get perms with cache"
-  res <- getCachedPerms username permReq 
-  case res of
-    -- return cached perms
-    Just ps  -> return ps
-    -- no cached permission or outdated permission; getting from Keycloak and updating cache
-    Nothing -> do
-      kcPerms <- liftKeycloak tok $ getPermissions [permReq]
-      let perms = map getPerm kcPerms
-      writeCache username permReq perms 
-      return perms 
-
--- get perms from cache
-getCachedPerms :: KC.Username -> PermReq -> Waziup (Maybe [Perm])
-getCachedPerms username perm = do
-  permsTV <- view permCache
-  permsM <- liftIO $ atomically $ readTVar permsTV
-  now <- liftIO getCurrentTime
-  --look up username in cache
-  debug $ "lookup cache for " ++ (show username)
-  case M.lookup (username, perm) permsM of
-    Just (perms, retrievedTime) -> do
-      debug "cache found"
-      cacheDuration <- view (waziupConfig.serverConf.cacheValidDuration)
-      --checl if not expired
-      if now < addUTCTime cacheDuration retrievedTime
-        --return permissions
-        then do
-          debug "cache valid"
-          return $ Just perms
-        --else get perms from Keycloak and update the cache
-        else do
-          debug "cache expired"
-          return Nothing
-    Nothing -> do
-      debug $ "request not found in cache"
-      return Nothing
-
--- Update the cache
-writeCache :: KC.Username -> PermReq -> [Perm] -> Waziup ()
-writeCache username permReq perms = do
-  debug $ "Write cache: " ++ (show username) ++ " " ++ (show permReq) ++ " : " ++ (show perms)
-  permsTV <- view permCache 
-  cache <- liftIO $ atomically $ readTVar permsTV
-  now <- liftIO getCurrentTime
-  let cache' = cache & at (username, permReq) ?~ (perms, now)
-  liftIO $ atomically $ writeTVar permsTV cache'
-  return ()
-
 -- invalidate cache on resource actions (create, update, delete)
 invalidateCache :: PermResource -> Waziup ()
 invalidateCache rid = do
   debug $ "Invalidate cache for " ++ (show rid)
-  permsTV <- view permCache
-  perms <- liftIO $ atomically $ readTVar permsTV
+  cache <- view permCache
   let rid' = getKCResourceId rid
-  debug $ "Current cache: " ++ (convertString $ showPermCache perms)
-  let perms' = M.filterWithKey (\(_, req) _ -> isValidPermReq rid' req) perms
-  debug $ "Filtered cache: " ++ (convertString $ showPermCache perms')
-  liftIO $ atomically $ writeTVar permsTV perms'
+  liftIO $ showCache cache
+  liftIO $ C.filterWith (\(_, req) -> isValidPermReq rid' req) cache
 
 -- filter perm reqs based on resource ID
 isValidPermReq :: ResourceId -> PermReq -> Bool
@@ -185,8 +143,12 @@ isValidPermReq _   (PermReq Nothing     _ )  = False       -- Remove "all resour
 getPermReq :: Maybe PermResource -> [W.Scope] -> PermReq
 getPermReq pr scopes = PermReq (getKCResourceId <$> pr) (map fromScope scopes)
 
-showPermCache :: PermCache -> String
-showPermCache pc = concatMap showCacheEntry (M.toList pc) where
+showCache :: Cache CacheIndex CacheValue -> IO ()
+showCache c = do
+  ks <- keys c
+  forM_ ks $ \k -> do
+    (Just res) <- C.lookup c k 
+    debug $ showCacheEntry (k, res)
 
 showCacheEntry :: (CacheIndex, CacheValue) -> String
 showCacheEntry (i, v) =  (showCacheIndex i) <> " : " <> (showCacheValue v) <> "/n" 

@@ -12,4 +12,5 @@ packages:
 - '.'
 - './keycloak-hs'
 - './orion-hs'
+- './haskell-cache'
 allow-newer: true

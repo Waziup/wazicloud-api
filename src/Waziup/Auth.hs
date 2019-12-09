@@ -131,7 +131,7 @@ invalidateCache rid = do
   cache <- view permCache
   let rid' = getKCResourceId rid
   liftIO $ showCache cache
-  liftIO $ C.filterWith (\(_, req) -> isValidPermReq rid' req) cache
+  liftIO $ C.filterWithKey (\(_, req) _ -> isValidPermReq rid' req) cache
 
 -- filter perm reqs based on resource ID
 isValidPermReq :: ResourceId -> PermReq -> Bool
@@ -145,10 +145,8 @@ getPermReq pr scopes = PermReq (getKCResourceId <$> pr) (map fromScope scopes)
 
 showCache :: Cache CacheIndex CacheValue -> IO ()
 showCache c = do
-  ks <- keys c
-  forM_ ks $ \k -> do
-    (Just res) <- C.lookup c k 
-    debug $ showCacheEntry (k, res)
+  l <- toList c
+  mapM_ (\(k, v, _) -> debug $ showCacheEntry (k, v)) l
 
 showCacheEntry :: (CacheIndex, CacheValue) -> String
 showCacheEntry (i, v) =  (showCacheIndex i) <> " : " <> (showCacheValue v) <> "/n" 

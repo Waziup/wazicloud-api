@@ -7,10 +7,10 @@ extra-deps:
 - jwt-0.10.0
 - servant-flatten-0.2
 - AesonBson-0.4.0
+- cache-0.1.3.0
 # - keycloak-hs-0.0.0.2
 packages:
 - '.'
 - './keycloak-hs'
 - './orion-hs'
-- './haskell-cache'
 allow-newer: true

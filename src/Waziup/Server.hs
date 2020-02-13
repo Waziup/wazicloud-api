@@ -112,7 +112,7 @@ gatewaysServer = getGateways
             :<|> putHeartbeat
             :<|> putGatewayName
             :<|> putGatewayOwner
-            
+            :<|> putGatewayLocation
 
 -- Actuators server
 actuatorsServer :: ServerT ActuatorsAPI Waziup

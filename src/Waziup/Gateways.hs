@@ -139,6 +139,22 @@ putGatewayOwner tok gid owner = do
                  (Just owner)
   return NoContent
 
+putGatewayLocation :: Maybe Token -> GatewayId -> Location -> Waziup NoContent
+putGatewayLocation mtok gid loc = do
+  info $ "Put gateway location: " ++ (show loc)
+  checkPermResource mtok GatewaysUpdate (PermGatewayId gid)
+  res <- runMongo $ do 
+    let sel = ["_id" =: unGatewayId gid]
+    mdoc <- findOne (select sel "gateways")
+    case mdoc of
+       Just _ -> do
+         modify (select sel "gateways") [ "$set" := Doc ["location" := (bsonifyValue bound $ toJSON loc)]]
+         return True
+       _ -> return False 
+  if res
+    then return NoContent
+    else throwError err404 {errBody = "Cannot update gateway: id not found"}
+  return NoContent
 
 -- * Helpers
 

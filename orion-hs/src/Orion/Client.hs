@@ -30,6 +30,7 @@ import           Control.Monad.Reader
 import           Control.Monad.Except (ExceptT, throwError, MonadError, catchError)
 import           Control.Exception hiding (try)
 import qualified Control.Monad.Catch as C
+import           Control.Monad.Extra
 import           Orion.Types
 import           System.Log.Logger
 import           GHC.Generics (Generic)
@@ -39,21 +40,35 @@ import           Debug.Trace
 
 getEntities :: Maybe Text -> Maybe EntityType -> Orion [Entity]
 getEntities mq mtyp = do
+  (ents, tot) <- getEntities' mq mtyp 1000 0
+  info $ "total:" ++ (show tot)
+  -- If the total number of entities is more than 1000, we need to issue additional requests (Orion limit is 1000 per request)
+  let n = tot `div` 1000
+  ents' <- concatMapM (\n -> getEntities' mq mtyp 1000 (n * 1000) >>= return . fst) [1..n]
+  return $ ents <> ents'
+
+
+getEntities' :: Maybe Text -> Maybe EntityType -> Int -> Int -> Orion ([Entity], Int)
+getEntities' mq mtyp limit offset = do
   let qq = case mq of
        Just q -> [("q", Just $ encodeUtf8 q)]
        Nothing -> []
   let typ = case mtyp of
        Just t -> [("type", Just $ encodeUtf8 t)]
        Nothing -> []
-  let (query :: Query) = typ ++ qq ++ [("limit", Just $ encodeUtf8 "1000")]
-  body <- orionGet (decodeUtf8 $ "/v2/entities" <> (renderQuery True query))
+  let (query :: Query) = typ ++ qq ++ [("limit",   Just $ convertString (show limit)), 
+                                       ("offset",  Just $ convertString (show offset)),
+                                       ("options", Just $ encodeUtf8 "count")]
+  (body, headers) <- orionGetHeaders (decodeUtf8 $ "/v2/entities" <> (renderQuery True query))
   case eitherDecode body of
     Right ret -> do
-      --debug $ "Orion success: " ++ (show ret) 
-      return ret
+      case lookup "Fiware-Total-Count" headers of
+        Just c -> return (ret, read $ convertString c)
+        Nothing -> error "No headers"
     Left (e :: String) -> do
       debug $ "Orion parse error: " ++ (show e) 
       throwError $ ParseError $ pack (show e)
+  
 
 
 postEntity :: Entity -> Orion SubId 
@@ -173,6 +188,20 @@ orionGet path = do
   case eRes of 
     Right res -> do
       return $ fromJust $ res ^? responseBody
+    Left err -> do
+      warn $ "Orion HTTP error: " ++ (show err)
+      throwError $ HTTPError err
+
+orionGetHeaders :: Path -> Orion (BL.ByteString, ResponseHeaders)
+orionGetHeaders path = do 
+  (url, opts) <- getOrionDetails path 
+  info $ "Issuing ORION GET with url: " ++ (show url) 
+  debug $ "  headers: " ++ (show $ opts ^. W.headers) 
+  eRes <- C.try $ liftIO $ W.getWith opts url
+  info $ (show eRes)
+  case eRes of 
+    Right res -> do
+      return (fromJust $ res ^? responseBody, fromJust $ res ^? responseHeaders)
     Left err -> do
       warn $ "Orion HTTP error: " ++ (show err)
       throwError $ HTTPError err

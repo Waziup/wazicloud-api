@@ -5,10 +5,8 @@
 
 module Waziup.Config where
 
-import           Control.Exception as C
 import           Control.Lens
 import           Control.Monad.IO.Class
-import           Control.Concurrent.STM
 import           Data.String.Conversions
 import           Data.Aeson hiding (Success)
 import qualified Data.ByteString as BS
@@ -16,7 +14,6 @@ import           Data.Validation
 import           Data.Foldable
 import           Data.Maybe
 import           Data.Pool
-import           Data.Cache
 import           Data.Time.Clock
 import           Data.Map as M hiding (map)
 import           Database.MongoDB as DB hiding (value)
@@ -91,9 +88,7 @@ configureWaziup = do
   let mongUrl = conf ^. mongoConf.mongoUrl
   pool <- createPool (DB.connect $ readHostPort $ convertString mongUrl) DB.close 1 300 5
   onto <- loadOntologies
-  let cacheDuration = conf ^. serverConf . cacheValidDuration
-  permsCache <- newCache (Just $ TimeSpec (floor cacheDuration) 0) 
-  return $ WaziupInfo pool conf onto permsCache
+  return $ WaziupInfo pool conf onto
 
 waziupConfigParser :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> MQTTConfig -> TWInfo -> PlivoConfig -> Parser WaziupConfig
 waziupConfigParser servDef mDef kcDef oDef mqttDef twittDef plivoDef = do

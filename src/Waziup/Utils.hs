@@ -120,3 +120,5 @@ resultToMaybe :: Result a -> Maybe a
 resultToMaybe (Success a) = Just a
 resultToMaybe (Data.Aeson.Error _) = Nothing
 
+rightToMaybe :: Either a b -> Maybe b
+rightToMaybe = either (const Nothing) Just

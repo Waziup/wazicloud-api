@@ -8,154 +8,92 @@ import           Control.Lens
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
 import           Control.Monad
+import           Control.Monad.Extra
 import           Data.String.Conversions
 import           Data.Maybe
 import           Data.Time
-import           Data.Cache as C
+import           Data.Text hiding (map, any, filter)
+import           Data.Cache as C hiding (lookup)
 import           Data.Cache.Internal as CI
 import qualified Data.Map as M
-import           Keycloak as KC
+import           Data.Map ((!?)) 
+import qualified Keycloak as KC
+import           Keycloak (Token, getClaims)
 import           Servant
 import           System.Log.Logger
 import           Waziup.Types as W
 import           Waziup.Utils as U
+import           Waziup.Users hiding (info, debug)
 
 -- | get a token
 postAuth :: AuthBody -> Waziup Token
 postAuth (AuthBody username password) = do
   info "Post authentication"
-  tok <- liftKeycloak' $ getUserAuthToken username password
+  tok <- liftKeycloak' $ KC.getUserAuthToken username password
   return tok
 
 -- * Permissions
 
--- | Get all permissions. If no token is passed, the guest token will be used.
-getPermsDevices :: Maybe Token -> Waziup [Perm]
-getPermsDevices tok = do
-  info "Get devices permissions"
-  getPerms tok (getPermReq Nothing deviceScopes)
-
--- | Get all permissions. If no token is passed, the guest token will be used.
-getPermsProjects :: Maybe Token -> Waziup [Perm]
-getPermsProjects tok = do
-  info "Get projects permissions"
-  getPerms tok (getPermReq Nothing projectScopes)
-
--- | Get all permissions. If no token is passed, the guest token will be used.
-getPermsGateways :: Maybe Token -> Waziup [Perm]
-getPermsGateways tok = do
-  info "Get gateways permissions"
-  getPerms tok (getPermReq Nothing gatewayScopes)
-
--- | Throws error 403 if there is no permission for the resource under the corresponding scope.
-checkPermResource :: Maybe Token -> W.Scope -> W.PermResource -> Waziup ()
-checkPermResource tok scp rid = do
-  perms <- getPerms tok (getPermReq (Just rid) [scp])
-  if isPermittedResource scp rid perms 
+-- | Throws error 403 if the scope is not premitted for this resource.
+checkPermResource :: Maybe Token -> Scope -> PermResource -> Waziup ()
+checkPermResource mtok scp res = do
+  if isPermitted mtok res scp
     then return ()
     else throwError err403 {errBody = "Forbidden: Cannot access resource"}
 
--- | Check that `perms` contain a permission for the resource with the corresponding scope.
-isPermittedResource :: W.Scope -> W.PermResource -> [Perm] -> Bool
-isPermittedResource scp rid perms = any isPermitted perms where
-  isPermitted :: Perm -> Bool
-  isPermitted (Perm (Just rid') scopes) = rid == rid' && scp `elem` scopes
-  isPermitted (Perm Nothing scopes) = scp `elem` scopes
+-- | Check the resource against the corresponding scopes.
+getPerm :: Maybe Token -> PermResource -> [Scope] -> Perm
+getPerm tok res scopes = Perm (getPermResId res) (filter (isPermitted tok res) scopes)
 
--- | Retrieve permissions
-getPerms :: Maybe Token -> PermReq -> Waziup [Perm]
-getPerms tok permReq = do
-  let username = case tok of
-       Just t -> getUsername t
-       Nothing -> "guest"
-  useCache <- view (waziupConfig.serverConf.cacheActivated)
-  if useCache
-    then do
-      cache <- view permCache
-      debug "fetchWithCache"
-      fst <$> fetchWithCache cache (username, permReq) (fetch tok)
-    else do
-      kcPerms <- liftKeycloak tok $ getPermissions [permReq]
-      return $ map getPerm kcPerms
+-- | Check the resource against the corresponding scope.
+isPermitted :: Maybe Token -> PermResource -> Scope -> Bool
+isPermitted tok res scope = isPermitted' (getUserFromToken tok) res scope 
 
-fetch :: Maybe Token -> CacheIndex -> Waziup CacheValue
-fetch tok (_, req) = do
-  kcPerms <- liftKeycloak tok $ getPermissions [req]
-  let perms = map getPerm kcPerms
-  now <- liftIO getCurrentTime
-  return (perms, now)
+-- | Check the resource against the corresponding scope.
+isPermitted' :: User -> PermResource -> Scope -> Bool
+isPermitted' user res scope = case lookup scope allPermissions of
+  Just policies -> or $ map (\p -> p user res) policies
+  Nothing   -> error "Scope not found"
 
--- * Permission resources
 
-createResource :: Maybe Token -> PermResource -> Maybe Visibility -> Maybe KC.Username -> Waziup ResourceId
-createResource tok permRes vis muser = do
-  --creating a new resource in Keycloak invalidates the cache
-  invalidateCache permRes
-  let (resTyp, scopes) = case permRes of
-       PermDeviceId _  -> ("Device" , deviceScopes)
-       PermGatewayId _ -> ("Gateway", gatewayScopes)
-       PermProjectId _ -> ("Project", projectScopes)
-  let attrs = if (isJust vis) then [KC.Attribute "visibility" [fromVisibility $ fromJust vis]] else []
-  let username = case muser of
-       Just user -> user          --if username is provided, use it. 
-       Nothing -> case tok of
-         Just t -> getUsername t  --Else, if token is provided, extract the username.
-         Nothing -> "guest"       --Finally, use "guest" as a username.
-  let kcres = KC.Resource {
-         resId      = (Just $ getKCResourceId $ permRes),
-         resName    = (unResId $ getKCResourceId $ permRes),
-         resType    = Just resTyp,
-         resUris    = [],
-         resScopes  = map (\s -> KC.Scope Nothing (fromScope s)) scopes,
-         resOwner   = Owner Nothing (Just username),
-         resOwnerManagedAccess = True,
-         resAttributes = attrs}
-  liftKeycloak' $ getClientAuthToken >>= KC.createResource kcres
+-- | Policies
 
-deleteResource :: Maybe Token -> PermResource -> Waziup ()
-deleteResource _ pr = do
-  --invalidate all cache
-  invalidateCache pr
-  --delete all resources
-  liftKeycloak' $ getClientAuthToken >>= KC.deleteResource (getKCResourceId pr)
+-- An admin always have access
+adminUser :: Policy
+adminUser user _ = userAdmin user == Just True 
 
-updateResource :: Maybe Token -> PermResource -> Maybe Visibility -> Maybe KC.Username -> Waziup ResourceId
-updateResource = Waziup.Auth.createResource
+-- Access to a public resource
+publicResource :: Policy 
+publicResource _ (PermDevice d) = devVisibility d == Just Public
+publicResource _ (PermGateway d) = gwVisibility d == Just Public
+publicResource _ (PermProject d) = error "Projects doesn't have a visibility" 
 
---Cache management
+-- Access if you are the owner of the resource
+resourceOwner :: Policy 
+resourceOwner user (PermDevice d)  = Just (userUsername user) == devOwner d 
+resourceOwner user (PermGateway d) = Just (userUsername user) == gwOwner d 
+resourceOwner user (PermProject d) = Just (userUsername user) == pOwner d 
 
--- invalidate cache on resource actions (create, update, delete)
-invalidateCache :: PermResource -> Waziup ()
-invalidateCache rid = do
-  debug $ "Invalidate cache for " ++ (show rid)
-  cache <- view permCache
-  let rid' = getKCResourceId rid
-  liftIO $ showCache cache
-  liftIO $ C.filterWithKey (\(_, req) _ -> isValidPermReq rid' req) cache
+-- everybody have access
+allUsers :: Policy 
+allUsers tok res = True
 
--- filter perm reqs based on resource ID
-isValidPermReq :: ResourceId -> PermReq -> Bool
-isValidPermReq rid (PermReq (Just rid') _ )  = rid /= rid' -- Remove "resource" perm request
-isValidPermReq _   (PermReq _           [])  = False       -- Remove "all scopes" perm requests
-isValidPermReq _   (PermReq Nothing     _ )  = False       -- Remove "all resources" perm requests
-
--- | Create a perm request
-getPermReq :: Maybe PermResource -> [W.Scope] -> PermReq
-getPermReq pr scopes = PermReq (getKCResourceId <$> pr) (map fromScope scopes)
-
-showCache :: Cache CacheIndex CacheValue -> IO ()
-showCache c = do
-  l <- toList c
-  mapM_ (\(k, v, _) -> debug $ showCacheEntry (k, v)) l
-
-showCacheEntry :: (CacheIndex, CacheValue) -> String
-showCacheEntry (i, v) =  (showCacheIndex i) <> " : " <> (showCacheValue v) <> "/n" 
-
-showCacheIndex :: CacheIndex -> String
-showCacheIndex (username, permReq) = (convertString username) <> ", " <> (show permReq)
-
-showCacheValue :: CacheValue -> String
-showCacheValue (perms, time) = (show perms) <> " @ " <> (show time)
+-- Policies associated to each scope
+allPermissions :: [(Scope, [Policy])]
+allPermissions = [(DevicesCreate,     [allUsers]),
+                  (DevicesUpdate,     [adminUser, resourceOwner]),
+                  (DevicesView,       [adminUser, resourceOwner, publicResource]),
+                  (DevicesDelete,     [adminUser, resourceOwner]),
+                  (DevicesDataCreate, [adminUser, resourceOwner, publicResource]),
+                  (DevicesDataView,   [adminUser, resourceOwner, publicResource]),
+                  (GatewaysCreate,    [allUsers]),
+                  (GatewaysUpdate,    [adminUser, resourceOwner]),
+                  (GatewaysView,      [adminUser, resourceOwner, publicResource]),
+                  (GatewaysDelete,    [adminUser, resourceOwner]),
+                  (ProjectsCreate,    [allUsers]),
+                  (ProjectsUpdate,    [adminUser, resourceOwner]),
+                  (ProjectsView,      [adminUser, resourceOwner]),
+                  (ProjectsDelete,    [adminUser, resourceOwner])]
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

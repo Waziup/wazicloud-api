@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE Rank2Types #-}
 
 module MQTT where
 
@@ -10,7 +11,6 @@ import           Data.Aeson as JSON
 import           Data.String.Conversions
 import qualified Data.List as L
 import           Data.Maybe
-import           Data.Either
 import           Data.Time
 import qualified Data.Text as T
 import qualified Data.ByteString as B
@@ -25,14 +25,15 @@ import           Control.Concurrent.Async (concurrently)
 import           System.Log.Logger
 import           Waziup.Types
 import           Waziup.Utils
+import           Waziup.Users hiding (info, warn, debug, err)
 import           Waziup.Auth hiding (info, warn, debug, err)
 import           Waziup.Devices hiding (info, warn, debug, err)
 import           Orion as O hiding (info, warn, debug, err)
 import           Network.MQTT.Client hiding (MQTTConfig)
 import qualified Network.MQTT.Types as T
 import           Conduit
-import           Keycloak as KC hiding (Scope) 
 import           Database.MongoDB as DB hiding (Username, Password, host)
+import           Safe
 
 -- | MQTT topics
 dev_topic, sen_topic, act_topic, val_topic :: T.Text
@@ -43,8 +44,7 @@ val_topic = "value"
 
 -- | Cache for the connection
 data ConnCache = ConnCache {
-  username :: Maybe Username,
-  password :: Maybe Password,
+  connUser :: User,
   connId   :: LB.ByteString}
 
 -- | data structure to decode MQTT packets
@@ -52,7 +52,6 @@ data MQTTData = MQTTSen DeviceId SensorId SensorValue |
                 MQTTAct DeviceId ActuatorId JSON.Value |
                 MQTTError String |
                 MQTTOther
-
 
 -- | the MQTT proxy
 mqttProxy :: WaziupInfo -> IO ()
@@ -73,68 +72,77 @@ handleExternalStream wi extClient = do
 -- connect both up and down streams together
 handleStreams :: WaziupInfo -> AppData -> AppData -> IO ()
 handleStreams wi extClient intServer = do
-  tvConnCache <- atomically $ newTVar Nothing 
+  cache <- atomically $ newTVar Nothing 
   debug $ "Starting streams"
+  let downstream = appSource extClient .| conduitParser T.parsePacket .| filterMQTTin  cache extClient .| appSink' intServer
+  let upstream   = appSource intServer .| conduitParser T.parsePacket .| filterMQTTout cache intServer .| appSink' extClient
   void $ concurrently
-    (runConduit $ appSource extClient .| conduitParser T.parsePacket .| filterMQTTin  wi tvConnCache extClient .| appSink intServer) --traffic downstream
-    (runConduit $ appSource intServer .| conduitParser T.parsePacket .| filterMQTTout wi tvConnCache intServer .| appSink extClient) --traffic upstream
+    (runWaziup (runConduit downstream) wi) --traffic downstream
+    (runWaziup (runConduit upstream) wi)   --traffic upstream
   --write disconnect in DB
   debug $ "Ending streams"
-  void $ liftIO $ runWaziup (putConnect tvConnCache False) wi
+  void $ liftIO $ runWaziup (putConnect cache False) wi
+
+appSink' :: AppData -> Consumer T.MQTTPkt Waziup () 
+appSink' app = awaitForever (yield . convertString . T.toByteString) .| appSink app
 
 -- | traffic going downstream (from external client to internal MQTT server)
-filterMQTTin :: WaziupInfo -> TVar (Maybe ConnCache) -> AppData -> ConduitT (w, T.MQTTPkt) B.ByteString IO ()
-filterMQTTin wi tvConnCache extClient = awaitForever $ \(_,res) -> do 
-  connCache <- liftIO $ atomically $ readTVar tvConnCache
+filterMQTTin :: TVar (Maybe ConnCache) -> AppData -> ConduitT (w, T.MQTTPkt) T.MQTTPkt Waziup ()
+filterMQTTin cache extClient = awaitForever $ \(_,res) -> do 
+  connCache <- liftIO $ atomically $ readTVar cache
   debug $ "Received downstream: " ++ (show res) ++ " ID= " ++ (show $ connId <$> connCache)
   -- putting the gateway connect
-  void $ lift $ runWaziup (putConnect tvConnCache True) wi
+  lift $ putConnect cache True
   case res of
     -- Decode Connect request
-    (T.ConnPkt (T.ConnectRequest user pass _ _ _ cid)) -> do
-      -- store user and connection ID
-      liftIO $ atomically $ writeTVar tvConnCache (Just $ ConnCache (convertString <$> user) (convertString <$> pass) cid) 
-      void $ lift $ runWaziup (putConnect tvConnCache True) wi
-      yield $ convertString $ T.toByteString res
-    T.DisconnectPkt -> do
-      yield $ convertString $ T.toByteString res
-    -- Decode Publish
-    (T.PublishPkt (T.PublishRequest _ _ _ topic pid body)) -> do
-      -- Decode MQTT message
-      case decodePub topic body of
-        MQTTSen did sid senVal -> do
-          -- check authorization
-          perms <- lift $ runWaziup (getPerms' tvConnCache (getPermReq (Just $ PermDeviceId did) [DevicesDataCreate])) wi
-          let isAuth = isPermittedResource DevicesDataCreate (PermDeviceId did) (fromRight [] perms)
-          debug $ "Perm check: " ++ (show isAuth)
-          if isAuth 
-            then do
-              -- Store the value
-              void $ lift $ runWaziup (postSensorValue did sid senVal) wi
-              -- pass value to MQTT server
-              yield $ convertString $ T.toByteString res
-            else do
-              -- return PUBACK directly to client (MQTT offers no way to inform the client about the failure)
-              yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK pid)) .| appSink extClient
+    (T.ConnPkt p)    -> connectRequest p cache
+    (T.PublishPkt p) -> publishRequest p cache extClient 
+    _ -> yield res
+    
+connectRequest :: T.ConnectRequest -> TVar (Maybe ConnCache) -> ConduitT (w, T.MQTTPkt) T.MQTTPkt Waziup ()
+connectRequest p@(T.ConnectRequest user pass _ _ _ cid) cache = do
+  -- store user and connection ID
+  tok <- if isJust user && isJust pass 
+    then do
+      t <- lift $ postAuth $ AuthBody (convertString $ fromJust user) (convertString $ fromJust pass)
+      return $ Just t
+    else return Nothing
+  liftIO $ atomically $ writeTVar cache (Just $ ConnCache (getUserFromToken tok) cid) 
+  lift $ putConnect cache True
+  yield $ T.ConnPkt p
 
-        MQTTAct did aid actVal -> do 
-          perms <- lift $ runWaziup (getPerms' tvConnCache (getPermReq (Just $ PermDeviceId did) [DevicesDataCreate])) wi
-          let isAuth = isPermittedResource DevicesDataCreate (PermDeviceId did) (fromRight [] perms)
-          debug $ "Perm check: " ++ (show isAuth)
-          if isAuth 
-            then do
-              void $ lift $ runWaziup (putActuatorValue did aid actVal) wi
-              yield $ convertString $ T.toByteString res
-            else do
-              yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK pid)) .| appSink extClient
-        MQTTError e -> do
-          err e
-        MQTTOther -> yield $ convertString $ T.toByteString res
-    _ -> yield $ convertString $ T.toByteString res
+publishRequest :: T.PublishRequest -> TVar (Maybe ConnCache) -> AppData -> ConduitT (w, T.MQTTPkt) T.MQTTPkt Waziup ()
+publishRequest p@(T.PublishRequest _ _ _ topic pid body) cache extClient = do
+  -- Decode MQTT message
+  case decodePub topic body of
+    MQTTSen did sid senVal -> do
+      -- check authorization
+      isAuth <- lift $ isAuthDevice did cache DevicesDataCreate
+      if isAuth
+        then do
+          -- Store the value
+          lift $ postSensorValue did sid senVal
+          -- pass value to MQTT server
+          yield $ T.PublishPkt p
+        else do
+          -- return PUBACK directly to client (MQTT offers no way to inform the client about the failure)
+          yield (T.PubACKPkt (T.PubACK pid)) .| appSink' extClient
+
+    MQTTAct did aid actVal -> do 
+      isAuth <- lift $ isAuthDevice did cache DevicesDataCreate 
+      debug $ "Perm check: " ++ (show isAuth)
+      if isAuth 
+        then do
+          lift $ putActuatorValue did aid actVal
+          yield $ T.PublishPkt p
+        else do
+          yield (T.PubACKPkt (T.PubACK pid)) .| appSink' extClient
+    MQTTError e -> err e
+    MQTTOther -> yield (T.PublishPkt p)
       
 -- | traffic going upstream (from internal MQTT server to external client)
-filterMQTTout :: WaziupInfo -> TVar (Maybe ConnCache) -> AppData -> ConduitT (w, T.MQTTPkt) B.ByteString IO ()
-filterMQTTout wi tvConnCache intServer = awaitForever $ \(_, res) -> do
+filterMQTTout :: TVar (Maybe ConnCache) -> AppData -> ConduitT (w, T.MQTTPkt) T.MQTTPkt Waziup ()
+filterMQTTout cache intServer = awaitForever $ \(_, res) -> do
   debug $ "Received upstream: " ++ (show res)
   case res of
     -- Decode Publish
@@ -143,41 +151,23 @@ filterMQTTout wi tvConnCache intServer = awaitForever $ \(_, res) -> do
       case decodePub topic body of
         MQTTSen did _ _ -> do
           -- check authorization
-          perms <- lift $ runWaziup (getPerms' tvConnCache (getPermReq (Just $ PermDeviceId did) [DevicesDataView])) wi
-          let isAuth = isPermittedResource DevicesDataView (PermDeviceId did) (fromRight [] perms)
+          isAuth <- lift $ isAuthDevice did cache DevicesDataView 
           debug $ "Perm check upstream: " ++ (show isAuth)
           if isAuth 
-            then yield $ convertString $ T.toByteString res
-            else yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink intServer
+            then yield res
+            else yield (T.PubACKPkt (T.PubACK id)) .| appSink' intServer
         MQTTAct did _ _ -> do 
-          perms <- lift $ runWaziup (getPerms' tvConnCache (getPermReq (Just $ PermDeviceId did) [DevicesDataView])) wi
-          let isAuth = isPermittedResource DevicesDataView (PermDeviceId did) (fromRight [] perms)
+          isAuth <- lift $ isAuthDevice did cache DevicesDataView 
           debug $ "Perm check upstream: " ++ (show isAuth)
           if isAuth 
-            then yield $ convertString $ T.toByteString res
-            else yield (convertString $ T.toByteString $ T.PubACKPkt (T.PubACK id)) .| appSink intServer
+            then yield res
+            else yield (T.PubACKPkt (T.PubACK id)) .| appSink' intServer
         MQTTError e -> do
           err e
-        MQTTOther -> yield $ convertString $ T.toByteString res
-    T.DisconnectPkt -> do
-      yield $ convertString $ T.toByteString res
-    _ -> yield $ convertString $ T.toByteString res
+        MQTTOther -> yield res
+    _ -> yield res
   
   
-getPerms' :: TVar (Maybe ConnCache) -> PermReq -> Waziup [Perm]
-getPerms' tvConnCache permReq = do
-  res <- liftIO $ atomically $ readTVar tvConnCache 
-  case res of
-    Just (ConnCache user pass _) -> do
-      debug $ "Get perms with user: " ++ (show user)
-      if isJust user && isJust pass
-        then do
-          tok <- liftKeycloak' $ getUserAuthToken (fromJust user) (fromJust pass)
-          getPerms (Just tok) permReq 
-        else do
-          getPerms Nothing permReq
-    Nothing -> return []
-
 decodePub :: LB.ByteString -> LB.ByteString -> MQTTData
 decodePub topic body = do
   case T.split (== '/') (convertString topic) of
@@ -191,8 +181,16 @@ decodePub topic body = do
         Left e -> MQTTError $ "Decode actuator value publish: " ++ (show e) 
     _ -> MQTTOther 
 
+isAuthDevice :: DeviceId -> TVar (Maybe ConnCache) -> Scope -> Waziup Bool
+isAuthDevice did cache scope = do
+  c <- liftIO $ atomically $ readTVar cache
+  let (ConnCache user _) = fromJustNote "No cache during Publish" c 
+  dev <- getDeviceFromEntity <$> (liftOrion $ O.getEntity (EntityId $ unDeviceId did) devTyp)
+  let isAuth = isPermitted' user (PermDevice dev) scope
+  debug $ "Perm check: " ++ (show isAuth)
+  return isAuth
+
 -- Post sensor value to DBs
--- TODO: access control
 postSensorValue :: DeviceId -> SensorId -> SensorValue -> Waziup ()
 postSensorValue did sid senVal@(SensorValue v ts dr) = do 
   info $ convertString $ "Post device " <> (unDeviceId did) <> ", sensor " <> (unSensorId sid) <> ", value: " <> (convertString $ show senVal)
@@ -228,7 +226,7 @@ putConnect :: TVar (Maybe ConnCache) -> Bool -> Waziup ()
 putConnect connCache isConnected = do
   mCon <- liftIO $ atomically $ readTVar connCache
   case mCon of
-    (Just (ConnCache _ _ cid)) -> do
+    (Just (ConnCache _ cid)) -> do
       debug $ "Putting connected=" ++ (show isConnected) ++ " on gateway " ++ (show cid)
       void $ runMongo $ modify (select ["_id" =: (convertString cid :: T.Text)] "gateways") [ "$set" =: Doc ["connected" =: val isConnected]]
     Nothing -> return ()

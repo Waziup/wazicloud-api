@@ -11,21 +11,21 @@ import           Control.Monad.Reader
 
 getSensorKinds :: Waziup [SensorKind]
 getSensorKinds = do
-  (WaziupInfo _ _ (Ontologies sks _ _ _) _) <- ask
+  (WaziupInfo _ _ (Ontologies sks _ _ _)) <- ask
   return sks
 
 getActuatorKinds :: Waziup [ActuatorKind]
 getActuatorKinds = do
-  (WaziupInfo _ _ (Ontologies _ acts _ _) _) <- ask
+  (WaziupInfo _ _ (Ontologies _ acts _ _)) <- ask
   return acts
 
 getQuantityKinds :: Waziup [QuantityKind]
 getQuantityKinds = do
-  (WaziupInfo _ _ (Ontologies _ _ qks _) _) <- ask
+  (WaziupInfo _ _ (Ontologies _ _ qks _)) <- ask
   return qks
 
 getUnits :: Waziup [Unit]
 getUnits = do
-  (WaziupInfo _ _ (Ontologies _ _ _ us) _) <- ask
+  (WaziupInfo _ _ (Ontologies _ _ _ us)) <- ask
   return us
 

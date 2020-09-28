@@ -19,8 +19,9 @@ import           MQTT hiding (info, warn, debug, err)
 getSensors :: Maybe Token -> DeviceId -> Waziup [Sensor]
 getSensors tok did = do
   info "Get sensors"
+  d <- getDevice tok did
   debug "Check permissions"
-  checkPermResource tok DevicesView (PermDeviceId did)
+  checkPermResource tok DevicesView (PermDevice d)
   debug "Permission granted, returning sensors"
   device <- getDeviceFromEntity <$> (liftOrion $ O.getEntity (EntityId $ unDeviceId did) devTyp)
   return $ maybeToList' $ devSensors device
@@ -28,8 +29,9 @@ getSensors tok did = do
 postSensor :: Maybe Token -> DeviceId -> Sensor -> Waziup NoContent
 postSensor tok did sensor = do
   info $ "Post sensor: " ++ (show sensor)
+  d <- getDevice tok did
   debug "Check permissions"
-  checkPermResource tok DevicesUpdate (PermDeviceId did)
+  checkPermResource tok DevicesUpdate (PermDevice d)
   debug "Permission granted, creating sensor"
   liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromSensor sensor)
   return NoContent
@@ -37,8 +39,9 @@ postSensor tok did sensor = do
 getSensor :: Maybe Token -> DeviceId -> SensorId -> Waziup Sensor
 getSensor tok did sid = do
   info "Get sensor"
+  d <- getDevice tok did
   debug "Check permissions"
-  checkPermResource tok DevicesView (PermDeviceId did)
+  checkPermResource tok DevicesView (PermDevice d)
   debug "Permission granted, returning sensor"
   device <- getDeviceOrion did
   case L.find (\s -> senId s == sid) (maybeToList' $ devSensors device) of
@@ -50,8 +53,9 @@ getSensor tok did sid = do
 deleteSensor :: Maybe Token -> DeviceId -> SensorId -> Waziup NoContent
 deleteSensor tok did sid = do
   info "Delete sensor"
+  d <- getDevice tok did
   debug "Check permissions"
-  checkPermResource tok DevicesUpdate (PermDeviceId did)
+  checkPermResource tok DevicesUpdate (PermDevice d)
   debug "Permission granted, deleting sensor"
   liftOrion $ O.deleteAttribute (toEntityId did) devTyp (toAttributeId sid)
   debug "Deleting Mongo datapoints"
@@ -91,8 +95,9 @@ putSensorCalib mtok did sid cal = do
 putSensorValue :: Maybe Token -> DeviceId -> SensorId -> SensorValue -> Waziup NoContent
 putSensorValue mtok did sid sv = do
   info $ "Put sensor value: " ++ (show sv)
+  d <- getDevice mtok did
   debug "Check permissions"
-  checkPermResource mtok DevicesDataCreate (PermDeviceId did)
+  checkPermResource mtok DevicesDataCreate (PermDevice d)
   debug "Permission granted, updating sensor"
   device <- getDeviceOrion did
   case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors device) of
@@ -114,8 +119,9 @@ putSensorValue' did sensor val@(SensorValue v ts dr) = do
 putSensorValues :: Maybe Token -> DeviceId -> SensorId -> [SensorValue] -> Waziup NoContent
 putSensorValues mtok did sid svs = do
   info $ "Put sensor values"
+  d <- getDevice mtok did
   debug "Check permissions"
-  checkPermResource mtok DevicesDataCreate (PermDeviceId did)
+  checkPermResource mtok DevicesDataCreate (PermDevice d)
   debug "Permission granted, updating sensor"
   device <- getDeviceOrion did
   case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors device) of
@@ -129,7 +135,8 @@ putSensorValues mtok did sid svs = do
 updateSensorField :: Maybe Token -> DeviceId -> SensorId -> (Sensor -> Waziup ()) -> Waziup NoContent
 updateSensorField mtok did sid w = do
   debug "Check permissions"
-  checkPermResource mtok DevicesUpdate (PermDeviceId did)
+  d <- getDevice mtok did
+  checkPermResource mtok DevicesUpdate (PermDevice d)
   debug "Permission granted, updating sensor"
   device <- getDeviceOrion did
   case L.find (\s -> (senId s) == sid) (maybeToList' $ devSensors device) of

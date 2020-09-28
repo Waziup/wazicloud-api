@@ -99,7 +99,7 @@ postTwitter user msg = do
         Left e -> throwM e
 
 postSMS :: Maybe Token -> T.User -> Text -> Waziup ()
-postSMS tok user@(T.User _ _ _ _ _ (Just phone) _ _ (Just c)) txt = do
+postSMS tok user@(T.User _ _ _ _ _ (Just phone) _ _ (Just c) _) txt = do
   res <- C.try $ smsPost $ PlivoSMS "+393806412094" phone txt
   case res of 
     Right _ -> do

@@ -19,11 +19,19 @@ import qualified Data.HashMap.Strict as H
 import           Data.Aeson as JSON hiding (Options)
 import           Data.Time.ISO8601
 import           Servant
-import           Keycloak as KC hiding (info, warn, debug, err, createResource, updateResource, deleteResource) 
+import           Keycloak (Token, Username, getUsername) 
 import           Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
-import           Database.MongoDB as DB hiding (value, Limit, Array, lookup, Value, Null, (!?))
+import           Database.MongoDB as DB hiding (value, Limit, Array, lookup, Value, Null, (!?), Username)
 import           Data.AesonBson
+import           Waziup.Users hiding (info, debug)
+
+-- | Get all permissions. If no token is passed, the guest token will be used.
+getPermsDevices :: Maybe Token -> Waziup [Perm]
+getPermsDevices tok = do
+  info "Get devices permissions"
+  devices <- getAllDevices Nothing
+  return $ map (\dev -> getPerm tok (PermDevice dev) deviceScopes) devices
 
 -- | Get devices, given a query, limits and offsets
 getDevices :: Maybe Token -> Maybe DevicesQuery -> Maybe Limit -> Maybe Offset -> Waziup [Device]
@@ -31,9 +39,8 @@ getDevices tok mq mlimit moffset = do
   info "Get devices"
   devices <- getAllDevices mq
   info "Got devices Orion"
-  ps <- getPerms tok (getPermReq Nothing [DevicesView])
   -- filter devices not permitted
-  let devices2 = filter (\d -> isPermittedResource DevicesView (PermDeviceId $ devId d) ps) devices
+  let devices2 = filter (\d -> isPermitted tok (PermDevice d) DevicesView) devices
   -- remove offset devices
   let devices3 = maybe' devices2 L.drop moffset
   -- cut at the limit
@@ -51,7 +58,7 @@ getDevice tok did = do
   info "Get device"
   device <- getDeviceFromEntity <$> (liftOrion $ O.getEntity (EntityId $ unDeviceId did) devTyp)
   debug "Check permissions"
-  checkPermResource tok DevicesView (PermDeviceId did)
+  checkPermResource tok DevicesView (PermDevice device)
   debug "Permission granted, returning device"
   return device
 
@@ -67,16 +74,14 @@ postDevice tok d = do
   debug $ "Owner: " <> (show username)
   let entity = getEntityFromDevice (d {devOwner = Just username})
   void $ liftOrion $ O.postEntity entity
-  void $ createResource tok (PermDeviceId $ devId d) (devVisibility d) (Just username)
   return NoContent
 
 deleteDevice :: Maybe Token -> DeviceId -> Waziup NoContent
 deleteDevice tok did = do
   info "Delete device"
+  device <- getDevice tok did
   debug "Check permissions"
-  checkPermResource tok DevicesDelete (PermDeviceId did)
-  debug "Delete Keycloak resource"
-  deleteResource tok (PermDeviceId did)
+  checkPermResource tok DevicesDelete (PermDevice device)
   debug "Delete Orion resource"
   liftOrion $ O.deleteEntity (toEntityId did) devTyp
   debug "Delete Mongo resources"
@@ -86,8 +91,9 @@ deleteDevice tok did = do
 putDeviceLocation :: Maybe Token -> DeviceId -> Location -> Waziup NoContent
 putDeviceLocation mtok did loc = do
   info $ "Put device location: " ++ (show loc)
+  device <- getDevice mtok did
   debug "Check permissions"
-  checkPermResource mtok DevicesUpdate (PermDeviceId did)
+  checkPermResource mtok DevicesUpdate (PermDevice device)
   debug "Update Orion resource"
   liftOrion $ O.postAttribute (toEntityId did) devTyp (getLocationAttr loc)
   return NoContent
@@ -95,8 +101,9 @@ putDeviceLocation mtok did loc = do
 putDeviceName :: Maybe Token -> DeviceId -> DeviceName -> Waziup NoContent
 putDeviceName mtok did name = do
   info $ "Put device name: " ++ (show name)
+  device <- getDevice mtok did
   debug "Check permissions"
-  checkPermResource mtok DevicesUpdate (PermDeviceId did)
+  checkPermResource mtok DevicesUpdate (PermDevice device)
   debug "Update Orion resource"
   liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "name") name
   return NoContent
@@ -104,8 +111,9 @@ putDeviceName mtok did name = do
 putDeviceGatewayId :: Maybe Token -> DeviceId -> GatewayId -> Waziup NoContent
 putDeviceGatewayId mtok did (GatewayId gid) = do
   info $ "Put device gateway ID: " ++ (show gid)
+  device <- getDevice mtok did
   debug "Check permissions"
-  checkPermResource mtok DevicesUpdate (PermDeviceId did)
+  checkPermResource mtok DevicesUpdate (PermDevice device)
   debug "Update Orion resource"
   liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "gateway_id") gid
   return NoContent
@@ -113,34 +121,31 @@ putDeviceGatewayId mtok did (GatewayId gid) = do
 putDeviceVisibility :: Maybe Token -> DeviceId -> Visibility -> Waziup NoContent
 putDeviceVisibility mtok did vis = do
   info $ "Put device visibility: " ++ (show vis)
+  device <- getDevice mtok did
   debug "Check permissions"
-  checkPermResource mtok DevicesUpdate (PermDeviceId did)
+  checkPermResource mtok DevicesUpdate (PermDevice device)
   debug "Update Orion resource"
   liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "visibility") (fromVisibility vis)
-  --update visibility in KEYCLOAK
-  void $ updateResource mtok (PermDeviceId did) (Just vis) Nothing
   return NoContent
 
 putDeviceDeployed :: Maybe Token -> DeviceId -> Bool -> Waziup NoContent
 putDeviceDeployed mtok did dep = do
   info $ "Put device deployed: " ++ (show dep)
+  device <- getDevice mtok did
   debug "Check permissions"
-  checkPermResource mtok DevicesUpdate (PermDeviceId did)
+  checkPermResource mtok DevicesUpdate (PermDevice device)
   debug "Update Orion resource"
   liftOrion $ O.postAttribute (toEntityId did) devTyp (AttributeId "deployed", O.Attribute "Bool" (Just $ toJSON dep) M.empty)
   return NoContent
 
 -- Change the owner of a device. The device will also automatically be passed as private.
-putDeviceOwner :: Maybe Token -> DeviceId -> KC.Username -> Waziup NoContent
+putDeviceOwner :: Maybe Token -> DeviceId -> Username -> Waziup NoContent
 putDeviceOwner tok did owner = do
   info "Put device owner"
-  checkPermResource tok DevicesUpdate (PermDeviceId did)
   d <- getDevice tok did
+  checkPermResource tok DevicesUpdate (PermDevice d)
   debug "Update Orion resource"
   liftOrion $ O.postAttribute (toEntityId did) devTyp (AttributeId "owner", O.Attribute "String" (Just $ toJSON owner) M.empty)
-  info "Replace Keycloak resource"
-  deleteResource tok (PermDeviceId did)
-  void $ createResource tok (PermDeviceId did) (devVisibility d) (Just owner)
   return NoContent
 
 -- * From Orion to Waziup types

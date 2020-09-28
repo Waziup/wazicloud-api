@@ -8,7 +8,7 @@ import           Waziup.Utils
 import           Waziup.Auth hiding (info, warn, debug, err) 
 import           Waziup.Devices hiding (info, warn, debug, err) 
 import           Waziup.Gateways hiding (info, warn, debug, err) 
-import           Keycloak as KC hiding (createResource, updateResource, deleteResource) 
+import           Keycloak as KC (Token, Username, getUsername) 
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
 import           Control.Monad
@@ -24,13 +24,19 @@ import           Data.Text hiding (find, map, filter, any)
 
 -- * Projects API
 
+-- | Get all permissions. If no token is passed, the guest token will be used.
+getPermsProjects :: Maybe Token -> Waziup [Perm]
+getPermsProjects tok = do
+  info "Get projects permissions"
+  projects <- getAllProjects
+  return $ map (\p -> getPerm tok (PermProject p) projectScopes) projects
+
 getProjects :: Maybe Token -> Maybe Bool -> Waziup [Project]
 getProjects tok mfull = do
   info "Get projects"
   projects <- getAllProjects
   info $ "Got projects: " ++ (show projects)
-  ps <- getPerms tok (getPermReq Nothing [ProjectsView])
-  let projects2 = filter (\p -> isPermittedResource ProjectsView (PermProjectId $ fromJust $ pId p) ps) projects -- TODO limits
+  let projects2 = filter (\p -> isPermitted tok (PermProject p) ProjectsView) projects -- TODO limits
   projects3 <- case mfull of
     Just True -> mapM (getFullProject tok) projects2
     _ -> return projects2
@@ -55,10 +61,6 @@ postProject tok proj = do
          JSON.Object o -> o
          _ -> error "Wrong object format"
     insert "projects" (bsonifyBound ob)
-  void $ createResource tok
-                 (PermProjectId $ ProjectId $ convertString $ show res)
-                 (Just Public)
-                 Nothing
   return $ ProjectId $ convertString $ show res
 
 
@@ -70,7 +72,7 @@ getProject tok pid mfull = do
     Just p -> return p
     Nothing -> throwError err404 {errBody = "Cannot get project: id not found"}
   debug $ "Check permissions"
-  checkPermResource tok ProjectsView (PermProjectId $ fromJust $ pId p) 
+  checkPermResource tok ProjectsView (PermProject p) 
   case mfull of
     Just True -> getFullProject tok p 
     _ -> return p
@@ -78,8 +80,8 @@ getProject tok pid mfull = do
 deleteProject :: Maybe Token -> ProjectId -> Waziup NoContent
 deleteProject tok pid = do
   info "Delete project"
-  checkPermResource tok ProjectsDelete (PermProjectId pid)
-  deleteResource tok (PermProjectId pid)
+  p <- getProject tok pid Nothing
+  checkPermResource tok ProjectsDelete (PermProject p)
   res <- runMongo $ deleteProjectMongo pid
   if res
     then return NoContent
@@ -88,7 +90,8 @@ deleteProject tok pid = do
 putProjectDevices :: Maybe Token -> ProjectId -> [DeviceId] -> Waziup NoContent
 putProjectDevices tok pid ids = do
   info "Put project devices"
-  checkPermResource tok ProjectsUpdate (PermProjectId pid)
+  p <- getProject tok pid Nothing
+  checkPermResource tok ProjectsUpdate (PermProject p)
   res <- runMongo $ putProjectDevicesMongo pid ids
   if res
     then return NoContent
@@ -97,7 +100,8 @@ putProjectDevices tok pid ids = do
 putProjectGateways :: Maybe Token -> ProjectId -> [GatewayId] -> Waziup NoContent
 putProjectGateways tok pid ids = do
   info "Put project gateways"
-  checkPermResource tok ProjectsUpdate (PermProjectId pid) 
+  p <- getProject tok pid Nothing
+  checkPermResource tok ProjectsUpdate (PermProject p) 
   res <- runMongo $ putProjectGatewaysMongo pid ids
   if res
     then return NoContent
@@ -106,7 +110,8 @@ putProjectGateways tok pid ids = do
 putProjectName :: Maybe Token -> ProjectId -> Text -> Waziup NoContent
 putProjectName tok pid name = do
   info "Put project name"
-  checkPermResource tok ProjectsUpdate (PermProjectId pid)
+  p <- getProject tok pid Nothing
+  checkPermResource tok ProjectsUpdate (PermProject p)
   res <- runMongo $ do 
     let sel = ["_id" =: (ObjId $ read $ convertString $ unProjectId pid)]
     mdoc <- findOne (select sel "projects")

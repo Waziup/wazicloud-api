@@ -7,14 +7,14 @@ import           Waziup.Types
 import           Waziup.Utils
 import           Waziup.Devices hiding (info, warn, debug, err) 
 import           Waziup.Auth hiding (info, warn, debug, err) 
-import           Keycloak as KC hiding (info, warn, debug, err, Scope, createResource, updateResource, deleteResource)
+import           Keycloak (Token, Username, getUsername)
 import           Control.Monad.IO.Class
 import           Control.Monad.Catch as C
 import           Control.Monad
 import           Data.String.Conversions
 import           Servant
 import           System.Log.Logger
-import           Database.MongoDB as DB
+import           Database.MongoDB as DB hiding (Username)
 import           Data.Aeson as JSON
 import           Data.AesonBson
 import           Data.Maybe
@@ -22,6 +22,13 @@ import           Data.Time
 import           Data.Text hiding (find, map, filter)
 
 -- * Projects API
+
+-- | Get all permissions. If no token is passed, the guest token will be used.
+getPermsGateways :: Maybe Token -> Waziup [Perm]
+getPermsGateways tok = do
+  info "Get gateways permissions"
+  gws <- getAllGateways
+  return $ map (\g -> getPerm tok (PermGateway g) gatewayScopes) gws
 
 getGateways :: Maybe Token -> Maybe Bool -> Waziup [Gateway]
 getGateways tok mfull = do
@@ -31,8 +38,7 @@ getGateways tok mfull = do
   gws' <- case mfull of
     Just True -> mapM (getFullGateway tok) gws 
     _ -> return gws
-  gs <- getPerms tok (getPermReq Nothing [GatewaysView])
-  let gws'' = filter (\g -> isPermittedResource GatewaysView (PermGatewayId $ gwId g) gs) gws'
+  let gws'' = filter (\g -> isPermitted tok (PermGateway g) GatewaysView) gws'
   return gws''
 
 getAllGateways :: Waziup [Gateway]
@@ -62,7 +68,6 @@ postGateway tok g = do
     Right _ -> return ()
     Left (CompoundFailure [WriteFailure _ _ _]) -> throwError err422 {errBody = "Gateway ID already exists"}
     Left e -> throwError err500 {errBody = (convertString $ show e)}
-  void $ createResource tok (PermGatewayId $ gwId g) (gwVisibility g) (Just username)
   return NoContent
 
 getGateway :: Maybe Token -> GatewayId -> Maybe Bool -> Waziup Gateway
@@ -72,7 +77,7 @@ getGateway tok gid mfull = do
   g <- case mg of
     Just g -> return g
     Nothing -> throwError err404 {errBody = "Cannot get gateway: id not found"}
-  checkPermResource tok GatewaysView (PermGatewayId gid)
+  checkPermResource tok GatewaysView (PermGateway g)
   case mfull of
     Just True -> getFullGateway tok g
     _ -> return g
@@ -85,11 +90,8 @@ getFullGateway tok g = do
 deleteGateway :: Maybe Token -> GatewayId -> Waziup NoContent
 deleteGateway tok gid = do
   info "Delete gateway"
-  mg <- runMongo $ getGatewayMongo gid
-  when (isNothing mg) $ throwError err404 {errBody = "Cannot get gateway: id not found"}
-  checkPermResource tok GatewaysDelete (PermGatewayId gid) 
-  debug "Delete Keycloak resource"
-  deleteResource tok (PermGatewayId gid)
+  g <- getGateway tok gid Nothing
+  checkPermResource tok GatewaysDelete (PermGateway g) 
   res <- runMongo $ deleteGatewayMongo gid
   if res
     then return NoContent
@@ -97,7 +99,8 @@ deleteGateway tok gid = do
 
 putHeartbeat :: Maybe Token -> GatewayId -> Waziup NoContent
 putHeartbeat tok gid = do
-  checkPermResource tok GatewaysUpdate (PermGatewayId gid) 
+  g <- getGateway tok gid Nothing
+  checkPermResource tok GatewaysUpdate (PermGateway g) 
   currentTime <- liftIO $ getCurrentTime
   runMongo $ modify (select ["_id" =: unGatewayId gid] "gateways") [ "$set" := Doc ["date_modified" := val currentTime]]
   return NoContent
@@ -105,7 +108,8 @@ putHeartbeat tok gid = do
 putGatewayName :: Maybe Token -> GatewayId -> Text -> Waziup NoContent
 putGatewayName tok gid name = do
   info "Put gateway name"
-  checkPermResource tok GatewaysUpdate (PermGatewayId gid)
+  g <- getGateway tok gid Nothing
+  checkPermResource tok GatewaysUpdate (PermGateway g)
   res <- runMongo $ do 
     let sel = ["_id" =: unGatewayId gid]
     mdoc <- findOne (select sel "gateways")
@@ -119,10 +123,11 @@ putGatewayName tok gid name = do
     else throwError err404 {errBody = "Cannot update gateway: id not found"}
 
 -- Change the owner of a gateway. The gateway will also automatically be passed as private.
-putGatewayOwner :: Maybe Token -> GatewayId -> KC.Username -> Waziup NoContent
+putGatewayOwner :: Maybe Token -> GatewayId -> Username -> Waziup NoContent
 putGatewayOwner tok gid owner = do
   info "Put gateway owner"
-  checkPermResource tok GatewaysUpdate (PermGatewayId gid)
+  g <- getGateway tok gid Nothing
+  checkPermResource tok GatewaysUpdate (PermGateway g)
   void $ runMongo $ do 
     let sel = ["_id" =: unGatewayId gid]
     mdoc <- findOne (select sel "gateways")
@@ -131,18 +136,13 @@ putGatewayOwner tok gid owner = do
          modify (select sel "gateways") [ "$set" := Doc ["owner" := val owner, "visibility" := val ("private" :: String)]]
          return True
        _ -> return False 
-  info "Delete Keycloak resource"
-  deleteResource tok (PermGatewayId gid)
-  void $ createResource tok
-                 (PermGatewayId gid)
-                 (Just Private)
-                 (Just owner)
   return NoContent
 
 putGatewayLocation :: Maybe Token -> GatewayId -> Location -> Waziup NoContent
 putGatewayLocation mtok gid loc = do
   info $ "Put gateway location: " ++ (show loc)
-  checkPermResource mtok GatewaysUpdate (PermGatewayId gid)
+  g <- getGateway mtok gid Nothing
+  checkPermResource mtok GatewaysUpdate (PermGateway g)
   res <- runMongo $ do 
     let sel = ["_id" =: unGatewayId gid]
     mdoc <- findOne (select sel "gateways")

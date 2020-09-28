@@ -21,17 +21,18 @@ import           MQTT hiding (info, warn, debug, err)
 getActuators :: Maybe Token -> DeviceId -> Waziup [Actuator]
 getActuators tok did = do
   info "Get actuators"
-  debug "Check permissions"
-  checkPermResource tok DevicesView (PermDeviceId did)
-  debug "Permission granted, returning actuators"
   device <- getDeviceOrion did
+  debug "Check permissions"
+  checkPermResource tok DevicesView (PermDevice device)
+  debug "Permission granted, returning actuators"
   return $ maybeToList' $ devActuators device
 
 postActuator :: Maybe Token -> DeviceId -> Actuator -> Waziup NoContent
 postActuator tok did actuator = do
   info $ "Post actuator: " ++ (show actuator)
+  d <- getDeviceOrion did
   debug "Check permissions"
-  checkPermResource tok DevicesUpdate (PermDeviceId did)
+  checkPermResource tok DevicesUpdate (PermDevice d)
   debug "Permission granted, creating actuator"
   let att = getAttFromActuator actuator
   liftOrion $ O.postAttribute (toEntityId did) devTyp att 
@@ -40,8 +41,9 @@ postActuator tok did actuator = do
 getActuator :: Maybe Token -> DeviceId -> ActuatorId -> Waziup Actuator
 getActuator tok did aid = do
   info "Get actuator"
+  d <- getDeviceOrion did
   debug "Check permissions"
-  checkPermResource tok DevicesView (PermDeviceId did)
+  checkPermResource tok DevicesView (PermDevice d)
   debug "Permission granted, returning actuator"
   device <- getDeviceOrion did
   case L.find (\s -> actId s == aid) (maybeToList' $ devActuators device) of
@@ -53,8 +55,9 @@ getActuator tok did aid = do
 deleteActuator :: Maybe Token -> DeviceId -> ActuatorId -> Waziup NoContent
 deleteActuator tok did aid = do
   info "Delete actuator"
+  d <- getDeviceOrion did
   debug "Check permissions"
-  checkPermResource tok DevicesUpdate (PermDeviceId did)
+  checkPermResource tok DevicesUpdate (PermDevice d)
   debug "Permission granted, deleting actuator"
   liftOrion $ O.deleteAttribute (toEntityId did) devTyp (toAttributeId aid)
   return NoContent
@@ -80,10 +83,10 @@ putActuatorValueType mtok did aid av = do
 putActuatorValue :: Maybe Token -> DeviceId -> ActuatorId -> JSON.Value -> Waziup NoContent
 putActuatorValue mtok did aid actVal = do
   info $ "Put actuator value: " ++ (show actVal)
-  debug "Check permissions"
-  checkPermResource mtok DevicesUpdate (PermDeviceId did)
-  debug "Permission granted, returning actuator"
   device <- getDeviceOrion did
+  debug "Check permissions"
+  checkPermResource mtok DevicesUpdate (PermDevice device)
+  debug "Permission granted, returning actuator"
   case L.find (\s -> actId s == aid) (maybeToList' $ devActuators device) of
     Just act -> do
       liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromActuator (act {actValue = Just actVal}))
@@ -96,9 +99,9 @@ putActuatorValue mtok did aid actVal = do
 updateActuatorField :: Maybe Token -> DeviceId -> ActuatorId -> (Actuator -> Waziup ()) -> Waziup NoContent
 updateActuatorField mtok did aid w = do
   debug "Check permissions"
-  checkPermResource mtok DevicesUpdate (PermDeviceId did)
-  debug "Permission granted, updating actuator"
   device <- getDeviceOrion did
+  checkPermResource mtok DevicesUpdate (PermDevice device)
+  debug "Permission granted, updating actuator"
   case L.find (\s -> (actId s) == aid) (maybeToList' $ devActuators device) of
     Just act -> do
       w act

@@ -47,7 +47,6 @@ getEntities mq mtyp = do
   ents' <- concatMapM (\n -> getEntities' mq mtyp 1000 (n * 1000) >>= return . fst) [1..n]
   return $ ents <> ents'
 
-
 getEntities' :: Maybe Text -> Maybe EntityType -> Int -> Int -> Orion ([Entity], Int)
 getEntities' mq mtyp limit offset = do
   let qq = case mq of
@@ -68,8 +67,6 @@ getEntities' mq mtyp limit offset = do
     Left (e :: String) -> do
       debug $ "Orion parse error: " ++ (show e) 
       throwError $ ParseError $ pack (show e)
-  
-
 
 postEntity :: Entity -> Orion SubId 
 postEntity e = do

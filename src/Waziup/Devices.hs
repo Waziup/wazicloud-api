@@ -31,7 +31,8 @@ getPermsDevices :: Maybe Token -> Waziup [Perm]
 getPermsDevices tok = do
   info "Get devices permissions"
   devices <- getAllDevices Nothing
-  return $ map (\dev -> getPerm tok (PermDevice dev) deviceScopes) devices
+  let perms = map (\dev -> getPerm tok (PermDevice dev) deviceScopes) devices
+  return $ filter (\(Perm _ scps) -> not $ L.null scps) perms
 
 -- | Get devices, given a query, limits and offsets
 getDevices :: Maybe Token -> Maybe DevicesQuery -> Maybe Limit -> Maybe Offset -> Waziup [Device]

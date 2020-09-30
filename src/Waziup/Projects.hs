@@ -21,6 +21,7 @@ import           Database.MongoDB as DB
 import           Data.Aeson as JSON
 import           Data.AesonBson
 import           Data.Text hiding (find, map, filter, any)
+import qualified Data.List as L
 
 -- * Projects API
 
@@ -29,13 +30,13 @@ getPermsProjects :: Maybe Token -> Waziup [Perm]
 getPermsProjects tok = do
   info "Get projects permissions"
   projects <- getAllProjects
-  return $ map (\p -> getPerm tok (PermProject p) projectScopes) projects
+  let perms = map (\p -> getPerm tok (PermProject p) projectScopes) projects
+  return $ filter (\(Perm _ scps) -> not $ L.null scps) perms
 
 getProjects :: Maybe Token -> Maybe Bool -> Waziup [Project]
 getProjects tok mfull = do
   info "Get projects"
   projects <- getAllProjects
-  info $ "Got projects: " ++ (show projects)
   let projects2 = filter (\p -> isPermitted tok (PermProject p) ProjectsView) projects -- TODO limits
   projects3 <- case mfull of
     Just True -> mapM (getFullProject tok) projects2
@@ -46,7 +47,6 @@ getAllProjects :: Waziup [Project]
 getAllProjects = do
   runMongo $ do
     docs <- rest =<< find (select [] "projects")
-    info $ "Got projects docs: " ++ (show docs)
     return $ catMaybes $ map (resultToMaybe . fromJSON . Object . replaceKey "_id" "id" .  aesonify) docs
 
 postProject :: Maybe Token -> Project -> Waziup ProjectId

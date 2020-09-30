@@ -19,6 +19,7 @@ import           Data.Aeson as JSON
 import           Data.AesonBson
 import           Data.Maybe
 import           Data.Time
+import qualified Data.List as L
 import           Data.Text hiding (find, map, filter)
 
 -- * Projects API
@@ -28,7 +29,8 @@ getPermsGateways :: Maybe Token -> Waziup [Perm]
 getPermsGateways tok = do
   info "Get gateways permissions"
   gws <- getAllGateways
-  return $ map (\g -> getPerm tok (PermGateway g) gatewayScopes) gws
+  let perms = map (\g -> getPerm tok (PermGateway g) gatewayScopes) gws
+  return $ filter (\(Perm _ scps) -> not $ L.null scps) perms
 
 getGateways :: Maybe Token -> Maybe Bool -> Waziup [Gateway]
 getGateways tok mfull = do

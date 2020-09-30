@@ -195,7 +195,6 @@ orionGetHeaders path = do
   info $ "Issuing ORION GET with url: " ++ (show url) 
   debug $ "  headers: " ++ (show $ opts ^. W.headers) 
   eRes <- C.try $ liftIO $ W.getWith opts url
-  info $ (show eRes)
   case eRes of 
     Right res -> do
       return (fromJust $ res ^? responseBody, fromJust $ res ^? responseHeaders)

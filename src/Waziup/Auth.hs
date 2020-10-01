@@ -12,7 +12,7 @@ import           Control.Monad.Extra
 import           Data.String.Conversions
 import           Data.Maybe
 import           Data.Time
-import           Data.Text hiding (map, any, filter)
+import           Data.Text as T hiding (map, any, filter, null)
 import           Data.Cache as C hiding (lookup)
 import           Data.Cache.Internal as CI
 import qualified Data.Map as M
@@ -37,46 +37,50 @@ postAuth (AuthBody username password) = do
 -- | Throws error 403 if the scope is not premitted for this resource.
 checkPermResource :: Maybe Token -> Scope -> PermResource -> Waziup ()
 checkPermResource mtok scp res = do
-  if isPermitted mtok res scp
-    then return ()
-    else throwError err403 {errBody = "Forbidden: Cannot access resource"}
+  case isPermitted mtok res scp of
+    Nothing -> return ()
+    Just e -> case res of
+      PermDevice d  -> throwError err403 {errBody = "Forbidden: Cannot access device "  <> (convertString $ unDeviceId $ devId d) <> ". Cause: " <> (convertString e)}
+      PermGateway d -> throwError err403 {errBody = "Forbidden: Cannot access gateway " <> (convertString $ unGatewayId $ gwId d) <> ". Cause: " <> (convertString e)}
+      PermProject d -> throwError err403 {errBody = "Forbidden: Cannot access project " <> (convertString $ pName d) <> ". Cause: " <> (convertString e)}
 
 -- | Check the resource against the corresponding scopes.
 getPerm :: Maybe Token -> PermResource -> [Scope] -> Perm
-getPerm tok res scopes = Perm (getPermResId res) (filter (isPermitted tok res) scopes)
+getPerm tok res scopes = Perm (getPermResId res) (filter (isNothing . isPermitted tok res) scopes)
 
 -- | Check the resource against the corresponding scope.
-isPermitted :: Maybe Token -> PermResource -> Scope -> Bool
+isPermitted :: Maybe Token -> PermResource -> Scope -> IsPermitted
 isPermitted tok res scope = isPermitted' (getUserFromToken tok) res scope 
 
 -- | Check the resource against the corresponding scope.
-isPermitted' :: User -> PermResource -> Scope -> Bool
+isPermitted' :: User -> PermResource -> Scope -> IsPermitted
 isPermitted' user res scope = case lookup scope allPermissions of
-  Just policies -> or $ map (\p -> p user res) policies
-  Nothing   -> error "Scope not found"
-
+  Just policies -> case sequence $ map (\p -> p user res) policies of
+                     Just as -> Just $ T.intercalate ", " as
+                     Nothing -> Nothing
+  Nothing   -> error "Scope not found" where
 
 -- | Policies
 
 -- An admin always have access
 adminUser :: Policy
-adminUser user _ = userAdmin user == Just True 
+adminUser user _ = if userAdmin user == Just True then Nothing else Just "You are not admin"
 
 -- Access to a public resource
 publicResource :: Policy 
-publicResource _ (PermDevice d) = devVisibility d == Just Public
-publicResource _ (PermGateway d) = gwVisibility d == Just Public
+publicResource _ (PermDevice d)  = if not $ devVisibility d == Just Private then Nothing else Just "this device is private"
+publicResource _ (PermGateway d) = if not $ gwVisibility d == Just Private then Nothing  else Just "this gateway is private"
 publicResource _ (PermProject d) = error "Projects doesn't have a visibility" 
 
 -- Access if you are the owner of the resource
 resourceOwner :: Policy 
-resourceOwner user (PermDevice d)  = Just (userUsername user) == devOwner d 
-resourceOwner user (PermGateway d) = Just (userUsername user) == gwOwner d 
-resourceOwner user (PermProject d) = Just (userUsername user) == pOwner d 
+resourceOwner user (PermDevice d)  = if Just (userUsername user) == devOwner d then Nothing else Just "not owner of the device"
+resourceOwner user (PermGateway d) = if Just (userUsername user) == gwOwner d then Nothing else Just "not owner of the gateway"
+resourceOwner user (PermProject d) = if Just (userUsername user) == pOwner d then Nothing else Just "not owner of the project"
 
 -- everybody have access
 allUsers :: Policy 
-allUsers tok res = True
+allUsers tok res = Nothing
 
 -- Policies associated to each scope
 allPermissions :: [(Scope, [Policy])]

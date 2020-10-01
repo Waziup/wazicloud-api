@@ -41,7 +41,7 @@ getDevices tok mq mlimit moffset = do
   devices <- getAllDevices mq
   info "Got devices Orion"
   -- filter devices not permitted
-  let devices2 = filter (\d -> isPermitted tok (PermDevice d) DevicesView) devices
+  let devices2 = filter (\d -> isNothing $ isPermitted tok (PermDevice d) DevicesView) devices
   -- remove offset devices
   let devices3 = maybe' devices2 L.drop moffset
   -- cut at the limit

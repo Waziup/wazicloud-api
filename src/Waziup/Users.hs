@@ -27,6 +27,8 @@ getUser :: Maybe KC.Token -> UserId -> Waziup User
 getUser tok (UserId uid) = do
   info "Get users"
   return $ getUserFromToken tok
+  u <- liftKeycloak tok $ KC.getUser (KC.UserId uid)
+  return $ toUser u
 
 getUserFromToken :: Maybe KC.Token -> User
 getUserFromToken mtok = case mtok of

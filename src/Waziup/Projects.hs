@@ -37,7 +37,7 @@ getProjects :: Maybe Token -> Maybe Bool -> Waziup [Project]
 getProjects tok mfull = do
   info "Get projects"
   projects <- getAllProjects
-  let projects2 = filter (\p -> isPermitted tok (PermProject p) ProjectsView) projects -- TODO limits
+  let projects2 = filter (\p -> isNothing $ isPermitted tok (PermProject p) ProjectsView) projects -- TODO limits
   projects3 <- case mfull of
     Just True -> mapM (getFullProject tok) projects2
     _ -> return projects2

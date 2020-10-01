@@ -188,7 +188,7 @@ isAuthDevice did cache scope = do
   dev <- getDeviceFromEntity <$> (liftOrion $ O.getEntity (EntityId $ unDeviceId did) devTyp)
   let isAuth = isPermitted' user (PermDevice dev) scope
   debug $ "Perm check: " ++ (show isAuth)
-  return isAuth
+  return $ isNothing isAuth
 
 -- Post sensor value to DBs
 postSensorValue :: DeviceId -> SensorId -> SensorValue -> Waziup ()

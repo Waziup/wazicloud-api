@@ -293,7 +293,8 @@ fromScope' a = case readMay a of
   Nothing -> a
 
 -- Policy
-type Policy = User -> PermResource -> Bool
+type IsPermitted = Maybe Text
+type Policy = User -> PermResource -> IsPermitted
 
 ---------------
 -- * Devices --

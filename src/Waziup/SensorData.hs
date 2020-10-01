@@ -37,7 +37,7 @@ getDatapoints tok mdids msids lim offset srt dateFrom dateTo calibEn = do
     Nothing -> throwError err400 {errBody = "parameters 'devices' must be present"}
     Just dids -> return dids
   devs <- mapM (getDevice tok) dids
-  let dids' = map devId $ filter (\d -> isPermitted tok (PermDevice d) DevicesDataView) devs
+  let dids' = map devId $ filter (\d -> isNothing $ isPermitted tok (PermDevice d) DevicesDataView) devs
   res <- runMongo $ getDatapointsMongo dids' msids lim offset srt dateFrom dateTo
   res' <- if calibEn == Just False then return res else calibrateDatapoints tok dids' res 
   return res'

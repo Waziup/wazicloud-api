@@ -136,6 +136,14 @@ type SensorsAPI = Flat ( Header "Authorization" Token :>
         :<|> "values"
            :> ReqBody '[JSON] [SensorValue]
            :> PostNoContent   '[JSON] NoContent
+        :<|> "values"
+           :> QueryParam "limit"      Int
+           :> QueryParam "offset"     Int
+           :> QueryParam "sort"       Sort
+           :> QueryParam "date_from"  UTCTime
+           :> QueryParam "date_to"    UTCTime
+           :> QueryParam "calibrated" Bool
+           :> Get '[JSON, CSV' 'HasHeader CSVOpts] [Datapoint]
       )))
 
 

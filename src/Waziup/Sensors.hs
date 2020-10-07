@@ -5,11 +5,13 @@ module Waziup.Sensors where
 
 import           Waziup.Types
 import           Waziup.Utils
+import           Waziup.SensorData hiding (info, warn, debug, err)
 import           Waziup.Auth hiding (info, warn, debug, err)
 import           Waziup.Devices hiding (info, warn, debug, err)
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
 import qualified Data.List as L
+import           Data.Time
 import           Servant
 import           Keycloak as KC hiding (Scope) 
 import           Orion as O hiding (info, warn, debug, err)
@@ -131,6 +133,18 @@ putSensorValues mtok did sid svs = do
     Nothing -> do 
       warn "sensor not found"
       throwError err404 {errBody = "Sensor not found"}
+
+getSensorValues :: Maybe Token
+              -> DeviceId
+              -> SensorId
+              -> Maybe Int
+              -> Maybe Int
+              -> Maybe Sort
+              -> Maybe UTCTime
+              -> Maybe UTCTime
+              -> Maybe Bool
+              -> Waziup [Datapoint]
+getSensorValues tok mdids msids lim offset srt dateFrom dateTo calibEn = getDatapoints tok (Just [mdids]) (Just [msids]) lim offset srt dateFrom dateTo calibEn
   
 updateSensorField :: Maybe Token -> DeviceId -> SensorId -> (Sensor -> Waziup ()) -> Waziup NoContent
 updateSensorField mtok did sid w = do

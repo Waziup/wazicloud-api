@@ -31,6 +31,7 @@ import           Waziup.Devices hiding (info, warn, debug, err)
 import           Orion as O hiding (info, warn, debug, err)
 import           Network.MQTT.Client hiding (MQTTConfig)
 import qualified Network.MQTT.Types as T
+import           Network.URI
 import           Conduit
 import           Database.MongoDB as DB hiding (Username, Password, host)
 import           Safe
@@ -41,6 +42,9 @@ dev_topic = "devices"
 sen_topic = "sensors"
 act_topic = "actuators"
 val_topic = "value"
+
+prot :: ProtocolLevel
+prot = Protocol50
 
 -- | Cache for the connection
 data ConnCache = ConnCache {
@@ -74,8 +78,8 @@ handleStreams :: WaziupInfo -> AppData -> AppData -> IO ()
 handleStreams wi extClient intServer = do
   cache <- atomically $ newTVar Nothing 
   debug $ "Starting streams"
-  let downstream = appSource extClient .| conduitParser T.parsePacket .| filterMQTTin  cache extClient .| appSink' intServer
-  let upstream   = appSource intServer .| conduitParser T.parsePacket .| filterMQTTout cache intServer .| appSink' extClient
+  let downstream = appSource extClient .| conduitParser (T.parsePacket prot) .| filterMQTTin  cache extClient .| appSink' intServer
+  let upstream   = appSource intServer .| conduitParser (T.parsePacket prot) .| filterMQTTout cache intServer .| appSink' extClient
   void $ concurrently
     (runWaziup (runConduit downstream) wi) --traffic downstream
     (runWaziup (runConduit upstream) wi)   --traffic upstream
@@ -83,8 +87,8 @@ handleStreams wi extClient intServer = do
   debug $ "Ending streams"
   void $ liftIO $ runWaziup (putConnect cache False) wi
 
-appSink' :: AppData -> Consumer T.MQTTPkt Waziup () 
-appSink' app = awaitForever (yield . convertString . T.toByteString) .| appSink app
+appSink' :: forall o. AppData -> ConduitT T.MQTTPkt o Waziup () 
+appSink' app = awaitForever (yield . convertString . show) .| appSink app
 
 -- | traffic going downstream (from external client to internal MQTT server)
 filterMQTTin :: TVar (Maybe ConnCache) -> AppData -> ConduitT (w, T.MQTTPkt) T.MQTTPkt Waziup ()
@@ -95,24 +99,24 @@ filterMQTTin cache extClient = awaitForever $ \(_,res) -> do
   lift $ putConnect cache True
   case res of
     -- Decode Connect request
-    (T.ConnPkt p)    -> connectRequest p cache
+    (T.ConnPkt p _)    -> connectRequest p cache
     (T.PublishPkt p) -> publishRequest p cache extClient 
     _ -> yield res
     
 connectRequest :: T.ConnectRequest -> TVar (Maybe ConnCache) -> ConduitT (w, T.MQTTPkt) T.MQTTPkt Waziup ()
-connectRequest p@(T.ConnectRequest user pass _ _ _ cid) cache = do
+connectRequest p@(T.ConnectRequest user pass _ _ _ cid _) cache = do
   -- store user and connection ID
   tok <- if isJust user && isJust pass 
     then do
       t <- lift $ postAuth $ AuthBody (convertString $ fromJust user) (convertString $ fromJust pass)
       return $ Just t
     else return Nothing
-  liftIO $ atomically $ writeTVar cache (Just $ ConnCache (getUserFromToken tok) cid) 
+  --liftIO $ atomically $ writeTVar cache (Just $ ConnCache (getUserFromToken tok) cid) 
   lift $ putConnect cache True
-  yield $ T.ConnPkt p
+  yield $ T.ConnPkt p prot
 
 publishRequest :: T.PublishRequest -> TVar (Maybe ConnCache) -> AppData -> ConduitT (w, T.MQTTPkt) T.MQTTPkt Waziup ()
-publishRequest p@(T.PublishRequest _ _ _ topic pid body) cache extClient = do
+publishRequest p@(T.PublishRequest _ _ _ topic pid body _) cache extClient = do
   -- Decode MQTT message
   case decodePub topic body of
     MQTTSen did sid senVal -> do
@@ -126,7 +130,7 @@ publishRequest p@(T.PublishRequest _ _ _ topic pid body) cache extClient = do
           yield $ T.PublishPkt p
         else do
           -- return PUBACK directly to client (MQTT offers no way to inform the client about the failure)
-          yield (T.PubACKPkt (T.PubACK pid)) .| appSink' extClient
+          yield (T.PubACKPkt (T.PubACK pid 0x40 [])) .| appSink' extClient
 
     MQTTAct did aid actVal -> do 
       isAuth <- lift $ isAuthDevice did cache DevicesDataCreate 
@@ -136,7 +140,7 @@ publishRequest p@(T.PublishRequest _ _ _ topic pid body) cache extClient = do
           lift $ putActuatorValue did aid actVal
           yield $ T.PublishPkt p
         else do
-          yield (T.PubACKPkt (T.PubACK pid)) .| appSink' extClient
+          yield (T.PubACKPkt (T.PubACK pid 0x40 [])) .| appSink' extClient
     MQTTError e -> err e
     MQTTOther -> yield (T.PublishPkt p)
       
@@ -146,7 +150,7 @@ filterMQTTout cache intServer = awaitForever $ \(_, res) -> do
   debug $ "Received upstream: " ++ (show res)
   case res of
     -- Decode Publish
-    (T.PublishPkt (T.PublishRequest _ _ _ topic id body)) -> do
+    (T.PublishPkt (T.PublishRequest _ _ _ topic id body _)) -> do
       -- Decode MQTT message
       case decodePub topic body of
         MQTTSen did _ _ -> do
@@ -155,13 +159,13 @@ filterMQTTout cache intServer = awaitForever $ \(_, res) -> do
           debug $ "Perm check upstream: " ++ (show isAuth)
           if isAuth 
             then yield res
-            else yield (T.PubACKPkt (T.PubACK id)) .| appSink' intServer
+            else yield (T.PubACKPkt (T.PubACK id 0x40 [])) .| appSink' intServer
         MQTTAct did _ _ -> do 
           isAuth <- lift $ isAuthDevice did cache DevicesDataView 
           debug $ "Perm check upstream: " ++ (show isAuth)
           if isAuth 
             then yield res
-            else yield (T.PubACKPkt (T.PubACK id)) .| appSink' intServer
+            else yield (T.PubACKPkt (T.PubACK id 0x40 [])) .| appSink' intServer
         MQTTError e -> do
           err e
         MQTTOther -> yield res
@@ -237,7 +241,8 @@ publishSensorValue (DeviceId d) (SensorId s) v = do
   (MQTTConfig host port) <- view $ waziupConfig.mqttConf
   info $ "Publish sensor value: " ++ (convertString $ encode v) ++ " to topic: " ++ (show topic)
   liftIO $ do
-    mc <- runClient mqttConfig { _hostname = convertString host, _port = port}
+    let (Just uri) = parseURI $ "mqtt://" <> (convertString host) <> ":" <> (show port)
+    mc <- connectURI mqttConfig uri
     liftIO $ publish mc topic (convertString $ encode v) False
 
 publishActuatorValue :: DeviceId -> ActuatorId -> JSON.Value -> Waziup ()
@@ -246,7 +251,8 @@ publishActuatorValue (DeviceId d) (ActuatorId a) v = do
   (MQTTConfig host port) <- view $ waziupConfig.mqttConf
   info $ "Publish actuator value: " ++ (convertString $ encode v) ++ " to topic: " ++ (show topic)
   liftIO $ do
-    mc <- runClient mqttConfig { _hostname = convertString host, _port = port}
+    let (Just uri) = parseURI $ "mqtt://" <> (convertString host) <> ":" <> (show port)
+    mc <- connectURI mqttConfig uri
     liftIO $ publish mc topic (convertString $ encode v) False
 
 -- Logging

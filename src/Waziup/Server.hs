@@ -1,7 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeOperators #-}
 
 module Waziup.Server where
 
@@ -31,14 +29,24 @@ import           Servant
 import           Servant.Server
 import           Servant.Swagger
 import           Servant.Swagger.UI
+import           Servant.Swagger.Tags
+import           Servant.Auth.Server
+import           Servant.Auth.Swagger
+import           Servant.API.Flatten
 import           System.Log.Logger
 
 -- * Building the server
 
+-- complete server, including Waziup APIs, documentation and redirection
 server :: ServerT API Waziup
-server = serverWaziup
-    :<|> serverDocs
+server = waziupServer 
+    :<|> docsServer
     :<|> redir
+
+-- Waziup server with all resources and authentication token
+waziupServer :: ServerT WaziupAPI Waziup
+waziupServer = resourcesServer
+          :<|> postAuth
 
 -- redirect root queries to docs
 redir :: ServerT Redir Waziup
@@ -48,117 +56,116 @@ redir = do
   throwError $ err301 { errHeaders = [("Location", convertString $ host <> "/docs")] }
 
 -- All API servers
-serverWaziup :: ServerT WaziupAPI Waziup
-serverWaziup = authServer
-          :<|> devicesServer
-          :<|> sensorsServer
-          :<|> actuatorsServer
-          :<|> sensorDataServer
-          :<|> gatewaysServer
-          :<|> projectsServer
-          :<|> usersServer
-          :<|> socialsServer
-          :<|> notifsServer
-          :<|> ontologiesServer
+resourcesServer :: AuthResult User -> ServerT ResourcesAPI Waziup
+resourcesServer u = authServer u
+         :<|> devicesServer u
+         :<|> sensorsServer u
+         :<|> actuatorsServer u
+         :<|> sensorDataServer u
+         :<|> gatewaysServer u
+         :<|> projectsServer u
+         :<|> usersServer u
+         :<|> socialsServer u
+         :<|> notifsServer u
+         :<|> ontologiesServer 
 
 -- Docs server
-serverDocs :: ServerT WaziupDocs Waziup
-serverDocs = hoistDocs $ swaggerSchemaUIServer swaggerDoc
+docsServer :: ServerT DocsAPI Waziup
+docsServer = hoistDocs $ swaggerSchemaUIServer swaggerDoc
 
--- Authentication server
-authServer :: ServerT AuthAPI Waziup
-authServer = getPermsDevices
-        :<|> getPermsProjects
-        :<|> getPermsGateways
-        :<|> postAuth
+-- Authorization server
+authServer :: AuthResult User -> ServerT AuthAPI Waziup
+authServer u = getPermsDevices u
+          :<|> getPermsProjects u
+          :<|> getPermsGateways u
 
 -- Devices servers
-devicesServer :: ServerT DevicesAPI Waziup
-devicesServer = getDevices
-           :<|> postDevice
-           :<|> getDevice
-           :<|> deleteDevice
-           :<|> putDeviceName
-           :<|> putDeviceLocation
-           :<|> putDeviceGatewayId
-           :<|> putDeviceVisibility
-           :<|> putDeviceDeployed
-           :<|> putDeviceOwner
+devicesServer :: AuthResult User -> ServerT DevicesAPI Waziup
+devicesServer u = getDevices u
+           :<|> postDevice u
+           :<|> getDevice u
+           :<|> deleteDevice u
+           :<|> putDeviceName u
+           :<|> putDeviceLocation u
+           :<|> putDeviceGatewayId u
+           :<|> putDeviceVisibility u
+           :<|> putDeviceDeployed u
+           :<|> putDeviceOwner u
 
 -- Sensors server
-sensorsServer :: ServerT SensorsAPI Waziup
-sensorsServer = getSensors
-           :<|> postSensor
-           :<|> getSensor
-           :<|> deleteSensor
-           :<|> putSensorName
-           :<|> putSensorSensorKind
-           :<|> putSensorQuantityKind
-           :<|> putSensorUnit
-           :<|> putSensorCalib
-           :<|> putSensorValue
-           :<|> putSensorValues
-           :<|> getSensorValues
+sensorsServer :: AuthResult User -> ServerT SensorsAPI Waziup
+sensorsServer u = getSensors u
+           :<|> postSensor u
+           :<|> getSensor u
+           :<|> deleteSensor u
+           :<|> putSensorName u
+           :<|> putSensorSensorKind u
+           :<|> putSensorQuantityKind u
+           :<|> putSensorUnit u
+           :<|> putSensorCalib u
+           :<|> putSensorValue u
+           :<|> putSensorValues u
+           :<|> getSensorValues u
 
 -- Sensor data server
-sensorDataServer :: ServerT SensorDataAPI Waziup
-sensorDataServer = getDatapoints
+sensorDataServer :: AuthResult User -> ServerT SensorDataAPI Waziup
+sensorDataServer u = getDatapoints u
 
 -- Gateways server
-gatewaysServer :: ServerT GatewaysAPI Waziup
-gatewaysServer = getGateways
-            :<|> postGateway
-            :<|> getGateway
-            :<|> deleteGateway
-            :<|> putHeartbeat
-            :<|> putGatewayName
-            :<|> putGatewayOwner
-            :<|> putGatewayLocation
+gatewaysServer :: AuthResult User -> ServerT GatewaysAPI Waziup
+gatewaysServer u = getGateways u
+            :<|> postGateway u
+            :<|> getGateway u
+            :<|> deleteGateway u
+            :<|> putHeartbeat u
+            :<|> putGatewayName u
+            :<|> putGatewayOwner u
+            :<|> putGatewayLocation u
 
 -- Actuators server
-actuatorsServer :: ServerT ActuatorsAPI Waziup
-actuatorsServer = getActuators
-             :<|> postActuator
-             :<|> getActuator
-             :<|> deleteActuator
-             :<|> putActuatorName
-             :<|> putActActuatorKind
-             :<|> putActuatorValueType
-             :<|> putActuatorValue
+actuatorsServer :: AuthResult User -> ServerT ActuatorsAPI Waziup
+actuatorsServer u = getActuators u
+             :<|> postActuator u
+             :<|> getActuator u
+             :<|> deleteActuator u
+             :<|> putActuatorName u
+             :<|> putActActuatorKind u
+             :<|> putActuatorValueType u
+             :<|> putActuatorValue u
 
 -- users server
-usersServer :: ServerT UsersAPI Waziup
-usersServer = getUsers
-         :<|> postUser
-         :<|> getUser
-         :<|> putUserCredit
+usersServer :: AuthResult User -> ServerT UsersAPI Waziup
+usersServer u = getUsers u
+         :<|> postUser u
+         :<|> getUser u
+         :<|> putUserCredit u
 
 -- socials server
-socialsServer :: ServerT SocialsAPI Waziup
-socialsServer = getSocialMessages
-           :<|> postSocialMessage
-           :<|> postSocialMessageBatch
-           :<|> getSocialMessage
-           :<|> deleteSocialMessage
+socialsServer :: AuthResult User -> ServerT SocialsAPI Waziup
+socialsServer u = getSocialMessages u
+           :<|> postSocialMessage u
+           :<|> postSocialMessageBatch u
+           :<|> getSocialMessage u
+           :<|> deleteSocialMessage u
 
 --notifs server
-notifsServer :: ServerT NotifsAPI Waziup
-notifsServer = getNotifs
-          :<|> postNotif
-          :<|> getNotif
-          :<|> patchNotif
-          :<|> deleteNotif
-          :<|> putNotifStatus
+notifsServer :: AuthResult User -> ServerT NotifsAPI Waziup
+notifsServer u = getNotifs u
+          :<|> postNotif u
+          :<|> getNotif u
+          :<|> patchNotif u
+          :<|> deleteNotif u
+          :<|> putNotifStatus u 
 
 -- projects server
-projectsServer :: ServerT ProjectsAPI Waziup
-projectsServer = getProjects
-            :<|> postProject
-            :<|> getProject
-            :<|> deleteProject
-            :<|> putProjectDevices
-            :<|> putProjectGateways
-            :<|> putProjectName
+projectsServer :: AuthResult User -> ServerT ProjectsAPI Waziup
+projectsServer u = getProjects u
+            :<|> postProject u
+            :<|> getProject u
+            :<|> deleteProject u
+            :<|> putProjectDevices u
+            :<|> putProjectGateways u
+            :<|> putProjectName u
 
 -- ontologies server
 ontologiesServer :: ServerT OntologiesAPI Waziup
@@ -167,55 +174,50 @@ ontologiesServer = getSensorKinds
               :<|> getQuantityKinds
               :<|> getUnits
 
--- final server
-waziupServer :: WaziupInfo -> Application
-waziupServer conf = serve waziupAPI $ Servant.Server.hoistServer waziupAPI (getHandler conf) server
 
 -- Swagger docs
 swaggerDoc :: S.Swagger
-swaggerDoc = toSwagger (Proxy :: Proxy WaziupAPI)
+swaggerDoc = toSwagger ((Proxy :: Proxy WaziupAPI))
   & S.info . S.title       .~ "Waziup API"
   & S.info . S.version     .~ "v2.0.0"
   & S.info . S.description ?~ "This API allows you to access all Waziup services.\n\
                               \In order to access protected services, first get a token with POST /auth/token.\n\
                               \Then insert this token in the authorization key, specifying “Bearer” in front. For example \"Bearer eyJhbGc…\"."
   & S.basePath ?~ "/api/v2"
-  & S.applyTagsFor devicesOps ["Devices"]
-  & S.applyTagsFor sensorOps  ["Sensors"]
-  & S.applyTagsFor actuatOps  ["Actuators"]
-  & S.applyTagsFor dataOps    ["Sensor Data"]
-  & S.applyTagsFor authOps    ["Auth"]
-  & S.applyTagsFor projectOps ["Projects"]
-  & S.applyTagsFor userOps    ["Users"]
-  & S.applyTagsFor ontoOps    ["Ontologies"]
-  & S.applyTagsFor gwsOps     ["Gateways"]
-  & S.applyTagsFor socialsOps ["Socials"]
-  & S.applyTagsFor notifsOps  ["Notifs"]
-  & S.tags .~ (fromList [])
+ -- & S.applyTagsFor devicesOps ["Devices"]
+ -- & S.applyTagsFor sensorOps  ["Sensors"]
+ -- & S.applyTagsFor actuatOps  ["Actuators"]
+ -- & S.applyTagsFor dataOps    ["Sensor Data"]
+ -- & S.applyTagsFor authOps    ["Auth"]
+ -- & S.applyTagsFor projectOps ["Projects"]
+ -- & S.applyTagsFor userOps    ["Users"]
+  -- & S.applyTagsFor ontoOps    ["Ontologies"]
+ -- & S.applyTagsFor gwsOps     ["Gateways"]
+ -- & S.applyTagsFor socialsOps ["Socials"]
+ -- & S.applyTagsFor notifsOps  ["Notifs"]
+ -- & S.tags .~ (fromList [])
   where
-    devicesOps, sensorOps, actuatOps, dataOps, authOps, projectOps, userOps, ontoOps, gwsOps, socialsOps, notifsOps :: Traversal' S.Swagger S.Operation
-    devicesOps = subOperations (Proxy :: Proxy DevicesAPI)    (Proxy :: Proxy WaziupAPI)
-    sensorOps  = subOperations (Proxy :: Proxy SensorsAPI)    (Proxy :: Proxy WaziupAPI)
-    actuatOps  = subOperations (Proxy :: Proxy ActuatorsAPI)  (Proxy :: Proxy WaziupAPI)
-    dataOps    = subOperations (Proxy :: Proxy SensorDataAPI) (Proxy :: Proxy WaziupAPI)
-    authOps    = subOperations (Proxy :: Proxy AuthAPI)       (Proxy :: Proxy WaziupAPI)
-    projectOps = subOperations (Proxy :: Proxy ProjectsAPI)   (Proxy :: Proxy WaziupAPI)
-    userOps    = subOperations (Proxy :: Proxy UsersAPI)      (Proxy :: Proxy WaziupAPI)
-    ontoOps    = subOperations (Proxy :: Proxy OntologiesAPI) (Proxy :: Proxy WaziupAPI)
-    gwsOps     = subOperations (Proxy :: Proxy GatewaysAPI)   (Proxy :: Proxy WaziupAPI)
-    socialsOps = subOperations (Proxy :: Proxy SocialsAPI)    (Proxy :: Proxy WaziupAPI)
-    notifsOps  = subOperations (Proxy :: Proxy NotifsAPI)     (Proxy :: Proxy WaziupAPI)
+--    devicesOps, ontoOps :: Traversal' S.Swagger S.Operation
+    --devicesOps, sensorOps, actuatOps, dataOps, authOps, projectOps, userOps, ontoOps, gwsOps, socialsOps, notifsOps :: Traversal' S.Swagger S.Operation
+ --   (devicesOps  :: Traversal' S.Swagger S.Operation) = subOperations (Proxy :: Proxy WaziupToken) (Proxy :: Proxy (WaziupAPI))
+--    sensorOps  = subOperations (Proxy :: Proxy SensorsAPI)    (Proxy :: Proxy WaziupAPI)
+ --   actuatOps  = subOperations (Proxy :: Proxy ActuatorsAPI)  (Proxy :: Proxy WaziupAPI)
+ --   dataOps    = subOperations (Proxy :: Proxy SensorDataAPI) (Proxy :: Proxy WaziupAPI)
+ --   authOps    = subOperations (Proxy :: Proxy AuthAPI)       (Proxy :: Proxy WaziupAPI)
+ --   projectOps = subOperations (Proxy :: Proxy ProjectsAPI)   (Proxy :: Proxy WaziupAPI)
+ --   userOps    = subOperations (Proxy :: Proxy UsersAPI)      (Proxy :: Proxy WaziupAPI)
+ --   ontoOps    = subOperations (Proxy :: Proxy OntologiesAPI) (Proxy :: Proxy (Flat WaziupAPI))
+ --   gwsOps     = subOperations (Proxy :: Proxy GatewaysAPI)   (Proxy :: Proxy WaziupAPI)
+ --   socialsOps = subOperations (Proxy :: Proxy SocialsAPI)    (Proxy :: Proxy WaziupAPI)
+ --   notifsOps  = subOperations (Proxy :: Proxy NotifsAPI)     (Proxy :: Proxy WaziupAPI)
 
 -- * helpers
-
-waziupAPI :: Proxy API
-waziupAPI = Proxy
 
 getHandler :: WaziupInfo -> Waziup a -> Servant.Handler a
 getHandler s x = runReaderT x s
 
-hoistDocs :: ServerT WaziupDocs Servant.Handler -> ServerT WaziupDocs Waziup
-hoistDocs s = Servant.Server.hoistServer (Proxy :: Proxy WaziupDocs) lift s
+hoistDocs :: ServerT DocsAPI Servant.Handler -> ServerT DocsAPI Waziup
+hoistDocs s = Servant.Server.hoistServer (Proxy :: Proxy DocsAPI) lift s
 
 
 -- Logging

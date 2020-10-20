@@ -18,7 +18,7 @@ import           System.Log.Logger
 import           MQTT hiding (info, warn, debug, err) 
 
 
-getActuators :: Maybe Token -> DeviceId -> Waziup [Actuator]
+getActuators :: AuthUser -> DeviceId -> Waziup [Actuator]
 getActuators tok did = do
   info "Get actuators"
   device <- getDeviceOrion did
@@ -27,7 +27,7 @@ getActuators tok did = do
   debug "Permission granted, returning actuators"
   return $ maybeToList' $ devActuators device
 
-postActuator :: Maybe Token -> DeviceId -> Actuator -> Waziup NoContent
+postActuator :: AuthUser -> DeviceId -> Actuator -> Waziup NoContent
 postActuator tok did actuator = do
   info $ "Post actuator: " ++ (show actuator)
   d <- getDeviceOrion did
@@ -38,7 +38,7 @@ postActuator tok did actuator = do
   liftOrion $ O.postAttribute (toEntityId did) devTyp att 
   return NoContent
  
-getActuator :: Maybe Token -> DeviceId -> ActuatorId -> Waziup Actuator
+getActuator :: AuthUser -> DeviceId -> ActuatorId -> Waziup Actuator
 getActuator tok did aid = do
   info "Get actuator"
   d <- getDeviceOrion did
@@ -52,7 +52,7 @@ getActuator tok did aid = do
       warn "Actuator not found"
       throwError err404 {errBody = "Actuator not found"}
 
-deleteActuator :: Maybe Token -> DeviceId -> ActuatorId -> Waziup NoContent
+deleteActuator :: AuthUser -> DeviceId -> ActuatorId -> Waziup NoContent
 deleteActuator tok did aid = do
   info "Delete actuator"
   d <- getDeviceOrion did
@@ -62,25 +62,25 @@ deleteActuator tok did aid = do
   liftOrion $ O.deleteAttribute (toEntityId did) devTyp (toAttributeId aid)
   return NoContent
 
-putActuatorName :: Maybe Token -> DeviceId -> ActuatorId -> ActuatorName -> Waziup NoContent
+putActuatorName :: AuthUser -> DeviceId -> ActuatorId -> ActuatorName -> Waziup NoContent
 putActuatorName mtok did aid name = do
   info $ "Put actuator name: " ++ (show name)
   updateActuatorField mtok did aid $ \act -> do 
     liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromActuator (act {actName = Just name}))
 
-putActActuatorKind :: Maybe Token -> DeviceId -> ActuatorId -> ActuatorKindId -> Waziup NoContent
+putActActuatorKind :: AuthUser -> DeviceId -> ActuatorId -> ActuatorKindId -> Waziup NoContent
 putActActuatorKind mtok did aid ak = do
   info $ "Put actuator kind: " ++ (show ak)
   updateActuatorField mtok did aid $ \act -> do 
     liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromActuator (act {actActuatorKind = Just ak}))
 
-putActuatorValueType :: Maybe Token -> DeviceId -> ActuatorId -> ActuatorValueTypeId -> Waziup NoContent
+putActuatorValueType :: AuthUser -> DeviceId -> ActuatorId -> ActuatorValueTypeId -> Waziup NoContent
 putActuatorValueType mtok did aid av = do
   info $ "Put actuator quantity kind: " ++ (show av)
   updateActuatorField mtok did aid $ \act -> do 
     liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromActuator (act {actActuatorValueType = Just av}))
 
-putActuatorValue :: Maybe Token -> DeviceId -> ActuatorId -> JSON.Value -> Waziup NoContent
+putActuatorValue :: AuthUser -> DeviceId -> ActuatorId -> JSON.Value -> Waziup NoContent
 putActuatorValue mtok did aid actVal = do
   info $ "Put actuator value: " ++ (show actVal)
   device <- getDeviceOrion did
@@ -96,7 +96,7 @@ putActuatorValue mtok did aid actVal = do
       warn "Actuator not found"
       throwError err404 {errBody = "Actuator not found"}
 
-updateActuatorField :: Maybe Token -> DeviceId -> ActuatorId -> (Actuator -> Waziup ()) -> Waziup NoContent
+updateActuatorField :: AuthUser -> DeviceId -> ActuatorId -> (Actuator -> Waziup ()) -> Waziup NoContent
 updateActuatorField mtok did aid w = do
   debug "Check permissions"
   device <- getDeviceOrion did

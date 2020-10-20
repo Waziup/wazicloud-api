@@ -25,14 +25,14 @@ import           Data.Text hiding (find, map, filter)
 -- * Projects API
 
 -- | Get all permissions. If no token is passed, the guest token will be used.
-getPermsGateways :: Maybe Token -> Waziup [Perm]
+getPermsGateways :: AuthUser -> Waziup [Perm]
 getPermsGateways tok = do
   info "Get gateways permissions"
   gws <- getAllGateways
   let perms = map (\g -> getPerm tok (PermGateway g) gatewayScopes) gws
   return $ filter (\(Perm _ scps) -> not $ L.null scps) perms
 
-getGateways :: Maybe Token -> Maybe Bool -> Waziup [Gateway]
+getGateways :: AuthUser -> Maybe Bool -> Waziup [Gateway]
 getGateways tok mfull = do
   info "Get gateways"
   gws <- getAllGateways
@@ -49,15 +49,12 @@ getAllGateways = do
     docs <- rest =<< find (select [] "gateways")
     return $ catMaybes $ map (resultToMaybe . fromJSON . Object . replaceKey "_id" "id" . aesonify) docs
 
-postGateway :: Maybe Token -> Gateway -> Waziup NoContent
-postGateway tok g = do
+postGateway :: AuthUser -> Gateway -> Waziup NoContent
+postGateway au g = do
   info "Post gateway"
-  let username = case tok of
-       Just t -> getUsername t
-       Nothing -> "guest"
   debug $ "gate: " ++ (show g)
   currentTime <- liftIO $ getCurrentTime
-  let g' = g {gwOwner = Just username,
+  let g' = g {gwOwner = Just $ userUsername $ getAuthUser au,
               gwDateCreated = Just currentTime,
               gwDateModified = Just currentTime} 
   eres <- C.try $ runMongo $ do
@@ -72,7 +69,7 @@ postGateway tok g = do
     Left e -> throwError err500 {errBody = (convertString $ show e)}
   return NoContent
 
-getGateway :: Maybe Token -> GatewayId -> Maybe Bool -> Waziup Gateway
+getGateway :: AuthUser -> GatewayId -> Maybe Bool -> Waziup Gateway
 getGateway tok gid mfull = do
   info "Get gateway"
   mg <- runMongo $ getGatewayMongo gid 
@@ -84,12 +81,12 @@ getGateway tok gid mfull = do
     Just True -> getFullGateway tok g
     _ -> return g
 
-getFullGateway :: Maybe Token -> Gateway -> Waziup Gateway
+getFullGateway :: AuthUser -> Gateway -> Waziup Gateway
 getFullGateway tok g = do
   devs <- getDevices tok (Just ("gateway_id==" <> (convertString $ unGatewayId $ gwId g))) Nothing Nothing 
   return $ g {gwDevices = Just devs}
 
-deleteGateway :: Maybe Token -> GatewayId -> Waziup NoContent
+deleteGateway :: AuthUser -> GatewayId -> Waziup NoContent
 deleteGateway tok gid = do
   info "Delete gateway"
   g <- getGateway tok gid Nothing
@@ -99,7 +96,7 @@ deleteGateway tok gid = do
     then return NoContent
     else throwError err404 {errBody = "Cannot delete project: id not found"}
 
-putHeartbeat :: Maybe Token -> GatewayId -> Waziup NoContent
+putHeartbeat :: AuthUser -> GatewayId -> Waziup NoContent
 putHeartbeat tok gid = do
   g <- getGateway tok gid Nothing
   checkPermResource tok GatewaysUpdate (PermGateway g) 
@@ -107,7 +104,7 @@ putHeartbeat tok gid = do
   runMongo $ modify (select ["_id" =: unGatewayId gid] "gateways") [ "$set" := Doc ["date_modified" := val currentTime]]
   return NoContent
   
-putGatewayName :: Maybe Token -> GatewayId -> Text -> Waziup NoContent
+putGatewayName :: AuthUser -> GatewayId -> Text -> Waziup NoContent
 putGatewayName tok gid name = do
   info "Put gateway name"
   g <- getGateway tok gid Nothing
@@ -125,7 +122,7 @@ putGatewayName tok gid name = do
     else throwError err404 {errBody = "Cannot update gateway: id not found"}
 
 -- Change the owner of a gateway. The gateway will also automatically be passed as private.
-putGatewayOwner :: Maybe Token -> GatewayId -> Username -> Waziup NoContent
+putGatewayOwner :: AuthUser -> GatewayId -> Username -> Waziup NoContent
 putGatewayOwner tok gid owner = do
   info "Put gateway owner"
   g <- getGateway tok gid Nothing
@@ -140,7 +137,7 @@ putGatewayOwner tok gid owner = do
        _ -> return False 
   return NoContent
 
-putGatewayLocation :: Maybe Token -> GatewayId -> Location -> Waziup NoContent
+putGatewayLocation :: AuthUser -> GatewayId -> Location -> Waziup NoContent
 putGatewayLocation mtok gid loc = do
   info $ "Put gateway location: " ++ (show loc)
   g <- getGateway mtok gid Nothing
@@ -177,6 +174,12 @@ deleteGatewayMongo (GatewayId pid) = do
        delete (select sel "gateways")
        return True
      _ -> return False 
+
+--toGatewayMongo :: Gateway -> JSON.Object
+--toGatewayMongo (Gateway id name owner vis loc dc dm devs conn ls) =
+--  object ["_id" .= object ["id" .= id, "owner" .= owner]
+--          "name" .= toJSON name,
+--          ""] 
 
 -- putProjectGatewaysMongo :: ProjectId -> [GatewayId] -> Action IO Bool
 -- putProjectGatewaysMongo (ProjectId pid) gids = do

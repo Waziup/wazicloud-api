@@ -19,6 +19,7 @@ import qualified Data.HashMap.Strict as H
 import           Data.Aeson as JSON hiding (Options)
 import           Data.Time.ISO8601
 import           Servant
+import           Servant.Auth.Server
 import           Keycloak (Token, Username, getUsername) 
 import           Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
@@ -27,15 +28,15 @@ import           Data.AesonBson
 import           Waziup.Users hiding (info, debug)
 
 -- | Get all permissions. If no token is passed, the guest token will be used.
-getPermsDevices :: Maybe Token -> Waziup [Perm]
-getPermsDevices tok = do
+getPermsDevices :: AuthUser -> Waziup [Perm]
+getPermsDevices au = do
   info "Get devices permissions"
   devices <- getAllDevices Nothing
-  let perms = map (\dev -> getPerm tok (PermDevice dev) deviceScopes) devices
+  let perms = map (\dev -> getPerm au (PermDevice dev) deviceScopes) devices
   return $ filter (\(Perm _ scps) -> not $ L.null scps) perms
 
 -- | Get devices, given a query, limits and offsets
-getDevices :: Maybe Token -> Maybe DevicesQuery -> Maybe Limit -> Maybe Offset -> Waziup [Device]
+getDevices :: AuthUser -> Maybe DevicesQuery -> Maybe Limit -> Maybe Offset -> Waziup [Device]
 getDevices tok mq mlimit moffset = do
   info "Get devices"
   devices <- getAllDevices mq
@@ -54,7 +55,7 @@ getAllDevices mq = do
   return $  map getDeviceFromEntity entities
 
 -- | get a sigle device
-getDevice :: Maybe Token -> DeviceId -> Waziup Device
+getDevice :: AuthUser -> DeviceId -> Waziup Device
 getDevice tok did = do
   info "Get device"
   device <- getDeviceFromEntity <$> (liftOrion $ O.getEntity (EntityId $ unDeviceId did) devTyp)
@@ -63,21 +64,21 @@ getDevice tok did = do
   debug "Permission granted, returning device"
   return device
 
-postDevice :: Maybe Token -> Device -> Waziup NoContent
+postDevice :: AuthUser -> Device -> Waziup NoContent
 postDevice tok d = do
   info $ "Post device: " ++ (show d)
   debug "Check permissions"
   --liftKeycloak tok $ checkPermission (ResourceId "Devices") (fromScope DevicesCreate)
   debug "Create entity"
   let username = case tok of
-       Just t -> getUsername t
-       Nothing -> "guest"
+       Authenticated u -> username 
+       _ -> "guest"
   debug $ "Owner: " <> (show username)
   let entity = getEntityFromDevice (d {devOwner = Just username})
   void $ liftOrion $ O.postEntity entity
   return NoContent
 
-deleteDevice :: Maybe Token -> DeviceId -> Waziup NoContent
+deleteDevice :: AuthUser -> DeviceId -> Waziup NoContent
 deleteDevice tok did = do
   info "Delete device"
   device <- getDevice tok did
@@ -89,7 +90,7 @@ deleteDevice tok did = do
   runMongo $ deleteDeviceDatapoints did
   return NoContent
 
-putDeviceLocation :: Maybe Token -> DeviceId -> Location -> Waziup NoContent
+putDeviceLocation :: AuthUser -> DeviceId -> Location -> Waziup NoContent
 putDeviceLocation mtok did loc = do
   info $ "Put device location: " ++ (show loc)
   device <- getDevice mtok did
@@ -99,7 +100,7 @@ putDeviceLocation mtok did loc = do
   liftOrion $ O.postAttribute (toEntityId did) devTyp (getLocationAttr loc)
   return NoContent
 
-putDeviceName :: Maybe Token -> DeviceId -> DeviceName -> Waziup NoContent
+putDeviceName :: AuthUser -> DeviceId -> DeviceName -> Waziup NoContent
 putDeviceName mtok did name = do
   info $ "Put device name: " ++ (show name)
   device <- getDevice mtok did
@@ -109,7 +110,7 @@ putDeviceName mtok did name = do
   liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "name") name
   return NoContent
 
-putDeviceGatewayId :: Maybe Token -> DeviceId -> GatewayId -> Waziup NoContent
+putDeviceGatewayId :: AuthUser -> DeviceId -> GatewayId -> Waziup NoContent
 putDeviceGatewayId mtok did (GatewayId gid) = do
   info $ "Put device gateway ID: " ++ (show gid)
   device <- getDevice mtok did
@@ -119,7 +120,7 @@ putDeviceGatewayId mtok did (GatewayId gid) = do
   liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "gateway_id") gid
   return NoContent
 
-putDeviceVisibility :: Maybe Token -> DeviceId -> Visibility -> Waziup NoContent
+putDeviceVisibility :: AuthUser -> DeviceId -> Visibility -> Waziup NoContent
 putDeviceVisibility mtok did vis = do
   info $ "Put device visibility: " ++ (show vis)
   device <- getDevice mtok did
@@ -129,7 +130,7 @@ putDeviceVisibility mtok did vis = do
   liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "visibility") (fromVisibility vis)
   return NoContent
 
-putDeviceDeployed :: Maybe Token -> DeviceId -> Bool -> Waziup NoContent
+putDeviceDeployed :: AuthUser -> DeviceId -> Bool -> Waziup NoContent
 putDeviceDeployed mtok did dep = do
   info $ "Put device deployed: " ++ (show dep)
   device <- getDevice mtok did
@@ -140,7 +141,7 @@ putDeviceDeployed mtok did dep = do
   return NoContent
 
 -- Change the owner of a device. The device will also automatically be passed as private.
-putDeviceOwner :: Maybe Token -> DeviceId -> Username -> Waziup NoContent
+putDeviceOwner :: AuthUser -> DeviceId -> Username -> Waziup NoContent
 putDeviceOwner tok did owner = do
   info "Put device owner"
   d <- getDevice tok did

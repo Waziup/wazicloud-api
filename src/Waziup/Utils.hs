@@ -6,7 +6,7 @@ module Waziup.Utils where
 
 import           Waziup.Types
 import qualified Orion as O
-import           Keycloak as KC
+import           Keycloak as KC hiding (User)
 import           Control.Monad.Except (throwError, catchError, MonadError)
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
@@ -21,7 +21,13 @@ import qualified Data.ByteString.Lazy as BL
 import           Network.HTTP.Types.Status as HTS
 import           Network.HTTP.Client as HC
 import           Servant
+import           Servant.Auth.Server
 import           Database.MongoDB as DB
+
+
+getAuthUser :: AuthUser -> User
+getAuthUser (Authenticated user) = user 
+getAuthUser _ = guestUser
 
 -- * Lifting
 
@@ -74,23 +80,23 @@ runMongo dbAction = do
        _ -> dbAction
 
 -- * error convertions
-fromOrionError :: O.OrionError -> ServantErr
+fromOrionError :: O.OrionError -> ServerError
 fromOrionError (O.HTTPError (HttpExceptionRequest _ (StatusCodeException r m))) 
-  = ServantErr { errHTTPCode     = HTS.statusCode $ HC.responseStatus r, 
-                 errReasonPhrase = show $ HTS.statusMessage $ HC.responseStatus r, 
-                 errBody         = BL.fromStrict ("Error from Orion: " <> m),
-                 errHeaders      = []}
+  = ServerError { errHTTPCode     = HTS.statusCode $ HC.responseStatus r, 
+                  errReasonPhrase = show $ HTS.statusMessage $ HC.responseStatus r, 
+                  errBody         = BL.fromStrict ("Error from Orion: " <> m),
+                  errHeaders      = []}
 fromOrionError (O.HTTPError (HttpExceptionRequest _ (HC.ConnectionFailure a))) = err500 {errBody = encode $ "Failed to connect to Orion: " ++ show a} 
 fromOrionError (O.HTTPError s) = err500 {errBody = encode $ show s} 
 fromOrionError (O.ParseError s) = err500 {errBody = encode s} 
 fromOrionError O.EmptyError = err500 {errBody = "EmptyError"}
 
-fromKCError :: KC.KCError -> ServantErr
+fromKCError :: KC.KCError -> ServerError
 fromKCError (KC.HTTPError (HttpExceptionRequest _ (StatusCodeException r m)))
-  = ServantErr { errHTTPCode     = HTS.statusCode $ HC.responseStatus r, 
-                 errReasonPhrase = show $ HTS.statusMessage $ HC.responseStatus r, 
-                 errBody         = BL.fromStrict ("Error from Keycloak: " <> m),
-                 errHeaders      = []}
+  = ServerError { errHTTPCode     = HTS.statusCode $ HC.responseStatus r, 
+                  errReasonPhrase = show $ HTS.statusMessage $ HC.responseStatus r, 
+                  errBody         = BL.fromStrict ("Error from Keycloak: " <> m),
+                  errHeaders      = []}
 fromKCError (KC.HTTPError (HttpExceptionRequest _ (HC.ConnectionFailure a))) = err500 {errBody = encode $ "Failed to connect to Keycloak: " ++ show a} 
 fromKCError (KC.HTTPError s) = err500 {errBody = encode $ show s} 
 fromKCError (KC.ParseError s) = err500 {errBody = encode s} 

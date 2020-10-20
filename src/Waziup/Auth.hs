@@ -20,10 +20,12 @@ import           Data.Map ((!?))
 import qualified Keycloak as KC
 import           Keycloak (Token, getClaims)
 import           Servant
+import           Servant.Auth.Server
 import           System.Log.Logger
 import           Waziup.Types as W
 import           Waziup.Utils as U
 import           Waziup.Users hiding (info, debug)
+import           Debug.Trace
 
 -- | get a token
 postAuth :: AuthBody -> Waziup Token
@@ -35,7 +37,7 @@ postAuth (AuthBody username password) = do
 -- * Permissions
 
 -- | Throws error 403 if the scope is not premitted for this resource.
-checkPermResource :: Maybe Token -> Scope -> PermResource -> Waziup ()
+checkPermResource :: AuthUser -> Scope -> PermResource -> Waziup ()
 checkPermResource mtok scp res = do
   case isPermitted mtok res scp of
     Nothing -> return ()
@@ -45,12 +47,12 @@ checkPermResource mtok scp res = do
       PermProject d -> throwError err403 {errBody = "Forbidden: Cannot access project " <> (convertString $ pName d) <> ". Cause: " <> (convertString e)}
 
 -- | Check the resource against the corresponding scopes.
-getPerm :: Maybe Token -> PermResource -> [Scope] -> Perm
+getPerm :: AuthUser -> PermResource -> [Scope] -> Perm
 getPerm tok res scopes = Perm (getPermResId res) (filter (isNothing . isPermitted tok res) scopes)
 
--- | Check the resource against the corresponding scope.
-isPermitted :: Maybe Token -> PermResource -> Scope -> IsPermitted
-isPermitted tok res scope = isPermitted' (getUserFromToken tok) res scope 
+isPermitted :: AuthUser -> PermResource -> Scope -> IsPermitted
+isPermitted (Authenticated user) res scope = isPermitted' user res scope 
+isPermitted e res scope = traceShow e $ isPermitted' guestUser res scope 
 
 -- | Check the resource against the corresponding scope.
 isPermitted' :: User -> PermResource -> Scope -> IsPermitted
@@ -58,7 +60,7 @@ isPermitted' user res scope = case lookup scope allPermissions of
   Just policies -> case sequence $ map (\p -> p user res) policies of
                      Just as -> Just $ T.intercalate ", " as
                      Nothing -> Nothing
-  Nothing   -> error "Scope not found" where
+  Nothing   -> error "Scope not found"
 
 -- | Policies
 

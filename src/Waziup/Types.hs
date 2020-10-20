@@ -10,6 +10,7 @@
 
 module Waziup.Types where
 
+import qualified Crypto.JWT as JWT
 import           Data.List (stripPrefix)
 import           Data.Maybe (fromMaybe)
 import           Data.Aeson as Aeson
@@ -26,19 +27,22 @@ import           Data.Swagger hiding (fieldLabelModifier)
 import qualified Data.Swagger as SW
 import           Data.String.Conversions
 import           Data.Pool
+import qualified Data.HashMap.Strict as HM hiding (drop, map, foldl)
 import qualified Data.Csv as CSV
 import           Control.Lens hiding ((.=))
 import           Control.Monad
 import           Control.Monad.Except (runExceptT)
 import           Control.Monad.Reader
 import           Servant
+import           Servant.Auth.Server
 import           Keycloak as KC hiding (Scope, User(..), UserId, unCapitalize, PermReq) 
 import           GHC.Generics (Generic)
 import qualified Database.MongoDB as DB
 import qualified Orion.Types as O
 import           Web.Twitter.Conduit
-import           Safe
+import           Safe hiding (at)
 import           System.Log.Logger as Log
+import           Debug.Trace
 
 type Limit  = Int
 type Offset = Int
@@ -60,7 +64,7 @@ data WaziupInfo = WaziupInfo {
   }
  
 -- | run a Waziup monad
-runWaziup :: Waziup a -> WaziupInfo -> IO (Either ServantErr a)
+runWaziup :: Waziup a -> WaziupInfo -> IO (Either ServerError a)
 runWaziup w wi = runExceptT $ runHandler' $ runReaderT w wi
 
 --------------
@@ -100,7 +104,7 @@ defaultServerConfig = ServerConfig {
   _notifMinInterval   = 120,
   _cacheActivated     = True,
   _cacheValidDuration = 10 * 60,   -- 10 minutes
-  _logLevel           = Log.INFO}
+  _logLevel           = Log.DEBUG}
  
 data MongoConfig = MongoConfig {
   _mongoUrl  :: Text,
@@ -146,6 +150,8 @@ defaultPlivoConf = PlivoConfig {
 --------------------------------------
 -- * Authentication & authorization --
 --------------------------------------
+
+type AuthUser = AuthResult User
 
 data AuthBody = AuthBody
   { authBodyUsername :: Username
@@ -529,7 +535,7 @@ instance ToSchema SensorValue where
 
 --Swagger instance for any JSON value
 instance ToSchema Value where
-  declareNamedSchema _ = pure (NamedSchema (Just "Value") (mempty & type_ .~ SwaggerObject))
+  declareNamedSchema _ = pure (NamedSchema (Just "Value") (mempty & type_ ?~ SwaggerObject))
 
 
 -- * Calibration
@@ -688,7 +694,7 @@ instance FromHttpApiData Sort where
 
 instance ToParamSchema Sort where
   toParamSchema _ = mempty
-     & type_ .~ SwaggerString
+     & type_ ?~ SwaggerString
      & enum_ ?~ [ "asc", "dsc" ]
 
 
@@ -1103,12 +1109,51 @@ defaultUser = User
   , userAdmin     = Nothing
   }
 
+guestUser :: User
+guestUser = User
+           { userId        = Nothing 
+           , userUsername  = "guest" 
+           , userFirstName = Just "guest" 
+           , userLastName  = Just "guest" 
+           , userEmail     = Nothing 
+           , userPhone     = Nothing
+           , userFacebook  = Nothing
+           , userTwitter   = Nothing
+           , userSmsCredit = Nothing
+           , userAdmin     = Just False} 
 
 instance FromJSON User where
   parseJSON = genericParseJSON $ snakeDrop 4
 
 instance ToJSON User where
   toJSON = genericToJSON $ snakeDrop 4
+
+instance ToJWT User
+
+instance FromJWT User where
+  decodeJWT claims = let ucs = (trace "Claims: " claims) ^. JWT.unregisteredClaims in
+          Right (User { userId        = Nothing 
+                      , userUsername  = fromJust $ join $ readString <$> HM.lookup "preferred_username" ucs 
+                      , userFirstName = join $ readString <$> HM.lookup "given_name" ucs 
+                      , userLastName  = join $ readString <$> HM.lookup "family_name" ucs
+                      , userEmail     = join $ readString <$> HM.lookup "email" ucs
+                      , userPhone     = join $ readString <$> HM.lookup "phone" ucs
+                      , userFacebook  = join $ readString <$> HM.lookup "facebook" ucs
+                      , userTwitter   = join $ readString <$> HM.lookup "twitter" ucs
+                      , userSmsCredit = join $ readInt    <$> HM.lookup "sms_credit" ucs
+                      , userAdmin     = join $ readBool   <$> HM.lookup "admin" ucs})
+
+readString :: Value -> Maybe Text
+readString (String a) = Just a
+readString _ = Nothing
+
+readInt :: Value -> Maybe Int
+readInt (Number a) = Just $ round a
+readInt _ = Nothing
+
+readBool :: Value -> Maybe Bool
+readBool (Bool a) = Just a
+readBool _ = Nothing
 
 --Swagger instances
 instance ToSchema User where
@@ -1392,21 +1437,6 @@ removeFieldLabelPrefix forParsing pref =
       , ("$", "'Dollar")
       , ("%", "'Percent")
       , ("&", "'Ampersand")
-      , ("'", "'Quote")
-      , ("(", "'Left_Parenthesis")
-      , (")", "'Right_Parenthesis")
-      , ("*", "'Star")
-      , ("+", "'Plus")
-      , (",", "'Comma")
-      , ("-", "'Dash")
-      , (".", "'Period")
-      , ("/", "'Slash")
-      , (":", "'Colon")
-      , ("{", "'Left_Curly_Bracket")
-      , ("|", "'Pipe")
-      , ("<", "'LessThan")
-      , ("!=", "'Not_Equal")
-      , ("=", "'Equal")
       , ("}", "'Right_Curly_Bracket")
       , (">", "'GreaterThan")
       , ("~", "'Tilde")

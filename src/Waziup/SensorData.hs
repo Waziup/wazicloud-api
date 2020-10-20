@@ -21,7 +21,7 @@ import           Database.MongoDB as DB hiding (value)
 import           Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 
 
-getDatapoints :: Maybe Token
+getDatapoints :: AuthUser
               -> Maybe [DeviceId]
               -> Maybe [SensorId]
               -> Maybe Int
@@ -81,7 +81,7 @@ getDatapointsMongo dids msids lim offset srt dateFrom dateTo = do
   docs <- rest cur
   return $ catMaybes $ map (resultToMaybe . fromJSON . Object . aesonify) docs
 
-calibrateDatapoints :: Maybe Token -> [DeviceId] -> [Datapoint] -> Waziup [Datapoint]
+calibrateDatapoints :: AuthUser -> [DeviceId] -> [Datapoint] -> Waziup [Datapoint]
 calibrateDatapoints tok dids ds = do
   devices <- mapM (getDevice tok) dids
   return $ map (calibrateDatapoint devices) ds

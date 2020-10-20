@@ -14,6 +14,8 @@ import           Servant
 import           Servant.API.Flatten
 import           Servant.CSV.Cassava
 import           Servant.Swagger.UI
+import           Servant.Swagger.Tags
+import           Servant.Auth.Server
 import           Keycloak (Token, Username)
 import           Orion
 -----------------------------
@@ -22,55 +24,53 @@ import           Orion
 
 -- Complete API
 type API = "api" :> "v2" :> WaziupAPI
-      :<|> WaziupDocs
-      :<|> Redir 
+      :<|> DocsAPI
+      :<|> Redir
 
 -- Redirection for root requests
 type Redir = (GetNoContent '[JSON] NoContent)
 
--- Waziup APIs
-type WaziupAPI = AuthAPI
-            :<|> DevicesAPI
-            :<|> SensorsAPI
-            :<|> ActuatorsAPI
-            :<|> SensorDataAPI
-            :<|> GatewaysAPI
-            :<|> ProjectsAPI
-            :<|> UsersAPI
-            :<|> SocialsAPI
-            :<|> NotifsAPI
-            :<|> OntologiesAPI
+-- Token API and resources API
+type WaziupAPI = Auth '[JWT] User :> ResourcesAPI
+            :<|> PostAuthAPI
+
+type PostAuthAPI = "auth" :> "token"
+                  :> Tags "Auth" 
+                  :> ReqBody '[JSON] AuthBody
+                  :> Post '[PlainText, JSON] Token
+
+-- All resources APIs
+type ResourcesAPI =
+            Tags "Auth"       :> AuthAPI
+       :<|> Tags "Devices"    :> DevicesAPI
+       :<|> Tags "Sensors"   :> SensorsAPI
+       :<|> Tags "Actuators"  :> ActuatorsAPI
+       :<|> Tags "Datapoints" :> SensorDataAPI
+       :<|> Tags "Gateways"   :> GatewaysAPI
+       :<|> Tags "Projects"   :> ProjectsAPI
+       :<|> Tags "Users"      :> UsersAPI
+       :<|> Tags "Socials"    :> SocialsAPI
+       :<|> Tags "Notifs"     :> NotifsAPI
+       :<|> Tags "Ontologies" :> OntologiesAPI
 
 -- Documentation
-type WaziupDocs = SwaggerSchemaUI "docs" "swagger.json"
+type DocsAPI = SwaggerSchemaUI "docs" "swagger.json"
 
 ----------------------
 -- * Authentication --
 ----------------------
 
-type AuthAPI = Flat ( 
-  "auth" :>  (
-         "permissions" :> (
-          "devices"
-          :> Header "Authorization" Token
-          :> Get  '[JSON]      [Perm]
-          :<|> "projects"
-          :> Header "Authorization" Token
-          :> Get  '[JSON]      [Perm]
-          :<|> "gateways"
-          :> Header "Authorization" Token
-          :> Get  '[JSON]      [Perm])
-    :<|> "token"
-          :> ReqBody '[JSON] AuthBody
-          :> Post '[PlainText, JSON] Token
-    ))
+type AuthAPI = "auth" :> "permissions" :> (
+               "devices"  :> Get '[JSON] [Perm]
+          :<|> "projects" :> Get '[JSON] [Perm]
+          :<|> "gateways" :> Get '[JSON] [Perm])
 
 
 ---------------
 -- * Devices --
 ---------------
 
-type DevicesAPI = Flat (Header "Authorization" Token :> 
+type DevicesAPI = Flat (
   "devices" :> ( 
          QueryParam "q"      DevicesQuery
       :> QueryParam "limit"  Limit
@@ -106,7 +106,7 @@ type DevicesAPI = Flat (Header "Authorization" Token :>
 -- * Sensors --
 ---------------
 
-type SensorsAPI = Flat ( Header "Authorization" Token :> 
+type SensorsAPI = Flat (
   "devices" :> Capture "device_id" DeviceId :> 
     "sensors" :> (
            Get '[JSON] [Sensor]
@@ -151,8 +151,8 @@ type SensorsAPI = Flat ( Header "Authorization" Token :>
 -- * Sensors data --
 --------------------
 
-type SensorDataAPI = Flat (
-  "sensors_data" :> Header "Authorization" Token 
+type SensorDataAPI = 
+  "sensors_data"
   :> QueryParam "device_id"  [DeviceId]
   :> QueryParam "sensor_id"  [SensorId]
   :> QueryParam "limit"      Int
@@ -161,7 +161,7 @@ type SensorDataAPI = Flat (
   :> QueryParam "date_from"  UTCTime
   :> QueryParam "date_to"    UTCTime
   :> QueryParam "calibrated" Bool
-  :> Get '[JSON, CSV' 'HasHeader CSVOpts] [Datapoint])
+  :> Get '[JSON, CSV' 'HasHeader CSVOpts] [Datapoint]
 
 data CSVOpts
 instance EncodeOpts CSVOpts where
@@ -171,7 +171,7 @@ instance EncodeOpts CSVOpts where
 -- * Actuators --
 -----------------
 
-type ActuatorsAPI = Flat ( Header "Authorization" Token :> 
+type ActuatorsAPI = Flat (
   "devices" :> Capture "device_id" DeviceId :> 
     "actuators" :> (
            Get '[JSON] [Actuator]
@@ -199,7 +199,7 @@ type ActuatorsAPI = Flat ( Header "Authorization" Token :>
 -- * Gateways --
 ----------------
 
-type GatewaysAPI = Flat ( Header "Authorization" Token :> 
+type GatewaysAPI = Flat (
   "gateways" :> (
           QueryParam "full" Bool
        :> Get  '[JSON] [Gateway]
@@ -227,7 +227,7 @@ type GatewaysAPI = Flat ( Header "Authorization" Token :>
 -- * Projects --
 ----------------
 
-type ProjectsAPI = Flat ( Header "Authorization" Token :> 
+type ProjectsAPI = Flat (
   "projects" :> (
           QueryParam "full" Bool
        :> Get '[JSON] [Project]
@@ -253,7 +253,7 @@ type ProjectsAPI = Flat ( Header "Authorization" Token :>
 -- * Users --
 -------------
 
-type UsersAPI = Flat ( Header "Authorization" Token :> 
+type UsersAPI = Flat (
   "users" :> (
          QueryParam "limit"  Limit
       :> QueryParam "offset" Offset
@@ -272,7 +272,7 @@ type UsersAPI = Flat ( Header "Authorization" Token :>
 -- * Socials --
 ---------------
 
-type SocialsAPI = Flat ( Header "Authorization" Token :> 
+type SocialsAPI = Flat (
   "socials" :> (
           Get  '[JSON] [SocialMessage]
     :<|>  ReqBody '[JSON] SocialMessage
@@ -291,7 +291,7 @@ type SocialsAPI = Flat ( Header "Authorization" Token :>
 -- * Notification --
 --------------------
 
-type NotifsAPI = Flat ( Header "Authorization" Token :> 
+type NotifsAPI = Flat (
   "notifications" :> (
           Get  '[JSON] [Notif]
     :<|>  ReqBody '[JSON] Notif

@@ -31,7 +31,7 @@ import           Servant
 import           Network.HTTP.Types.Status as HTS
 
 -- | get all logged social messages
-getSocialMessages :: Maybe Token -> Waziup [SocialMessage]
+getSocialMessages :: AuthUser -> Waziup [SocialMessage]
 getSocialMessages _ = runMongo $ do
   info "Get social messages"
   let sel = (select [] "waziup_social_msgs") 
@@ -47,12 +47,12 @@ getSocialMessages _ = runMongo $ do
       return []
 
 -- | post a social message
-postSocialMessage :: Maybe Token -> SocialMessage -> Waziup SocialMessageId
+postSocialMessage :: AuthUser -> SocialMessage -> Waziup SocialMessageId
 postSocialMessage tok socMsg@(SocialMessage _ dest chan msg _ _) = do
   info "Post social messages"
-  users <- Users.getUsers tok Nothing Nothing (Just dest)
-  let muser = L.find (\u -> T.userUsername u == dest) users
-  debug $ (show muser)
+  users <- undefined --Users.getUsers tok Nothing Nothing (Just dest)
+  let muser = undefined --L.find (\u -> T.userUsername u == dest) users
+  --debug $ (show muser)
   case muser of
     Just user -> do
       case chan of
@@ -98,20 +98,20 @@ postTwitter user msg = do
           throwError err400 {errBody = convertString $ "Twitter error: " ++ (show tms)}
         Left e -> throwM e
 
-postSMS :: Maybe Token -> T.User -> Text -> Waziup ()
+postSMS :: AuthUser -> T.User -> Text -> Waziup ()
 postSMS tok user@(T.User _ _ _ _ _ (Just phone) _ _ (Just c) _) txt = do
   res <- C.try $ smsPost $ PlivoSMS "+393806412094" phone txt
   case res of 
     Right _ -> do
       debug $ "Removing one SMS credit, remaining: " ++ (show (c -1))
-      void $ Users.putUserCredit tok (fromJust $ T.userId user) (c - 1)
+      void $ undefined --Users.putUserCredit tok (fromJust $ T.userId user) (c - 1)
     Left (er :: SomeException) -> throwError err400 {errBody = convertString $ "Could not send SMS: " ++ (show er)}
   return ()
 postSMS _ _ _ = do
   warn "phone ID or sms credit not found in user profile: update user profile"
   throwError err400 {errBody = "phone ID or sms credit not found in user profile: update user profile"}
 
-postSocialMessageBatch :: Maybe Token -> SocialMessageBatch -> Waziup NoContent
+postSocialMessageBatch :: AuthUser -> SocialMessageBatch -> Waziup NoContent
 postSocialMessageBatch tok b@(SocialMessageBatch us chans msg) = do
   info $ "Post social message batch: " ++ (show b)
   forM_ us $ \u -> do
@@ -122,7 +122,7 @@ postSocialMessageBatch tok b@(SocialMessageBatch us chans msg) = do
         Left (e :: SomeException) -> warn $ "Message error: " ++ (show e)
   return NoContent 
 
-getSocialMessage :: Maybe Token -> SocialMessageId -> Waziup SocialMessage
+getSocialMessage :: AuthUser -> SocialMessageId -> Waziup SocialMessage
 getSocialMessage tok soc = do
   debug $ "getting message: " ++ (show soc)
   res <- runMongo $ getSocialMessageMongo tok soc
@@ -130,7 +130,7 @@ getSocialMessage tok soc = do
     Just a -> return a
     Nothing -> throwError err404 {errBody = "Could not find social message"}
 
-getSocialMessageMongo :: Maybe Token -> SocialMessageId -> Action IO (Maybe SocialMessage)
+getSocialMessageMongo :: AuthUser -> SocialMessageId -> Action IO (Maybe SocialMessage)
 getSocialMessageMongo _ (SocialMessageId sid) = do
   let fil = ["_id" =: ObjId (read $ convertString sid)]
   let sel = (select fil "waziup_social_msgs") 
@@ -150,14 +150,14 @@ getSocialMessageMongo _ (SocialMessageId sid) = do
           return Nothing
 
 
-deleteSocialMessage :: Maybe Token -> SocialMessageId -> Waziup NoContent
+deleteSocialMessage :: AuthUser -> SocialMessageId -> Waziup NoContent
 deleteSocialMessage tok soc = do
   res <- runMongo $ deleteSocialMessageMongo tok soc 
   case res of 
     True -> return NoContent
     False -> throwError err404 {errBody = "Could not find social message"}
 
-deleteSocialMessageMongo :: Maybe Token -> SocialMessageId -> Action IO Bool 
+deleteSocialMessageMongo :: AuthUser -> SocialMessageId -> Action IO Bool 
 deleteSocialMessageMongo _ (SocialMessageId sid) = do
   let fil = ["_id" =: ObjId (read $ convertString sid)]
   res <- DB.deleteMany "waziup_social_msgs" [(fil, [])]

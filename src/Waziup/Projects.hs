@@ -26,14 +26,14 @@ import qualified Data.List as L
 -- * Projects API
 
 -- | Get all permissions. If no token is passed, the guest token will be used.
-getPermsProjects :: Maybe Token -> Waziup [Perm]
+getPermsProjects :: AuthUser -> Waziup [Perm]
 getPermsProjects tok = do
   info "Get projects permissions"
   projects <- getAllProjects
   let perms = map (\p -> getPerm tok (PermProject p) projectScopes) projects
   return $ filter (\(Perm _ scps) -> not $ L.null scps) perms
 
-getProjects :: Maybe Token -> Maybe Bool -> Waziup [Project]
+getProjects :: AuthUser -> Maybe Bool -> Waziup [Project]
 getProjects tok mfull = do
   info "Get projects"
   projects <- getAllProjects
@@ -49,13 +49,10 @@ getAllProjects = do
     docs <- rest =<< find (select [] "projects")
     return $ catMaybes $ map (resultToMaybe . fromJSON . Object . replaceKey "_id" "id" .  aesonify) docs
 
-postProject :: Maybe Token -> Project -> Waziup ProjectId
-postProject tok proj = do
+postProject :: AuthUser -> Project -> Waziup ProjectId
+postProject au proj = do
   info "Post project"
-  let username = case tok of
-       Just t -> getUsername t
-       Nothing -> "guest"
-  let proj' = proj {pOwner = Just username}
+  let proj' = proj {pOwner = Just $ userUsername $ getAuthUser au}
   res <- runMongo $ do
     let ob = case toJSON $ proj' of
          JSON.Object o -> o
@@ -64,7 +61,7 @@ postProject tok proj = do
   return $ ProjectId $ convertString $ show res
 
 
-getProject :: Maybe Token -> ProjectId -> Maybe Bool -> Waziup Project
+getProject :: AuthUser -> ProjectId -> Maybe Bool -> Waziup Project
 getProject tok pid mfull = do
   info "Get project"
   mp <- runMongo $ getProjectMongo pid 
@@ -77,7 +74,7 @@ getProject tok pid mfull = do
     Just True -> getFullProject tok p 
     _ -> return p
 
-deleteProject :: Maybe Token -> ProjectId -> Waziup NoContent
+deleteProject :: AuthUser -> ProjectId -> Waziup NoContent
 deleteProject tok pid = do
   info "Delete project"
   p <- getProject tok pid Nothing
@@ -87,7 +84,7 @@ deleteProject tok pid = do
     then return NoContent
     else throwError err404 {errBody = "Cannot delete project: id not found"}
 
-putProjectDevices :: Maybe Token -> ProjectId -> [DeviceId] -> Waziup NoContent
+putProjectDevices :: AuthUser -> ProjectId -> [DeviceId] -> Waziup NoContent
 putProjectDevices tok pid ids = do
   info "Put project devices"
   p <- getProject tok pid Nothing
@@ -97,7 +94,7 @@ putProjectDevices tok pid ids = do
     then return NoContent
     else throwError err404 {errBody = "Cannot update project: id not found"}
 
-putProjectGateways :: Maybe Token -> ProjectId -> [GatewayId] -> Waziup NoContent
+putProjectGateways :: AuthUser -> ProjectId -> [GatewayId] -> Waziup NoContent
 putProjectGateways tok pid ids = do
   info "Put project gateways"
   p <- getProject tok pid Nothing
@@ -107,7 +104,7 @@ putProjectGateways tok pid ids = do
     then return NoContent
     else throwError err404 {errBody = "Cannot update project: id not found"}
 
-putProjectName :: Maybe Token -> ProjectId -> Text -> Waziup NoContent
+putProjectName :: AuthUser -> ProjectId -> Text -> Waziup NoContent
 putProjectName tok pid name = do
   info "Put project name"
   p <- getProject tok pid Nothing
@@ -126,7 +123,7 @@ putProjectName tok pid name = do
 
 -- * Helpers
 
-getFullProject :: Maybe Token -> Project -> Waziup Project
+getFullProject :: AuthUser -> Project -> Waziup Project
 getFullProject tok p@(Project _ _ _ devids gtwids _ _) = do
   devs <- mapM (try . getDevice tok) (maybe [] id devids)
   gtwids' <- mapM (try . (\gid -> getGateway tok gid Nothing)) (maybe [] id gtwids)

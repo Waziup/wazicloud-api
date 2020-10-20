@@ -25,7 +25,7 @@ import           Network.HTTP.Types.URI as URI
 
 -- * Notif API
 
-getNotifs :: Maybe Token -> Waziup [Notif]
+getNotifs :: AuthUser -> Waziup [Notif]
 getNotifs tok = do 
   info "Get notifs"
   subs <- liftOrion $ O.getSubs
@@ -37,7 +37,7 @@ getNotifs tok = do
   --  [] -> False
   --  a:_ -> True -- isPermitted tok DevicesView (PermDeviceId a) --Only the first device is used to check permission 
                                               
-postNotif :: Maybe Token -> Notif -> Waziup NotifId
+postNotif :: AuthUser -> Notif -> Waziup NotifId
 postNotif _ notif = do
   info $ "Post notif: " ++ (show notif)
   interval <- view (waziupConfig.serverConf.notifMinInterval)
@@ -48,7 +48,7 @@ postNotif _ notif = do
   (SubId res) <- liftOrion $ O.postSub sub
   return $ NotifId res 
 
-getNotif :: Maybe Token -> NotifId -> Waziup Notif
+getNotif :: AuthUser -> NotifId -> Waziup Notif
 getNotif _ (NotifId nid) = do
   info "Get notif"
   sub <- liftOrion $ O.getSub (SubId nid) 
@@ -59,7 +59,7 @@ getNotif _ (NotifId nid) = do
       warn "Not a Waziup notification"
       throwError err400 {errBody = "Not a Waziup notification"}
 
-patchNotif :: Maybe Token -> NotifId -> Notif -> Waziup NoContent
+patchNotif :: AuthUser -> NotifId -> Notif -> Waziup NoContent
 patchNotif _ (NotifId nid) notif = do
   info $ "Patch notif: " ++ (show notif)
   interval <- view (waziupConfig.serverConf.notifMinInterval)
@@ -70,13 +70,13 @@ patchNotif _ (NotifId nid) notif = do
   liftOrion $ O.patchSub (SubId nid) sub
   return NoContent
 
-deleteNotif :: Maybe Token -> NotifId -> Waziup NoContent
+deleteNotif :: AuthUser -> NotifId -> Waziup NoContent
 deleteNotif _ (NotifId nid) = do
   info "Delete notif"
   liftOrion $ O.deleteSub (SubId nid)
   return NoContent
 
-putNotifStatus :: Maybe Token -> NotifId -> SubStatus -> Waziup NoContent
+putNotifStatus :: AuthUser -> NotifId -> SubStatus -> Waziup NoContent
 putNotifStatus tok nid status = do
   info "Put notif status"
   notif <- getNotif tok nid

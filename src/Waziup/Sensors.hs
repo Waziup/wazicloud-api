@@ -18,7 +18,7 @@ import           Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
 import           MQTT hiding (info, warn, debug, err) 
 
-getSensors :: Maybe Token -> DeviceId -> Waziup [Sensor]
+getSensors :: AuthUser -> DeviceId -> Waziup [Sensor]
 getSensors tok did = do
   info "Get sensors"
   d <- getDevice tok did
@@ -28,7 +28,7 @@ getSensors tok did = do
   device <- getDeviceFromEntity <$> (liftOrion $ O.getEntity (EntityId $ unDeviceId did) devTyp)
   return $ maybeToList' $ devSensors device
 
-postSensor :: Maybe Token -> DeviceId -> Sensor -> Waziup NoContent
+postSensor :: AuthUser -> DeviceId -> Sensor -> Waziup NoContent
 postSensor tok did sensor = do
   info $ "Post sensor: " ++ (show sensor)
   d <- getDevice tok did
@@ -38,7 +38,7 @@ postSensor tok did sensor = do
   liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromSensor sensor)
   return NoContent
  
-getSensor :: Maybe Token -> DeviceId -> SensorId -> Waziup Sensor
+getSensor :: AuthUser -> DeviceId -> SensorId -> Waziup Sensor
 getSensor tok did sid = do
   info "Get sensor"
   d <- getDevice tok did
@@ -52,7 +52,7 @@ getSensor tok did sid = do
       warn "Sensor not found"
       throwError err404 {errBody = "Sensor not found"}
 
-deleteSensor :: Maybe Token -> DeviceId -> SensorId -> Waziup NoContent
+deleteSensor :: AuthUser -> DeviceId -> SensorId -> Waziup NoContent
 deleteSensor tok did sid = do
   info "Delete sensor"
   d <- getDevice tok did
@@ -64,37 +64,37 @@ deleteSensor tok did sid = do
   runMongo $ deleteSensorDatapoints did sid
   return NoContent
 
-putSensorName :: Maybe Token -> DeviceId -> SensorId -> SensorName -> Waziup NoContent
+putSensorName :: AuthUser -> DeviceId -> SensorId -> SensorName -> Waziup NoContent
 putSensorName mtok did sid name = do
   info $ "Put sensor name: " ++ (show name)
   updateSensorField mtok did sid $ \sensor -> do 
     liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromSensor (sensor {senName = Just name}))
 
-putSensorSensorKind :: Maybe Token -> DeviceId -> SensorId -> SensorKindId -> Waziup NoContent
+putSensorSensorKind :: AuthUser -> DeviceId -> SensorId -> SensorKindId -> Waziup NoContent
 putSensorSensorKind mtok did sid sk = do
   info $ "Put sensor sensor kind: " ++ (show sk)
   updateSensorField mtok did sid $ \sensor -> do 
     liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromSensor (sensor {senSensorKind = Just sk}))
 
-putSensorQuantityKind :: Maybe Token -> DeviceId -> SensorId -> QuantityKindId -> Waziup NoContent
+putSensorQuantityKind :: AuthUser -> DeviceId -> SensorId -> QuantityKindId -> Waziup NoContent
 putSensorQuantityKind mtok did sid qk = do
   info $ "Put sensor quantity kind: " ++ (show qk)
   updateSensorField mtok did sid $ \sensor -> do 
     liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromSensor (sensor {senQuantityKind = Just qk}))
 
-putSensorUnit :: Maybe Token -> DeviceId -> SensorId -> UnitId -> Waziup NoContent
+putSensorUnit :: AuthUser -> DeviceId -> SensorId -> UnitId -> Waziup NoContent
 putSensorUnit mtok did sid u = do
   info $ "Put sensor unit: " ++ (show u)
   updateSensorField mtok did sid $ \sensor -> do 
     liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromSensor (sensor {senUnit = Just u}))
 
-putSensorCalib :: Maybe Token -> DeviceId -> SensorId -> Calib -> Waziup NoContent
+putSensorCalib :: AuthUser -> DeviceId -> SensorId -> Calib -> Waziup NoContent
 putSensorCalib mtok did sid cal = do
   info $ "Put sensor cal: " ++ (show cal)
   updateSensorField mtok did sid $ \sensor -> do 
     liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromSensor (sensor {senCalib = Just cal}))
 
-putSensorValue :: Maybe Token -> DeviceId -> SensorId -> SensorValue -> Waziup NoContent
+putSensorValue :: AuthUser -> DeviceId -> SensorId -> SensorValue -> Waziup NoContent
 putSensorValue mtok did sid sv = do
   info $ "Put sensor value: " ++ (show sv)
   d <- getDevice mtok did
@@ -118,7 +118,7 @@ putSensorValue' did sensor val@(SensorValue v ts dr) = do
   publishSensorValue did (senId sensor) val
   return NoContent
 
-putSensorValues :: Maybe Token -> DeviceId -> SensorId -> [SensorValue] -> Waziup NoContent
+putSensorValues :: AuthUser -> DeviceId -> SensorId -> [SensorValue] -> Waziup NoContent
 putSensorValues mtok did sid svs = do
   info $ "Put sensor values"
   d <- getDevice mtok did
@@ -134,7 +134,7 @@ putSensorValues mtok did sid svs = do
       warn "sensor not found"
       throwError err404 {errBody = "Sensor not found"}
 
-getSensorValues :: Maybe Token
+getSensorValues :: AuthUser
               -> DeviceId
               -> SensorId
               -> Maybe Int
@@ -146,7 +146,7 @@ getSensorValues :: Maybe Token
               -> Waziup [Datapoint]
 getSensorValues tok mdids msids lim offset srt dateFrom dateTo calibEn = getDatapoints tok (Just [mdids]) (Just [msids]) lim offset srt dateFrom dateTo calibEn
   
-updateSensorField :: Maybe Token -> DeviceId -> SensorId -> (Sensor -> Waziup ()) -> Waziup NoContent
+updateSensorField :: AuthUser -> DeviceId -> SensorId -> (Sensor -> Waziup ()) -> Waziup NoContent
 updateSensorField mtok did sid w = do
   debug "Check permissions"
   d <- getDevice mtok did

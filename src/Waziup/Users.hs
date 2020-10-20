@@ -16,73 +16,49 @@ import           Data.Text hiding (map, head)
 import           Servant
 import           Data.Aeson as JSON
 
-getUsers :: Maybe KC.Token -> Maybe Limit -> Maybe Offset -> Maybe KC.Username -> Waziup [User]
+getUsers :: AuthUser -> Maybe Limit -> Maybe Offset -> Maybe KC.Username -> Waziup [User]
 getUsers tok ml mo username = do
   info "Get users"
   debug $ "Username: " ++ (show username)
-  us <- liftKeycloak tok $ KC.getUsers ml mo username
+  us <- undefined --liftKeycloak tok $ KC.getUsers ml mo username
   return $ map toUser us
 
-getUser :: Maybe KC.Token -> UserId -> Waziup User
+getUser :: AuthUser -> UserId -> Waziup User
 getUser tok (UserId uid) = do
   info "Get users"
   return $ getUserFromToken tok
-  u <- liftKeycloak tok $ KC.getUser (KC.UserId uid)
+  u <- undefined --liftKeycloak tok $ KC.getUser (KC.UserId uid)
   return $ toUser u
 
-getUserFromToken :: Maybe KC.Token -> User
-getUserFromToken mtok = case mtok of
-    Just tok -> let claims = KC.getClaims tok in
-      User
-           { userId        = Nothing 
-           , userUsername  = fromJust $ join $ readString <$> claims !? "preferred_username" 
-           , userFirstName = join $ readString <$> claims !? "given_name"  
-           , userLastName  = join $ readString <$> claims !? "family_name" 
-           , userEmail     = join $ readString <$> claims !? "email" 
-           , userPhone     = join $ readString <$> claims !? "phone" 
-           , userFacebook  = join $ readString <$> claims !? "facebook" 
-           , userTwitter   = join $ readString <$> claims !? "twitter" 
-           , userSmsCredit = join $ readInt    <$> claims !? "sms_credit" 
-           , userAdmin     = join $ readBool   <$> claims !? "admin"}
-    Nothing -> guestUser
+getUserFromToken :: AuthUser -> User
+getUserFromToken mtok =undefined -- case mtok of
+   -- Just tok -> let claims = KC.getClaims tok in
+   --   User
+   --        { userId        = Nothing 
+   --        , userUsername  = fromJust $ join $ readString <$> claims !? "preferred_username" 
+   --        , userFirstName = join $ readString <$> claims !? "given_name"  
+   --        , userLastName  = join $ readString <$> claims !? "family_name" 
+   --        , userEmail     = join $ readString <$> claims !? "email" 
+   --        , userPhone     = join $ readString <$> claims !? "phone" 
+   --        , userFacebook  = join $ readString <$> claims !? "facebook" 
+   --        , userTwitter   = join $ readString <$> claims !? "twitter" 
+   --        , userSmsCredit = join $ readInt    <$> claims !? "sms_credit" 
+   --        , userAdmin     = join $ readBool   <$> claims !? "admin"}
+   -- Nothing -> guestUser
 
-guestUser :: User
-guestUser = User
-           { userId        = Nothing 
-           , userUsername  = "guest" 
-           , userFirstName = Just "guest" 
-           , userLastName  = Just "guest" 
-           , userEmail     = Nothing 
-           , userPhone     = Nothing
-           , userFacebook  = Nothing
-           , userTwitter   = Nothing
-           , userSmsCredit = Nothing
-           , userAdmin     = Just False} 
 
-readString :: Value -> Maybe Text
-readString (String a) = Just a
-readString _ = Nothing
-
-readInt :: Value -> Maybe Int
-readInt (Number a) = Just $ round a
-readInt _ = Nothing
-
-readBool :: Value -> Maybe Bool
-readBool (Bool a) = Just a
-readBool _ = Nothing
-
-postUser :: Maybe KC.Token -> User -> Waziup UserId
+postUser :: AuthUser -> User -> Waziup UserId
 postUser tok user = do 
   info "Post users"
-  uid <- liftKeycloak tok $ KC.createUser (fromUser user)
+  uid <- undefined --liftKeycloak tok $ KC.createUser (fromUser user)
   return $ UserId $ KC.unUserId uid
 
-putUserCredit :: Maybe KC.Token -> UserId -> Int -> Waziup NoContent
+putUserCredit :: AuthUser -> UserId -> Int -> Waziup NoContent
 putUserCredit tok uid@(UserId i) c = do
   info "Put user credit"
   u <- getUser tok uid 
   let u' = u {userSmsCredit = Just c}
-  liftKeycloak tok $ KC.updateUser (KC.UserId i) (fromUser u')
+  --liftKeycloak tok $ KC.updateUser (KC.UserId i) (fromUser u')
   return NoContent
 
 toUser :: KC.User -> User

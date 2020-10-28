@@ -7,16 +7,14 @@
 module Keycloak.Types where
 
 import           Data.Aeson
-import           Data.Aeson.Types
 import           Data.Aeson.Casing
 import           Data.Text hiding (head, tail, map, toLower, drop)
 import           Data.Text.Encoding
-import           Data.Monoid
 import           Data.String.Conversions
 import           Data.Maybe
 import           Data.Map hiding (drop, map)
 import qualified Data.ByteString as BS
-import qualified Data.Word8 as W8 (isSpace, _colon, toLower)
+import qualified Data.Word8 as W8 (isSpace, toLower)
 import           Data.Char
 import           Control.Monad.Except (ExceptT, runExceptT)
 import           Control.Monad.Reader as R
@@ -24,7 +22,6 @@ import           Control.Lens hiding ((.=))
 import           GHC.Generics (Generic)
 import           Web.HttpApiData (FromHttpApiData(..), ToHttpApiData(..))
 import           Network.HTTP.Client as HC hiding (responseBody)
-import           Web.JWT as JWT
 
 -- * Keycloak Monad
 
@@ -39,18 +36,18 @@ data KCError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
 
 -- | Configuration of Keycloak.
 data KCConfig = KCConfig {
-  _baseUrl       :: Text,
-  _realm         :: Text,
-  _clientId      :: Text,
-  _clientSecret  :: Text} deriving (Eq, Show)
+  _confBaseUrl       :: Text,
+  _confRealm         :: Text,
+  _confClientId      :: Text,
+  _confClientSecret  :: Text} deriving (Eq, Show)
 
 -- | Default configuration
 defaultKCConfig :: KCConfig
 defaultKCConfig = KCConfig {
-  _baseUrl       = "http://localhost:8080/auth",
-  _realm         = "waziup",
-  _clientId      = "api-server",
-  _clientSecret  = "4e9dcb80-efcd-484c-b3d7-1e95a0096ac0"}
+  _confBaseUrl       = "http://localhost:8080/auth",
+  _confRealm         = "waziup",
+  _confClientId      = "api-server",
+  _confClientSecret  = "4e9dcb80-efcd-484c-b3d7-1e95a0096ac0"}
 
 -- | Run a Keycloak monad within IO.
 runKeycloak :: Keycloak a -> KCConfig -> IO (Either KCError a)
@@ -115,10 +112,10 @@ tokACR                 = "acr";
 
 -- | Token reply from Keycloak
 data TokenRep = TokenRep {
-  accessToken       :: JWT.JSON,
+  accessToken       :: Text,
   expiresIn         :: Int,
   refreshExpriresIn :: Int,
-  refreshToken      :: JWT.JSON,
+  refreshToken      :: Text,
   tokenType         :: Text,
   notBeforePolicy   :: Int,
   sessionState      :: Text,
@@ -133,11 +130,12 @@ instance FromJSON TokenRep where
                                   <*> v .: "not-before-policy"
                                   <*> v .: "session_state"
                                   <*> v .: "scope"
+  parseJSON _ = error "Not an object"
 
--- * Permission
+-- * Permissions
 
 -- | Scope name
-newtype ScopeName = ScopeName {unScopeName :: Text} deriving (Show, Eq, Generic, Ord)
+newtype ScopeName = ScopeName {unScopeName :: Text} deriving (Eq, Generic, Ord)
 
 --JSON instances
 instance ToJSON ScopeName where
@@ -145,6 +143,9 @@ instance ToJSON ScopeName where
 
 instance FromJSON ScopeName where
   parseJSON = genericParseJSON (defaultOptions {unwrapUnaryRecords = True})
+
+instance Show ScopeName where
+  show (ScopeName s) = convertString s
 
 -- | Scope Id
 newtype ScopeId = ScopeId {unScopeId :: Text} deriving (Show, Eq, Generic)
@@ -170,9 +171,9 @@ instance FromJSON Scope where
 
 -- | Keycloak permission on a resource
 data Permission = Permission 
-  { permRsid   :: Maybe ResourceId,
-    permRsname :: Maybe ResourceName,
-    permScopes :: [ScopeName] -- Non empty
+  { permRsid   :: Maybe ResourceId,   -- Resource ID, can be Nothing in case of scope-only permission request
+    permRsname :: Maybe ResourceName, -- Resrouce Name
+    permScopes :: [ScopeName]         -- Scopes that are accessible Non empty
   } deriving (Generic, Show, Eq)
 
 instance ToJSON Permission where
@@ -183,9 +184,13 @@ instance FromJSON Permission where
 
 -- | permission request
 data PermReq = PermReq 
-  { permReqResourceId :: Maybe ResourceId,
-    permReqScopes     :: [ScopeName]
-  } deriving (Generic, Show, Eq, Ord)
+  { permReqResourceId :: Maybe ResourceId, -- Requested ressource Ids. Nothing means "All resources".
+    permReqScopes     :: [ScopeName]       -- Scopes requested. [] means "all scopes".
+  } deriving (Generic, Eq, Ord)
+
+instance Show PermReq where
+  show (PermReq (Just (ResourceId res1)) scopes) = (show res1) <> " " <> (show scopes)
+  show (PermReq Nothing scopes)                  = "none " <> (show scopes)
 
 
 
@@ -217,7 +222,7 @@ data User = User
   } deriving (Show, Eq, Generic)
 
 unCapitalize :: String -> String
-unCapitalize (c:cs) = toLower c : cs
+unCapitalize (a:as) = toLower a : as
 unCapitalize [] = []
 
 instance FromJSON User where
@@ -282,17 +287,18 @@ instance FromJSON Resource where
     rAtt    <- v .:? "attributes"
     let atts = if isJust rAtt then toList $ fromJust rAtt else []
     return $ Resource rId rName rType rUris rScopes rOwn rOMA (map (\(a, b) -> Attribute a b) atts)
+  parseJSON _ = error "not an object"
 
 instance ToJSON Resource where
-  toJSON (Resource id name typ uris scopes own uma attrs) =
-    object ["_id"                .= toJSON id,
+  toJSON (Resource rid name typ uris scopes own uma attrs) =
+    object ["_id"                .= toJSON rid,
             "name"               .= toJSON name,
             "type"               .= toJSON typ,
             "uris"               .= toJSON uris,
             "scopes"             .= toJSON scopes,
             "owner"              .= (toJSON $ ownName own),
             "ownerManagedAccess" .= toJSON uma,
-            "attributes"         .= object (map (\(Attribute name vals) -> name .= toJSON vals) attrs)]
+            "attributes"         .= object (map (\(Attribute aname vals) -> aname .= toJSON vals) attrs)]
 
 -- | A resource attribute
 data Attribute = Attribute {

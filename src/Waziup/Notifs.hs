@@ -5,7 +5,7 @@
 module Waziup.Notifs where
 
 import           Waziup.Types as T
-import           Waziup.Utils
+import           Waziup.Utils hiding ((!?))
 import           Waziup.Auth hiding (info, warn, debug, err)
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class

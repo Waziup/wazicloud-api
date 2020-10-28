@@ -11,6 +11,7 @@
 module Waziup.Types where
 
 import qualified Crypto.JWT as JWT
+import qualified Data.ByteString.Lazy as L
 import           Data.List (stripPrefix)
 import           Data.Maybe (fromMaybe)
 import           Data.Aeson as Aeson
@@ -33,6 +34,7 @@ import           Control.Lens hiding ((.=))
 import           Control.Monad
 import           Control.Monad.Except (runExceptT)
 import           Control.Monad.Reader
+import           Crypto.JWT as JWT hiding (Error)
 import           Servant
 import           Servant.Auth.Server
 import           Keycloak as KC hiding (Scope, User(..), UserId, unCapitalize, PermReq) 
@@ -60,7 +62,8 @@ type WaziupM a = ReaderT WaziupInfo a
 data WaziupInfo = WaziupInfo {
   _dbPool       :: Pool DB.Pipe,
   _waziupConfig :: WaziupConfig,
-  _ontologies   :: Ontologies
+  _ontologies   :: Ontologies,
+  _jwks         :: [JWK]
   }
  
 -- | run a Waziup monad
@@ -86,8 +89,8 @@ data ServerConfig = ServerConfig {
   _serverHost         :: Text,     -- ^ Hostname to serve on, e.g. "127.0.0.1"
   _serverPort         :: Int,      -- ^ Port to serve on, e.g. 8080
   _serverPortMQTT     :: Int,      -- ^ Port to serve on, e.g. 2883 
-  _guestLogin         :: Username,
-  _guestPassword      :: Password,
+  _adminLogin         :: Username,
+  _adminPassword      :: Password,
   _notifMinInterval   :: NominalDiffTime,  -- ^ minimum interval between two notifications (seconds)
   _cacheActivated     :: Bool,             -- ^ activate permission cache
   _cacheValidDuration :: NominalDiffTime,  -- ^ duration of cache validity (seconds)
@@ -99,8 +102,8 @@ defaultServerConfig = ServerConfig {
   _serverHost         = "http://localhost:8008",
   _serverPort         = 8008,
   _serverPortMQTT     = 3883,
-  _guestLogin         = "guest",
-  _guestPassword      = "guest",
+  _adminLogin         = "cdupont",
+  _adminPassword      = "password",
   _notifMinInterval   = 120,
   _cacheActivated     = True,
   _cacheValidDuration = 10 * 60,   -- 10 minutes
@@ -150,6 +153,21 @@ defaultPlivoConf = PlivoConfig {
 --------------------------------------
 -- * Authentication & authorization --
 --------------------------------------
+
+--- | Wrapper for tokens.
+newtype Token = Token {unToken :: L.ByteString} deriving (Eq, Show, Generic)
+
+instance ToJSON Token where
+  toJSON (Token t) = String $ convertString t
+
+instance ToParamSchema Token where
+  toParamSchema _ = binaryParamSchema
+
+instance ToSchema Token where
+  declareNamedSchema _ = pure (NamedSchema (Just "Token") binarySchema)
+
+instance MimeRender PlainText Token where
+  mimeRender _ (Token tok) = tok
 
 type AuthUser = AuthResult User
 
@@ -1131,9 +1149,9 @@ instance ToJSON User where
 instance ToJWT User
 
 instance FromJWT User where
-  decodeJWT claims = let ucs = (trace "Claims: " claims) ^. JWT.unregisteredClaims in
+  decodeJWT claims = let ucs = (trace "Claims: " (claims ^. JWT.unregisteredClaims)) in
           Right (User { userId        = Nothing 
-                      , userUsername  = fromJust $ join $ readString <$> HM.lookup "preferred_username" ucs 
+                      , userUsername  = fromJust $ join $ readString <$> HM.lookup "preferred_username" (trace "Unre: " ucs)
                       , userFirstName = join $ readString <$> HM.lookup "given_name" ucs 
                       , userLastName  = join $ readString <$> HM.lookup "family_name" ucs
                       , userEmail     = join $ readString <$> HM.lookup "email" ucs

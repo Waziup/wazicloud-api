@@ -88,7 +88,11 @@ configureWaziup = do
   let mongUrl = conf ^. mongoConf.mongoUrl
   pool <- createPool (DB.connect $ readHostPort $ convertString mongUrl) DB.close 1 300 5
   onto <- loadOntologies
-  return $ WaziupInfo pool conf onto
+  keys <- runKeycloak getJWKs kcConfig 
+  let ks = case keys of
+       Left e -> error $ "Keycloak error:" ++ (show e) 
+       Right ks -> ks
+  return $ WaziupInfo pool conf onto ks
 
 waziupConfigParser :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> MQTTConfig -> TWInfo -> PlivoConfig -> Parser WaziupConfig
 waziupConfigParser servDef mDef kcDef oDef mqttDef twittDef plivoDef = do

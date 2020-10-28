@@ -8,91 +8,74 @@ import           Waziup.Utils
 import           System.Log.Logger
 import           Control.Monad.IO.Class
 import           Control.Monad
+import           Control.Lens
 import qualified Keycloak as KC
 import           Data.Maybe
-import           Data.Map hiding (map)
+import           Data.HashMap.Strict hiding (map)
 import           Data.String.Conversions
 import           Data.Text hiding (map, head)
 import           Servant
 import           Data.Aeson as JSON
+import           Data.Aeson.Lens
+import           Data.Scientific
+import           Servant.Auth.Server
+
 
 getUsers :: AuthUser -> Maybe Limit -> Maybe Offset -> Maybe KC.Username -> Waziup [User]
 getUsers tok ml mo username = do
   info "Get users"
   debug $ "Username: " ++ (show username)
-  us <- undefined --liftKeycloak tok $ KC.getUsers ml mo username
+  tok <- getAdminToken
+  us <- liftKeycloak $ KC.getUsers ml mo username tok
   return $ map toUser us
 
 getUser :: AuthUser -> UserId -> Waziup User
 getUser tok (UserId uid) = do
-  info "Get users"
-  return $ getUserFromToken tok
-  u <- undefined --liftKeycloak tok $ KC.getUser (KC.UserId uid)
+  info "Get user"
+  tok <- getAdminToken
+  u <- liftKeycloak $ KC.getUser (KC.UserId uid) tok
   return $ toUser u
-
-getUserFromToken :: AuthUser -> User
-getUserFromToken mtok =undefined -- case mtok of
-   -- Just tok -> let claims = KC.getClaims tok in
-   --   User
-   --        { userId        = Nothing 
-   --        , userUsername  = fromJust $ join $ readString <$> claims !? "preferred_username" 
-   --        , userFirstName = join $ readString <$> claims !? "given_name"  
-   --        , userLastName  = join $ readString <$> claims !? "family_name" 
-   --        , userEmail     = join $ readString <$> claims !? "email" 
-   --        , userPhone     = join $ readString <$> claims !? "phone" 
-   --        , userFacebook  = join $ readString <$> claims !? "facebook" 
-   --        , userTwitter   = join $ readString <$> claims !? "twitter" 
-   --        , userSmsCredit = join $ readInt    <$> claims !? "sms_credit" 
-   --        , userAdmin     = join $ readBool   <$> claims !? "admin"}
-   -- Nothing -> guestUser
-
 
 postUser :: AuthUser -> User -> Waziup UserId
 postUser tok user = do 
   info "Post users"
-  uid <- undefined --liftKeycloak tok $ KC.createUser (fromUser user)
+  tok <- getAdminToken
+  uid <- liftKeycloak $ KC.createUser (fromUser user) tok
   return $ UserId $ KC.unUserId uid
 
 putUserCredit :: AuthUser -> UserId -> Int -> Waziup NoContent
-putUserCredit tok uid@(UserId i) c = do
+putUserCredit au uid@(UserId i)  c = do
   info "Put user credit"
-  u <- getUser tok uid 
+  --TODO check credentials of AuthUser
+  u <- getUser au uid
   let u' = u {userSmsCredit = Just c}
-  --liftKeycloak tok $ KC.updateUser (KC.UserId i) (fromUser u')
+  tok <- getAdminToken
+  liftKeycloak $ KC.updateUser (KC.UserId i) (fromUser u') tok
   return NoContent
 
 toUser :: KC.User -> User
-toUser (KC.User i un fn ln mail subs) = 
-  User { userId        = maybe Nothing (Just . UserId . KC.unUserId) i 
+toUser (KC.User i un fn ln mail subs) = let obj = Object <$> subs in 
+  User { userId        = UserId . KC.unUserId <$> i 
        , userUsername  = un
        , userFirstName = fn
        , userLastName  = ln 
        , userEmail     = mail
-       , userPhone     = if isJust subs then convertString.head <$> (fromJust subs) !? "phone" else Nothing
-       , userFacebook  = if isJust subs then convertString.head <$> (fromJust subs) !? "facebook" else Nothing
-       , userTwitter   = if isJust subs then convertString.head <$> (fromJust subs) !? "twitter" else Nothing
-       , userSmsCredit = if isJust subs then read.convertString.head <$> (fromJust subs) !? "sms_credit" else Nothing
-       , userAdmin     = if isJust subs then read.convertString.head <$> (fromJust subs) !? "admin" else Nothing
+       , userPhone     = preview (_Just . at "phone" . _Just . _String) subs
+       , userFacebook  = preview (_Just . at "facebook" . _Just . _String) subs
+       , userTwitter   = preview (_Just . at "twitter" . _Just . _String) subs
+       , userSmsCredit = preview (_Just . at "sms_credit"  . _Just . _Integral) subs
+       , userAdmin     = preview (_Just . at "admin" . _Just . _Bool) subs
        }
 
 fromUser :: User -> KC.User
-fromUser (User i usern fn ln email ph fb tw smsc admin) =
+fromUser u@(User i usern fn ln email ph fb tw smsc admin) =
   KC.User { KC.userId = maybe Nothing (Just . KC.UserId . unUserId) i
           , KC.userUsername = usern
           , KC.userFirstName = fn
           , KC.userLastName = ln
           , KC.userEmail = email
-          , KC.userAttributes = Just (fromList $ catMaybes [getAtt "phone" ph, 
-                                                            getAtt "facebook" fb,
-                                                            getAtt "twitter" tw,
-                                                            getAtt "sms_credit" (convertString.show <$> smsc),
-                                                            getAtt "admin" (convertString.show <$> admin)
-                                                            ])}
-
-getAtt :: Text -> Maybe Text -> Maybe (Text, [Text])
-getAtt label (Just field) = Just (label, [field])
-getAtt _ Nothing = Nothing
-
+          , KC.userAttributes = preview _Object (toJSON u)}
+          
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

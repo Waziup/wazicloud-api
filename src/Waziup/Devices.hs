@@ -4,7 +4,7 @@
 module Waziup.Devices where
 
 import           Waziup.Types as W
-import           Waziup.Utils as U
+import           Waziup.Utils as U hiding ((!?))
 import           Waziup.Auth hiding (info, warn, debug, err) 
 import           Control.Monad.IO.Class
 import           Control.Monad
@@ -20,7 +20,7 @@ import           Data.Aeson as JSON hiding (Options)
 import           Data.Time.ISO8601
 import           Servant
 import           Servant.Auth.Server
-import           Keycloak (Token, Username, getUsername) 
+import           Keycloak hiding (User(..)) 
 import           Orion as O hiding (info, warn, debug, err)
 import           System.Log.Logger
 import           Database.MongoDB as DB hiding (value, Limit, Array, lookup, Value, Null, (!?), Username)
@@ -65,13 +65,13 @@ getDevice tok did = do
   return device
 
 postDevice :: AuthUser -> Device -> Waziup NoContent
-postDevice tok d = do
+postDevice au d = do
   info $ "Post device: " ++ (show d)
   debug "Check permissions"
   --liftKeycloak tok $ checkPermission (ResourceId "Devices") (fromScope DevicesCreate)
   debug "Create entity"
-  let username = case tok of
-       Authenticated u -> username 
+  let username = case au of
+       Authenticated u -> userUsername u
        _ -> "guest"
   debug $ "Owner: " <> (show username)
   let entity = getEntityFromDevice (d {devOwner = Just username})

@@ -7,7 +7,7 @@ import           Waziup.Types
 import           Waziup.Utils
 import           Waziup.Devices hiding (info, warn, debug, err) 
 import           Waziup.Auth hiding (info, warn, debug, err) 
-import           Keycloak (Token, Username, getUsername)
+import           Keycloak hiding (User(..))
 import           Control.Monad.IO.Class
 import           Control.Monad.Catch as C
 import           Control.Monad

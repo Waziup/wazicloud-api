@@ -22,6 +22,8 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 import           Control.Lens
 import           Control.Concurrent.Async (concurrently)
+import           Crypto.JOSE
+import           Crypto.JWT
 import           System.Log.Logger
 import           Waziup.Types
 import           Waziup.Utils
@@ -30,11 +32,14 @@ import           Waziup.Auth hiding (info, warn, debug, err)
 import           Waziup.Devices hiding (info, warn, debug, err)
 import           Orion as O hiding (info, warn, debug, err)
 import           Network.MQTT.Client hiding (MQTTConfig)
-import qualified Network.MQTT.Types as T
+import           Network.MQTT.Types as T hiding (connectRequest)
 import           Network.URI
 import           Conduit
 import           Database.MongoDB as DB hiding (Username, Password, host)
 import           Safe
+import           Keycloak hiding (User, Scope)
+import           Control.Monad.Except 
+import           Servant.Auth.Server
 
 -- | MQTT topics
 dev_topic, sen_topic, act_topic, val_topic :: T.Text
@@ -44,7 +49,7 @@ act_topic = "actuators"
 val_topic = "value"
 
 prot :: ProtocolLevel
-prot = Protocol50
+prot = Protocol311
 
 -- | Cache for the connection
 data ConnCache = ConnCache {
@@ -78,8 +83,8 @@ handleStreams :: WaziupInfo -> AppData -> AppData -> IO ()
 handleStreams wi extClient intServer = do
   cache <- atomically $ newTVar Nothing 
   debug $ "Starting streams"
-  let downstream = appSource extClient .| conduitParser (T.parsePacket prot) .| filterMQTTin  cache extClient .| appSink' intServer
-  let upstream   = appSource intServer .| conduitParser (T.parsePacket prot) .| filterMQTTout cache intServer .| appSink' extClient
+  let downstream = appSource extClient .| parse .| filterMQTTin  cache extClient .| serialize .| appSink intServer
+  let upstream   = appSource intServer .| parse .| filterMQTTout cache intServer .| serialize .| appSink extClient
   void $ concurrently
     (runWaziup (runConduit downstream) wi) --traffic downstream
     (runWaziup (runConduit upstream) wi)   --traffic upstream
@@ -87,12 +92,17 @@ handleStreams wi extClient intServer = do
   debug $ "Ending streams"
   void $ liftIO $ runWaziup (putConnect cache False) wi
 
-appSink' :: forall o. AppData -> ConduitT T.MQTTPkt o Waziup () 
-appSink' app = awaitForever (yield . convertString . show) .| appSink app
+-- Parse a bytestring into an MQTT packet
+parse :: ConduitT B.ByteString MQTTPkt Waziup ()
+parse = conduitParser (T.parsePacket prot) .| awaitForever (\(_,a) -> yield a)
+
+-- serialize a MQTT packet into a bytestring
+serialize :: ConduitT MQTTPkt B.ByteString Waziup () 
+serialize = awaitForever (yield . convertString . (T.toByteString prot))
 
 -- | traffic going downstream (from external client to internal MQTT server)
-filterMQTTin :: TVar (Maybe ConnCache) -> AppData -> ConduitT (w, T.MQTTPkt) T.MQTTPkt Waziup ()
-filterMQTTin cache extClient = awaitForever $ \(_,res) -> do 
+filterMQTTin :: TVar (Maybe ConnCache) -> AppData -> ConduitT MQTTPkt MQTTPkt Waziup ()
+filterMQTTin cache extClient = awaitForever $ \res -> do 
   connCache <- liftIO $ atomically $ readTVar cache
   debug $ "Received downstream: " ++ (show res) ++ " ID= " ++ (show $ connId <$> connCache)
   -- putting the gateway connect
@@ -103,21 +113,30 @@ filterMQTTin cache extClient = awaitForever $ \(_,res) -> do
     (T.PublishPkt p) -> publishRequest p cache extClient 
     _ -> yield res
     
-connectRequest :: T.ConnectRequest -> TVar (Maybe ConnCache) -> ConduitT (w, T.MQTTPkt) T.MQTTPkt Waziup ()
+connectRequest :: T.ConnectRequest -> TVar (Maybe ConnCache) -> ConduitT MQTTPkt MQTTPkt Waziup ()
 connectRequest p@(T.ConnectRequest user pass _ _ _ cid _) cache = do
   -- store user and connection ID
-  tok <- if isJust user && isJust pass 
+  if isJust user && isJust pass 
     then do
-      t <- lift $ postAuth $ AuthBody (convertString $ fromJust user) (convertString $ fromJust pass)
-      return $ Just t
-    else return Nothing
-  --liftIO $ atomically $ writeTVar cache (Just $ ConnCache (getUserFromToken tok) cid) 
+      user <- lift $ verifyUser (convertString $ fromJust user) (convertString $ fromJust pass)
+      debug $ "User: " ++ (show user)
+      liftIO $ atomically $ writeTVar cache (Just $ ConnCache user cid) 
+    else liftIO $ atomically $ writeTVar cache (Just $ ConnCache guestUser cid) 
   lift $ putConnect cache True
+  debug $ "Conn passed"
   yield $ T.ConnPkt p prot
 
-publishRequest :: T.PublishRequest -> TVar (Maybe ConnCache) -> AppData -> ConduitT (w, T.MQTTPkt) T.MQTTPkt Waziup ()
+verifyUser :: Username -> Password -> Waziup User
+verifyUser user pass = do
+  jwks <- view jwks
+  jwt <- liftKeycloak $ getJWT user pass
+  claims <- liftKeycloak $ verifyJWT (head jwks) jwt
+  return $ toUser $ getClaimsUser claims
+
+publishRequest :: T.PublishRequest -> TVar (Maybe ConnCache) -> AppData -> ConduitT MQTTPkt MQTTPkt Waziup ()
 publishRequest p@(T.PublishRequest _ _ _ topic pid body _) cache extClient = do
   -- Decode MQTT message
+  debug "publish"
   case decodePub topic body of
     MQTTSen did sid senVal -> do
       -- check authorization
@@ -130,7 +149,7 @@ publishRequest p@(T.PublishRequest _ _ _ topic pid body _) cache extClient = do
           yield $ T.PublishPkt p
         else do
           -- return PUBACK directly to client (MQTT offers no way to inform the client about the failure)
-          yield (T.PubACKPkt (T.PubACK pid 0x40 [])) .| appSink' extClient
+          yield (T.PubACKPkt (T.PubACK pid 0x40 [])) .| serialize .| appSink extClient
 
     MQTTAct did aid actVal -> do 
       isAuth <- lift $ isAuthDevice did cache DevicesDataCreate 
@@ -140,13 +159,13 @@ publishRequest p@(T.PublishRequest _ _ _ topic pid body _) cache extClient = do
           lift $ putActuatorValue did aid actVal
           yield $ T.PublishPkt p
         else do
-          yield (T.PubACKPkt (T.PubACK pid 0x40 [])) .| appSink' extClient
+          yield (T.PubACKPkt (T.PubACK pid 0x40 [])) .| serialize .| appSink extClient
     MQTTError e -> err e
     MQTTOther -> yield (T.PublishPkt p)
       
 -- | traffic going upstream (from internal MQTT server to external client)
-filterMQTTout :: TVar (Maybe ConnCache) -> AppData -> ConduitT (w, T.MQTTPkt) T.MQTTPkt Waziup ()
-filterMQTTout cache intServer = awaitForever $ \(_, res) -> do
+filterMQTTout :: TVar (Maybe ConnCache) -> AppData -> ConduitT MQTTPkt MQTTPkt Waziup ()
+filterMQTTout cache intServer = awaitForever $ \res -> do
   debug $ "Received upstream: " ++ (show res)
   case res of
     -- Decode Publish
@@ -159,13 +178,13 @@ filterMQTTout cache intServer = awaitForever $ \(_, res) -> do
           debug $ "Perm check upstream: " ++ (show isAuth)
           if isAuth 
             then yield res
-            else yield (T.PubACKPkt (T.PubACK id 0x40 [])) .| appSink' intServer
+            else yield (T.PubACKPkt (T.PubACK id 0x40 [])) .| serialize .| appSink intServer
         MQTTAct did _ _ -> do 
           isAuth <- lift $ isAuthDevice did cache DevicesDataView 
           debug $ "Perm check upstream: " ++ (show isAuth)
           if isAuth 
             then yield res
-            else yield (T.PubACKPkt (T.PubACK id 0x40 [])) .| appSink' intServer
+            else yield (T.PubACKPkt (T.PubACK id 0x40 [])) .| serialize .| appSink intServer
         MQTTError e -> do
           err e
         MQTTOther -> yield res

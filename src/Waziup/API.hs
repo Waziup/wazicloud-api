@@ -5,6 +5,7 @@
 module Waziup.API where
 
 import           Waziup.Types
+import qualified Data.ByteString.Lazy as L
 import           Data.Text
 import           Data.Time
 import           Data.Aeson
@@ -16,8 +17,10 @@ import           Servant.CSV.Cassava
 import           Servant.Swagger.UI
 import           Servant.Swagger.Tags
 import           Servant.Auth.Server
-import           Keycloak (Token, Username)
+import qualified Keycloak as KC
+import           Keycloak (Username)
 import           Orion
+
 -----------------------------
 -- | Waziup type-level API --
 -----------------------------
@@ -319,8 +322,3 @@ type OntologiesAPI =
     :<|> "units"          :> Get '[JSON] [Unit])
 
 
-instance ToParamSchema Token where
-  toParamSchema _ = binaryParamSchema
-
-instance ToSchema Token where
-  declareNamedSchema _ = pure (NamedSchema (Just "Token") binarySchema)

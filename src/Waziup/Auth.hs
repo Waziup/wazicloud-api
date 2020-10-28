@@ -3,12 +3,14 @@
 
 module Waziup.Auth where
 
+import qualified Data.ByteString.Lazy as L
 import           Control.Concurrent.STM
 import           Control.Lens
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
 import           Control.Monad
 import           Control.Monad.Extra
+import           Crypto.JOSE.Compact
 import           Data.String.Conversions
 import           Data.Maybe
 import           Data.Time
@@ -18,7 +20,7 @@ import           Data.Cache.Internal as CI
 import qualified Data.Map as M
 import           Data.Map ((!?)) 
 import qualified Keycloak as KC
-import           Keycloak (Token, getClaims)
+import           Keycloak hiding (Scope, User(..), JWT)
 import           Servant
 import           Servant.Auth.Server
 import           System.Log.Logger
@@ -28,11 +30,11 @@ import           Waziup.Users hiding (info, debug)
 import           Debug.Trace
 
 -- | get a token
-postAuth :: AuthBody -> Waziup Token
+postAuth :: AuthBody -> Waziup Token 
 postAuth (AuthBody username password) = do
   info "Post authentication"
-  tok <- liftKeycloak' $ KC.getUserAuthToken username password
-  return tok
+  jwt <- liftKeycloak $ KC.getJWT username password
+  return $ Token $ encodeCompact jwt
 
 -- * Permissions
 

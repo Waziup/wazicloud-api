@@ -20,6 +20,7 @@ import           Data.AesonBson
 import           Data.Time
 import           Keycloak as KC hiding (Scope) 
 import           System.Log.Logger
+import           Servant.Auth.Server
 import           Database.MongoDB as DB hiding (value)
 import           Web.Twitter.Conduit
 import           Web.Twitter.Types as TWT
@@ -48,18 +49,18 @@ getSocialMessages _ = runMongo $ do
 
 -- | post a social message
 postSocialMessage :: AuthUser -> SocialMessage -> Waziup SocialMessageId
-postSocialMessage tok socMsg@(SocialMessage _ dest chan msg _ _) = do
+postSocialMessage au socMsg@(SocialMessage _ dest chan msg _ _) = do
   info "Post social messages"
-  users <- undefined --Users.getUsers tok Nothing Nothing (Just dest)
-  let muser = undefined --L.find (\u -> T.userUsername u == dest) users
+  users <- Users.getUsers au Nothing Nothing (Just dest)
+  let muser = L.find (\u -> T.userUsername u == dest) users
   --debug $ (show muser)
   case muser of
-    Just user -> do
+    Just destUser -> do
       case chan of
-        Twitter -> postTwitter user msg
-        SMS     -> postSMS tok user msg
+        Twitter -> postTwitter destUser msg
+        SMS     -> postSMS au destUser msg
         Voice   -> undefined
-        None    -> return () 
+        None    -> return ()
       runMongo $ logSocialMessage socMsg
     Nothing -> throwError err400 {errBody = "User not found"}
 
@@ -98,13 +99,14 @@ postTwitter user msg = do
           throwError err400 {errBody = convertString $ "Twitter error: " ++ (show tms)}
         Left e -> throwM e
 
+-- The authenticated user can send an SMS to the destination user
 postSMS :: AuthUser -> T.User -> Text -> Waziup ()
-postSMS tok user@(T.User _ _ _ _ _ (Just phone) _ _ (Just c) _) txt = do
+postSMS au@(Authenticated (T.User (Just sender) _ _ _ _ _ _ _ _ _)) destUser@(T.User _ _ _ _ _ (Just phone) _ _ (Just c) _) txt = do
   res <- C.try $ smsPost $ PlivoSMS "+393806412094" phone txt
   case res of 
     Right _ -> do
       debug $ "Removing one SMS credit, remaining: " ++ (show (c -1))
-      void $ undefined --Users.putUserCredit tok (fromJust $ T.userId user) (c - 1)
+      void $ Users.putUserCredit au sender (c - 1)
     Left (er :: SomeException) -> throwError err400 {errBody = convertString $ "Could not send SMS: " ++ (show er)}
   return ()
 postSMS _ _ _ = do

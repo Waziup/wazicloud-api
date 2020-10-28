@@ -24,6 +24,8 @@ import           Servant.Server
 import           Servant.Auth.Server
 import           Crypto.JOSE.JWK as Jose
 import           Data.Aeson as Aeson
+import qualified Keycloak as KC
+import           Control.Lens
 
 main :: IO ()
 main = do
@@ -31,22 +33,25 @@ main = do
   let host = waziupInfo ^. waziupConfig.serverConf.serverHost
   let port = waziupInfo ^. waziupConfig.serverConf.serverPort
   let mqttPor = waziupInfo ^. waziupConfig.serverConf.serverPortMQTT
+  let kcConf = waziupInfo ^. waziupConfig.keycloakConf
   Main.info $ "API server starting..."
   Main.info $ convertString $ "HTTP API is running on " <> host <> "/api/v2"
   Main.info $ convertString $ "MQTT is running on port " <> (show mqttPor)
   Main.info $ convertString $ "Documentation is on " <> host <> "/docs"
   forkIO $ mqttProxy waziupInfo
-  let jsonKey = "{\"kid\":\"Lla9_pMxUpsT1Mzl3glvDELVHknz9fCo_uCrax8uvBw\",\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\",\"n\":\"1GD_Zs4DaccHzZlWNq74MqPwy02sWNJMXcGB0bsbWtj-oX4AzZgUIniu60I3zOVLst8zc16FzRg_vRfPSxMb-oKuRinfhKZJiZepXDi27bcsUvteprHLW8LHufvngNNzHNmrGjPsxEdhb9Mouw8DRmx6m_PgIYTv4ilSkCgNs3NteCRtDZl8_iSA0fpPwA77BV8mT8RBntZ6CbjV-zxGEsQ7ly5rAmG7ADUPFhOzM7DNDVbSAzOyK7OL5W7p0KFfpX8wphvoix2c2hAjjjhCKHSqlm88DjfnXFm6ggYbY8_TC7ZwPB_Y8xQ3mM7-vEFSnmtIrPH089kw8HWnyntCPQ\",\"e\":\"AQAB\"}"
-  let myKey = case decode jsonKey of
-       Nothing -> error "not decoded"
-       Just e -> e
-
-  let jwtCfg = defaultJWTSettings myKey
+  keys <- KC.runKeycloak KC.getJWKs kcConf 
+  let ks = case keys of
+       Left e -> error $ "Keycloak error:" ++ (show e) 
+       Right ks -> ks
+  let jwtCfg = JWTSettings { signingKey = head ks
+                           , jwtAlg = Nothing
+                           , validationKeys = JWKSet ks
+                           , audienceMatches = const Matches }
       cfg = defaultCookieSettings :. jwtCfg :. EmptyContext
       api = Proxy :: Proxy API
       context = Proxy :: Proxy '[CookieSettings, JWTSettings]
       server' = hoistServerWithContext api context (getHandler waziupInfo) server
-  Main.info $ show myKey
+  Main.info $ "Keys received from Keycloak"
   run port $ logStdout
            $ cors (const $ Just corsPolicy)
            $ serveWithContext api cfg server'

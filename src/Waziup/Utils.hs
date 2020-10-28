@@ -21,7 +21,7 @@ import qualified Data.ByteString.Lazy as BL
 import           Network.HTTP.Types.Status as HTS
 import           Network.HTTP.Client as HC
 import           Servant
-import           Servant.Auth.Server
+import           Servant.Auth.Server hiding (JWT)
 import           Database.MongoDB as DB
 
 
@@ -40,29 +40,20 @@ liftOrion orion = do
    Right res -> return res
    Left er -> throwError $ fromOrionError er
 
--- * Run a Keycloak function with default guest token
-liftKeycloak :: Maybe KC.Token -> (Token -> KC.Keycloak a) -> Waziup a
-liftKeycloak mtok kc = do
- tok <- fromMaybeToken mtok 
- liftKeycloak' (kc tok)
-
 -- * Run Keycloak function
-liftKeycloak' :: KC.Keycloak a -> Waziup a
-liftKeycloak' kc = do
+liftKeycloak :: KC.Keycloak a -> Waziup a
+liftKeycloak kc = do
  conf <- view $ waziupConfig.keycloakConf
  e <- liftIO $ runKeycloak kc conf
  case e of
    Right res -> return res
    Left er -> throwError $ fromKCError er
 
-fromMaybeToken :: Maybe Token -> Waziup Token
-fromMaybeToken mtok = case mtok of
-   Just tok2 -> return tok2
-   Nothing -> do
-     guestId   <- view (waziupConfig.serverConf.guestLogin)
-     guestPass <- view (waziupConfig.serverConf.guestPassword)
-     -- retrieve guest token
-     liftKeycloak' (getUserAuthToken guestId guestPass)
+getAdminToken :: Waziup JWT
+getAdminToken = do 
+  adminId   <- view (waziupConfig.serverConf.adminLogin)
+  adminPass <- view (waziupConfig.serverConf.adminPassword)
+  liftKeycloak (getJWT adminId adminPass)
 
 -- * run Mongo function
 runMongo :: Action IO a -> Waziup a
@@ -128,3 +119,7 @@ resultToMaybe (Data.Aeson.Error _) = Nothing
 
 rightToMaybe :: Either a b -> Maybe b
 rightToMaybe = either (const Nothing) Just
+
+(!?) :: (Eq k, Hashable k) => HashMap k v -> k -> Maybe v
+(!?) m k = H.lookup k m
+{-# INLINE (!?) #-}

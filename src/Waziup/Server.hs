@@ -178,38 +178,12 @@ ontologiesServer = getSensorKinds
 -- Swagger docs
 swaggerDoc :: S.Swagger
 swaggerDoc = toSwagger ((Proxy :: Proxy WaziupAPI))
+  & S.basePath ?~ "/api/v2"
   & S.info . S.title       .~ "Waziup API"
   & S.info . S.version     .~ "v2.0.0"
   & S.info . S.description ?~ "This API allows you to access all Waziup services.\n\
                               \In order to access protected services, first get a token with POST /auth/token.\n\
                               \Then insert this token in the authorization key, specifying “Bearer” in front. For example \"Bearer eyJhbGc…\"."
-  & S.basePath ?~ "/api/v2"
- -- & S.applyTagsFor devicesOps ["Devices"]
- -- & S.applyTagsFor sensorOps  ["Sensors"]
- -- & S.applyTagsFor actuatOps  ["Actuators"]
- -- & S.applyTagsFor dataOps    ["Sensor Data"]
- -- & S.applyTagsFor authOps    ["Auth"]
- -- & S.applyTagsFor projectOps ["Projects"]
- -- & S.applyTagsFor userOps    ["Users"]
-  -- & S.applyTagsFor ontoOps    ["Ontologies"]
- -- & S.applyTagsFor gwsOps     ["Gateways"]
- -- & S.applyTagsFor socialsOps ["Socials"]
- -- & S.applyTagsFor notifsOps  ["Notifs"]
- -- & S.tags .~ (fromList [])
-  where
---    devicesOps, ontoOps :: Traversal' S.Swagger S.Operation
-    --devicesOps, sensorOps, actuatOps, dataOps, authOps, projectOps, userOps, ontoOps, gwsOps, socialsOps, notifsOps :: Traversal' S.Swagger S.Operation
- --   (devicesOps  :: Traversal' S.Swagger S.Operation) = subOperations (Proxy :: Proxy WaziupToken) (Proxy :: Proxy (WaziupAPI))
---    sensorOps  = subOperations (Proxy :: Proxy SensorsAPI)    (Proxy :: Proxy WaziupAPI)
- --   actuatOps  = subOperations (Proxy :: Proxy ActuatorsAPI)  (Proxy :: Proxy WaziupAPI)
- --   dataOps    = subOperations (Proxy :: Proxy SensorDataAPI) (Proxy :: Proxy WaziupAPI)
- --   authOps    = subOperations (Proxy :: Proxy AuthAPI)       (Proxy :: Proxy WaziupAPI)
- --   projectOps = subOperations (Proxy :: Proxy ProjectsAPI)   (Proxy :: Proxy WaziupAPI)
- --   userOps    = subOperations (Proxy :: Proxy UsersAPI)      (Proxy :: Proxy WaziupAPI)
- --   ontoOps    = subOperations (Proxy :: Proxy OntologiesAPI) (Proxy :: Proxy (Flat WaziupAPI))
- --   gwsOps     = subOperations (Proxy :: Proxy GatewaysAPI)   (Proxy :: Proxy WaziupAPI)
- --   socialsOps = subOperations (Proxy :: Proxy SocialsAPI)    (Proxy :: Proxy WaziupAPI)
- --   notifsOps  = subOperations (Proxy :: Proxy NotifsAPI)     (Proxy :: Proxy WaziupAPI)
 
 -- * helpers
 
@@ -226,6 +200,3 @@ debug s = liftIO $ debugM "API" s
 info  s = liftIO $ infoM "API" s
 warn  s = liftIO $ warningM "API" s
 err   s = liftIO $ errorM "API" s
-
-instance MimeRender PlainText KC.Token where
-  mimeRender _ (KC.Token tok) = BL.fromStrict tok

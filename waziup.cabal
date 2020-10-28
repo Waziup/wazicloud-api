@@ -55,13 +55,16 @@ Library waziup-lib
                      , http-api-data
                      , http-types
                      , iso8601-time
+                     , insert-ordered-containers
                      , jwt >= 0.10
+                     , jose
                      , keycloak-hs
                      , lens
                      , lens-aeson
                      , mtl
                      , mongoDB
                      , net-mqtt
+                     , network-uri
                      , orion-hs
                      , resource-pool
                      , safe
@@ -71,7 +74,11 @@ Library waziup-lib
                      , servant-flatten
                      , servant-swagger
                      , servant-swagger-ui
+                     , servant-swagger-tags
                      , servant-cassava
+                     , servant-auth
+                     , servant-auth-server
+                     , servant-auth-swagger
                      , split
                      , string-conversions
                      , stm

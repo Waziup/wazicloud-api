@@ -134,7 +134,7 @@ type SensorsAPI = Flat (
            :> ReqBody '[JSON] Calib
            :> PutNoContent    '[JSON] NoContent
         :<|> "value"
-           :> ReqBody '[JSON] SensorValue
+           :> ReqBody '[JSON, PlainText] SensorValue
            :> PostNoContent   '[JSON] NoContent
         :<|> "values"
            :> ReqBody '[JSON] [SensorValue]

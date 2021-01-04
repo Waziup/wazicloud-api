@@ -549,6 +549,11 @@ instance ToSchema SensorValue where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.fieldLabelModifier = snakeCase . drop 6} proxy
         & mapped.schema.example ?~ toJSON defaultSensorValue 
 
+instance MimeUnrender PlainText SensorValue where
+  mimeUnrender _ bs = case readMay (convertString bs) of
+    Just n   -> Right $ SensorValue (Number n) Nothing Nothing
+    Nothing  -> Left "Error decoding"
+
 --Swagger instance for any JSON value
 instance ToSchema Value where
   declareNamedSchema _ = pure (NamedSchema (Just "Value") (mempty & type_ ?~ SwaggerObject))

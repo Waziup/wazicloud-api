@@ -62,9 +62,7 @@ type WaziupM a = ReaderT WaziupInfo a
 data WaziupInfo = WaziupInfo {
   _dbPool       :: Pool DB.Pipe,
   _waziupConfig :: WaziupConfig,
-  _ontologies   :: Ontologies,
-  _jwks         :: [JWK]
-  }
+  _ontologies   :: Ontologies}
  
 -- | run a Waziup monad
 runWaziup :: Waziup a -> WaziupInfo -> IO (Either ServerError a)
@@ -1401,10 +1399,10 @@ instance ToSchema Unit
 
 -- All ontologies
 data Ontologies = Ontologies {
-  sensingDevices   :: [SensorKind],
-  actuatingDevices :: [ActuatorKind],
-  quantityKinds    :: [QuantityKind],
-  units            :: [Unit]
+  _sensingDevices   :: [SensorKind],
+  _actuatingDevices :: [ActuatorKind],
+  _quantityKinds    :: [QuantityKind],
+  _units            :: [Unit]
   } deriving (Eq, Show)
 
 
@@ -1477,3 +1475,4 @@ makeLenses ''MQTTConfig
 makeLenses ''WaziupInfo
 makeLenses ''MongoConfig
 makeLenses ''PlivoConfig
+makeLenses ''Ontologies

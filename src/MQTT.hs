@@ -128,9 +128,8 @@ connectRequest p@(T.ConnectRequest user pass _ _ _ cid _) cache = do
 
 verifyUser :: Username -> Password -> Waziup User
 verifyUser user pass = do
-  jwks <- view jwks
   jwt <- liftKeycloak $ getJWT user pass
-  claims <- liftKeycloak $ verifyJWT (head jwks) jwt
+  claims <- liftKeycloak $ verifyJWT jwt
   return $ toUser $ getClaimsUser claims
 
 publishRequest :: T.PublishRequest -> TVar (Maybe ConnCache) -> AppData -> ConduitT MQTTPkt MQTTPkt Waziup ()

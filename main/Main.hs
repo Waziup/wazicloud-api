@@ -23,8 +23,7 @@ import           Servant
 import           Servant.Server
 import           Servant.Auth.Server
 import           Crypto.JOSE.JWK as Jose
-import           Data.Aeson as Aeson
-import qualified Keycloak as KC
+import           Keycloak as KC
 import           Control.Lens
 
 main :: IO ()
@@ -33,19 +32,17 @@ main = do
   let host = waziupInfo ^. waziupConfig.serverConf.serverHost
   let port = waziupInfo ^. waziupConfig.serverConf.serverPort
   let mqttPor = waziupInfo ^. waziupConfig.serverConf.serverPortMQTT
-  let kcConf = waziupInfo ^. waziupConfig.keycloakConf
+  let kcRealm = waziupInfo ^. waziupConfig.keycloakConf.confAdapterConfig.confRealm
+  let kcURL = waziupInfo ^. waziupConfig.keycloakConf.confAdapterConfig.confAuthServerUrl
   Main.info $ "API server starting..."
   Main.info $ convertString $ "HTTP API is running on " <> host <> "/api/v2"
   Main.info $ convertString $ "MQTT is running on port " <> (show mqttPor)
   Main.info $ convertString $ "Documentation is on " <> host <> "/docs"
   forkIO $ mqttProxy waziupInfo
-  keys <- KC.runKeycloak KC.getJWKs kcConf 
-  let ks = case keys of
-       Left e -> error $ "Keycloak error:" ++ (show e) 
-       Right ks -> ks
-  let jwtCfg = JWTSettings { signingKey = head ks
+  keys <- KC.getJWKs kcRealm kcURL 
+  let jwtCfg = JWTSettings { signingKey = head keys
                            , jwtAlg = Nothing
-                           , validationKeys = JWKSet ks
+                           , validationKeys = JWKSet keys
                            , audienceMatches = const Matches }
       cfg = defaultCookieSettings :. jwtCfg :. EmptyContext
       api = Proxy :: Proxy API

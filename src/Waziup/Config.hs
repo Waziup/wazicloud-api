@@ -56,7 +56,7 @@ configureWaziup = do
   envCacheActivated   <- lookupEnv "CACHE_ACTIVATED"
   envCacheDuration    <- lookupEnv "CACHE_DURATION"
   envLogLevel         <- lookupEnv "LOG_LEVEL"
-  let kcConfig     = defaultKCConfig     & confBaseUrl        .~? (convertString    <$> envKCUrl)
+  let kcAdapterConfig = defaultAdapterConfig & confAuthServerUrl  .~? (convertString    <$> envKCUrl)
   let orionConfig  = defaultOrionConfig  & orionUrl           .~? (convertString    <$> envOrUrl)
   let mongoConfig  = defaultMongoConfig  & mongoUrl           .~? (convertString    <$> envMongUrl)
                                          & mongoUser          .~  (convertString    <$> envMongUser)
@@ -80,6 +80,11 @@ configureWaziup = do
           else defaultTwitterConf
   let plivoConfig = defaultPlivoConf & plivoID    .~? (convertString <$> envPlivoID)
                                      & plivoToken .~? (convertString <$> envPlivoToken)
+
+  -- retrieve keys from Keycloak
+  jwks <- getJWKs (_confRealm kcAdapterConfig) (_confAuthServerUrl kcAdapterConfig)
+  let kcConfig = KCConfig kcAdapterConfig jwks 
+
   let confParser = waziupConfigParser serverConfig mongoConfig kcConfig orionConfig mqttConfig twitterConfig plivoConfig
   let confParser' = Opts.info (confParser <**> helper) (fullDesc <> progDesc "Create a server for Waziup API" <> header "Waziup API server")
   conf <- execParser confParser'
@@ -88,11 +93,7 @@ configureWaziup = do
   let mongUrl = conf ^. mongoConf.mongoUrl
   pool <- createPool (DB.connect $ readHostPort $ convertString mongUrl) DB.close 1 300 5
   onto <- loadOntologies
-  keys <- runKeycloak getJWKs kcConfig 
-  let ks = case keys of
-       Left e -> error $ "Keycloak error:" ++ (show e) 
-       Right ks -> ks
-  return $ WaziupInfo pool conf onto ks
+  return $ WaziupInfo pool conf onto
 
 waziupConfigParser :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> MQTTConfig -> TWInfo -> PlivoConfig -> Parser WaziupConfig
 waziupConfigParser servDef mDef kcDef oDef mqttDef twittDef plivoDef = do
@@ -116,12 +117,12 @@ serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass
   return $ ServerConfig url port portMQTT guestLog guestPass (fromInteger notifInterval) cacheAct (fromInteger cacheDuration) logLevel
 
 kcConfigParser :: KCConfig -> Parser KCConfig
-kcConfigParser (KCConfig defUrl defRealm defCID defCSec) = do
+kcConfigParser (KCConfig (AdapterConfig defUrl defRealm defCID (ClientCredentials defCSec)) _) = do
   pBaseUrl       <- strOption (long "kcUrl"       <> metavar "<url>"      <> help "url of Keycloak"            <> value defUrl)
   pRealm         <- strOption (long "kcRealm"     <> metavar "<realm>"    <> help "realm of Keycloak"          <> value defRealm) 
   pClientId      <- strOption (long "kcClientId"  <> metavar "<id>"       <> help "Client ID of Keycloak"      <> value defCID)
   pClientSecret  <- strOption (long "kcClientSec" <> metavar "<secret>"   <> help "Client Secret of Keycloak"  <> value defCSec)
-  return $ KCConfig pBaseUrl pRealm pClientId pClientSecret
+  return $ KCConfig (AdapterConfig pBaseUrl pRealm pClientId (ClientCredentials pClientSecret)) []
 
 orionConfigParser :: OrionConfig -> Parser OrionConfig
 orionConfigParser (OrionConfig defUrl defServ) = do

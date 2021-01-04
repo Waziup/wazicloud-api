@@ -550,9 +550,7 @@ instance ToSchema SensorValue where
         & mapped.schema.example ?~ toJSON defaultSensorValue 
 
 instance MimeUnrender PlainText SensorValue where
-  mimeUnrender _ bs = case readMay (convertString bs) of
-    Just n   -> Right $ SensorValue (Number n) Nothing Nothing
-    Nothing  -> Left "Error decoding"
+  mimeUnrender _ bs = Right $ SensorValue (String $ convertString bs) Nothing Nothing
 
 --Swagger instance for any JSON value
 instance ToSchema Value where

@@ -1,5 +1,5 @@
 #Build stage
-FROM fpco/stack-build:lts-13.5 as build
+FROM fpco/stack-build:lts-16.18 as build
 
 COPY stack.yaml                    /opt/waziup/stack.yaml
 COPY waziup.cabal                  /opt/waziup/waziup.cabal
@@ -17,13 +17,13 @@ COPY test/        /opt/waziup/test
 COPY migrate/     /opt/waziup/migrate
 COPY orion-hs/    /opt/waziup/orion-hs/
 COPY keycloak-hs/ /opt/waziup/keycloak-hs
-RUN stack build --system-ghc --fast waziup:waziup-servant
+RUN stack build --system-ghc --fast waziup:waziup-servant --copy-bins
 
 # Deploy stage
 FROM ubuntu
 
 WORKDIR /opt/waziup
-COPY --from=build /opt/waziup/.stack-work/install/x86_64-linux/lts-13.5/8.6.3/bin/waziup-servant .
+COPY --from=build /root/.local/bin/waziup-servant .
 COPY data /opt/waziup/data
 ENV PATH /usr/bin:$PATH
 RUN apt-get update && apt-get install -y netbase ca-certificates locales 

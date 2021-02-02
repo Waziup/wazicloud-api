@@ -117,12 +117,12 @@ serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass
   return $ ServerConfig url port portMQTT guestLog guestPass (fromInteger notifInterval) cacheAct (fromInteger cacheDuration) logLevel
 
 kcConfigParser :: KCConfig -> Parser KCConfig
-kcConfigParser (KCConfig (AdapterConfig defUrl defRealm defCID (ClientCredentials defCSec)) _) = do
+kcConfigParser (KCConfig (AdapterConfig defUrl defRealm defCID (ClientCredentials defCSec)) keys) = do
   pBaseUrl       <- strOption (long "kcUrl"       <> metavar "<url>"      <> help "url of Keycloak"            <> value defUrl)
   pRealm         <- strOption (long "kcRealm"     <> metavar "<realm>"    <> help "realm of Keycloak"          <> value defRealm) 
   pClientId      <- strOption (long "kcClientId"  <> metavar "<id>"       <> help "Client ID of Keycloak"      <> value defCID)
   pClientSecret  <- strOption (long "kcClientSec" <> metavar "<secret>"   <> help "Client Secret of Keycloak"  <> value defCSec)
-  return $ KCConfig (AdapterConfig pBaseUrl pRealm pClientId (ClientCredentials pClientSecret)) []
+  return $ KCConfig (AdapterConfig pBaseUrl pRealm pClientId (ClientCredentials pClientSecret)) keys
 
 orionConfigParser :: OrionConfig -> Parser OrionConfig
 orionConfigParser (OrionConfig defUrl defServ) = do

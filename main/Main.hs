@@ -34,12 +34,12 @@ main = do
   let mqttPor = waziupInfo ^. waziupConfig.serverConf.serverPortMQTT
   let kcRealm = waziupInfo ^. waziupConfig.keycloakConf.confAdapterConfig.confRealm
   let kcURL = waziupInfo ^. waziupConfig.keycloakConf.confAdapterConfig.confAuthServerUrl
+  let keys = waziupInfo ^. waziupConfig.keycloakConf.confJWKs
   Main.info $ "API server starting..."
   Main.info $ convertString $ "HTTP API is running on " <> host <> "/api/v2"
   Main.info $ convertString $ "MQTT is running on port " <> (show mqttPor)
   Main.info $ convertString $ "Documentation is on " <> host <> "/docs"
   forkIO $ mqttProxy waziupInfo
-  keys <- KC.getJWKs kcRealm kcURL 
   let jwtCfg = JWTSettings { signingKey = head keys
                            , jwtAlg = Nothing
                            , validationKeys = JWKSet keys
@@ -48,7 +48,6 @@ main = do
       api = Proxy :: Proxy API
       context = Proxy :: Proxy '[CookieSettings, JWTSettings]
       server' = hoistServerWithContext api context (getHandler waziupInfo) server
-  Main.info $ "Keys received from Keycloak"
   run port $ logStdout
            $ cors (const $ Just corsPolicy)
            $ serveWithContext api cfg server'

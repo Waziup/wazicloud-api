@@ -44,6 +44,7 @@ library
     , iso8601-time
     , lens
     , mtl
+    , safe
     , string-conversions
     , text
     , time

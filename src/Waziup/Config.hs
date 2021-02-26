@@ -21,6 +21,7 @@ import           Keycloak
 import           Orion hiding (try, info, warn, debug, err)
 import           Options.Applicative as Opts hiding (Success, Failure)
 import           Paths_Waziup_Servant
+import           Safe
 import           System.Clock
 import           System.Log.Logger
 import           System.Log.Formatter
@@ -62,14 +63,14 @@ configureWaziup = do
                                          & mongoUser          .~  (convertString    <$> envMongUser)
                                          & mongoPass          .~  (convertString    <$> envMongPass)
   let serverConfig = defaultServerConfig & serverHost         .~? (convertString    <$> envUrl)
-                                         & serverPort         .~? (read             <$> envPort)
-                                         & serverPortMQTT     .~? (read             <$> envPortMQTT)
+                                         & serverPort         .~? (readNote "Conf"  <$> envPort)
+                                         & serverPortMQTT     .~? (readNote "Conf"  <$> envPortMQTT)
                                          & notifMinInterval   .~? (fromInteger.read <$> envNotifMinInterval)
                                          & cacheValidDuration .~? (fromInteger.read <$> envCacheDuration)
-                                         & cacheActivated     .~? (read             <$> envCacheActivated)
-                                         & logLevel           .~? (read             <$> envLogLevel)
+                                         & cacheActivated     .~? (readNote "Conf"  <$> envCacheActivated)
+                                         & logLevel           .~? (readNote "Conf"  <$> envLogLevel)
   let mqttConfig   = defaultMQTTConfig   & mqttHost           .~? (convertString    <$> envMosqHost)
-                                         & mqttPort           .~? (read             <$> envMosqPort)
+                                         & mqttPort           .~? (readNote "Conf"  <$> envMosqPort)
   let twitterConfig = 
         if isJust envTwitKey && isJust envTwitSec && isJust envTwitTok && isJust envTwitTokSec 
           then def { twProxy = Nothing,

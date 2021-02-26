@@ -30,6 +30,7 @@ import           GHC.Generics (Generic)
 import           Data.Bson as BSON
 import           Servant
 import           Network.HTTP.Types.Status as HTS
+import           Safe
 
 -- | get all logged social messages
 getSocialMessages :: AuthUser -> Waziup [SocialMessage]
@@ -134,7 +135,7 @@ getSocialMessage tok soc = do
 
 getSocialMessageMongo :: AuthUser -> SocialMessageId -> Action IO (Maybe SocialMessage)
 getSocialMessageMongo _ (SocialMessageId sid) = do
-  let fil = ["_id" =: ObjId (read $ convertString sid)]
+  let fil = ["_id" =: ObjId (readNote "getSocialMessageMongo" $ convertString sid)]
   let sel = (select fil "waziup_social_msgs") 
   mdoc <- findOne sel
   debug $ "Got docs:" <> (show mdoc)
@@ -161,7 +162,7 @@ deleteSocialMessage tok soc = do
 
 deleteSocialMessageMongo :: AuthUser -> SocialMessageId -> Action IO Bool 
 deleteSocialMessageMongo _ (SocialMessageId sid) = do
-  let fil = ["_id" =: ObjId (read $ convertString sid)]
+  let fil = ["_id" =: ObjId (readNote "deleteSocialMessageMongo" $ convertString sid)]
   res <- DB.deleteMany "waziup_social_msgs" [(fil, [])]
   return $ not $ failed res 
 

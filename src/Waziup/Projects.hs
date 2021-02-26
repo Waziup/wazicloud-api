@@ -22,6 +22,7 @@ import           Data.Aeson as JSON
 import           Data.AesonBson
 import           Data.Text hiding (find, map, filter, any)
 import qualified Data.List as L
+import           Safe
 
 -- * Projects API
 
@@ -110,7 +111,7 @@ putProjectName tok pid name = do
   p <- getProject tok pid Nothing
   checkPermResource tok ProjectsUpdate (PermProject p)
   res <- runMongo $ do 
-    let sel = ["_id" =: (ObjId $ read $ convertString $ unProjectId pid)]
+    let sel = ["_id" =: (ObjId $ readNote "putProjectName" $ convertString $ unProjectId pid)]
     mdoc <- findOne (select sel "projects")
     case mdoc of
        Just _ -> do
@@ -131,14 +132,14 @@ getFullProject tok p@(Project _ _ _ devids gtwids _ _) = do
 
 getProjectMongo :: ProjectId -> Action IO (Maybe Project)
 getProjectMongo (ProjectId pid) = do
-  mdoc <- findOne (select ["_id" =: (ObjId $ read $ convertString pid)] "projects")
+  mdoc <- findOne (select ["_id" =: (ObjId $ readNote "getProjectMongo" $ convertString pid)] "projects")
   case (fromJSON . Object . replaceKey "_id" "id" . aesonify <$> mdoc) of
      Just (JSON.Success a) -> return $ Just a
      _ -> return Nothing
 
 deleteProjectMongo :: ProjectId -> Action IO Bool 
 deleteProjectMongo (ProjectId pid) = do
-  let sel = ["_id" =: (ObjId $ read $ convertString pid)]
+  let sel = ["_id" =: (ObjId $ readNote "deleteProjectMongo" $ convertString pid)]
   mdoc <- findOne (select sel "projects")
   case mdoc of
      Just _ -> do
@@ -148,7 +149,7 @@ deleteProjectMongo (ProjectId pid) = do
 
 putProjectGatewaysMongo :: ProjectId -> [GatewayId] -> Action IO Bool
 putProjectGatewaysMongo (ProjectId pid) gids = do
-  let sel = ["_id" =: (ObjId $ read $ convertString pid)]
+  let sel = ["_id" =: (ObjId $ readNote "putProjectGatewaysMongo" $ convertString pid)]
   mdoc <- findOne (select sel "projects")
   case mdoc of
      Just _ -> do

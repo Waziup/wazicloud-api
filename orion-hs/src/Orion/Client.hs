@@ -35,6 +35,7 @@ import           Orion.Types
 import           System.Log.Logger
 import           GHC.Generics (Generic)
 import           Debug.Trace
+import           Safe
 
 -- * Entities
 
@@ -62,7 +63,7 @@ getEntities' mq mtyp limit offset = do
   case eitherDecode body of
     Right ret -> do
       case lookup "Fiware-Total-Count" headers of
-        Just c -> return (ret, read $ convertString c)
+        Just c -> return (ret, readNote "getEntities" $ convertString c)
         Nothing -> error "No headers"
     Left (e :: String) -> do
       debug $ "Orion parse error: " ++ (show e) 

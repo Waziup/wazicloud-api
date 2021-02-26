@@ -83,7 +83,6 @@ getEntity (EntityId eid) mtyp = do
   body <- orionGet ("/v2/entities/" <> eid <> (convertString $ renderQuery True typ))
   case eitherDecode body of
     Right ret -> do
-      debug $ "Orion success: " ++ (show ret) 
       return ret
     Left (e :: String) -> do
       debug $ "Orion parse error: " ++ (show e) 
@@ -129,7 +128,6 @@ getSubs = do
   body <- orionGet ("/v2/subscriptions?limit=1000")
   case eitherDecode body of
     Right ret -> do
-      debug $ "Orion success" 
       return ret
     Left (err2 :: String) -> do
       debug $ "Orion parse error: " ++ (show err2) 
@@ -145,10 +143,8 @@ postSub e = do
 getSub :: SubId -> Orion Subscription
 getSub (SubId eid) = do
   body <- orionGet ("/v2/subscriptions/" <> eid)
-  debug $ "Orion success: " ++ (show body) 
   case eitherDecode body of
     Right ret -> do
-      debug $ "Orion success: " ++ (show ret) 
       return ret
     Left (err2 :: String) -> do
       debug $ "Orion parse error: " ++ (show err2) 

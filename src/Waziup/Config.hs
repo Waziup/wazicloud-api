@@ -45,6 +45,7 @@ configureWaziup = do
   envMongUrl          <- lookupEnv "MONGODB_URL"
   envMongUser         <- lookupEnv "MONGODB_USER"
   envMongPass         <- lookupEnv "MONGODB_PASS"
+  envMQTTActivated    <- lookupEnv "MQTT_ACTIVATED"
   envMosqHost         <- lookupEnv "MOSQ_HOST"
   envMosqPort         <- lookupEnv "MOSQ_PORT"
   envTwitKey          <- lookupEnv "TWITTER_CONSUMER_KEY"
@@ -105,7 +106,7 @@ waziupConfigParser servDef mDef kcDef oDef mqttDef twittDef plivoDef = do
   return $ WaziupConfig serv m kc o mqttDef twittDef plivoDef
 
 serverConfigParser :: ServerConfig -> Parser ServerConfig
-serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass defNotif defActCache defCacheVal defLog) = do
+serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass defNotif defActCache defCacheVal defLog defMqttAct) = do
   url           <- strOption   (long "url"            <> metavar "<url>"      <> help "url of this server (default: http://localhost:800)"  <> value defUrl)
   port          <- option auto (long "port"           <> metavar "<port>"     <> help "HTTP port of this server (default: 800)" <> value defPort) 
   portMQTT      <- option auto (long "portMQTT"       <> metavar "<portMQTT>" <> help "MQTT port of this server (default: 3883)" <> value defPortMQTT) 
@@ -115,7 +116,8 @@ serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass
   cacheAct      <- option auto (long "cacheActivated" <>                         help "activate the cache (default: True)" <> value defActCache) 
   cacheDuration <- option auto (long "cacheDuration"  <> metavar "<cache>"    <> help "duration of the cache valididy (in seconds, default: 600)" <> value (floor defCacheVal)) 
   logLevel      <- option auto (long "logLevel"       <> metavar "<logLevel>" <> help "log level (DEBUG, INFO, WARNING, ERROR, default: INFO)" <> value defLog) 
-  return $ ServerConfig url port portMQTT guestLog guestPass (fromInteger notifInterval) cacheAct (fromInteger cacheDuration) logLevel
+  mqttAct       <- option auto (long "MQTTActivated"  <>                         help "activate MQTT (default: True)" <> value defMqttAct) 
+  return $ ServerConfig url port portMQTT guestLog guestPass (fromInteger notifInterval) cacheAct (fromInteger cacheDuration) logLevel mqttAct
 
 kcConfigParser :: KCConfig -> Parser KCConfig
 kcConfigParser (KCConfig (AdapterConfig defUrl defRealm defCID (ClientCredentials defCSec)) keys) = do

@@ -86,13 +86,14 @@ data WaziupConfig = WaziupConfig {
 data ServerConfig = ServerConfig {
   _serverHost         :: Text,     -- ^ Hostname to serve on, e.g. "127.0.0.1"
   _serverPort         :: Int,      -- ^ Port to serve on, e.g. 8080
-  _serverPortMQTT     :: Int,      -- ^ Port to serve on, e.g. 2883 
+  _serverPortMQTT     :: Int,      -- ^ Port to serve on, e.g. 2883
   _adminLogin         :: Username,
   _adminPassword      :: Password,
   _notifMinInterval   :: NominalDiffTime,  -- ^ minimum interval between two notifications (seconds)
   _cacheActivated     :: Bool,             -- ^ activate permission cache
   _cacheValidDuration :: NominalDiffTime,  -- ^ duration of cache validity (seconds)
-  _logLevel           :: Log.Priority
+  _logLevel           :: Log.Priority,
+  _mqttActivated      :: Bool
   } deriving (Eq, Show)
 
 defaultServerConfig :: ServerConfig
@@ -105,7 +106,8 @@ defaultServerConfig = ServerConfig {
   _notifMinInterval   = 120,
   _cacheActivated     = True,
   _cacheValidDuration = 10 * 60,   -- 10 minutes
-  _logLevel           = Log.DEBUG}
+  _logLevel           = Log.DEBUG,
+  _mqttActivated      = True}
  
 data MongoConfig = MongoConfig {
   _mongoUrl  :: Text,

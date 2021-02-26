@@ -261,7 +261,8 @@ publishSensorValue (DeviceId d) (SensorId s) v = do
   liftIO $ do
     let (Just uri) = parseURI $ "mqtt://" <> (convertString host) <> ":" <> (show port)
     mc <- connectURI mqttConfig uri
-    liftIO $ publish mc topic (convertString $ encode v) False
+    publish mc topic (convertString $ encode v) False
+    disconnect mc DiscoNormalDisconnection []
 
 publishActuatorValue :: DeviceId -> ActuatorId -> JSON.Value -> Waziup ()
 publishActuatorValue (DeviceId d) (ActuatorId a) v = do
@@ -271,7 +272,8 @@ publishActuatorValue (DeviceId d) (ActuatorId a) v = do
   liftIO $ do
     let (Just uri) = parseURI $ "mqtt://" <> (convertString host) <> ":" <> (show port)
     mc <- connectURI mqttConfig uri
-    liftIO $ publish mc topic (convertString $ encode v) False
+    publish mc topic (convertString $ encode v) False
+    disconnect mc DiscoNormalDisconnection []
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

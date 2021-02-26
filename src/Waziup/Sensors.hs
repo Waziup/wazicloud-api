@@ -3,20 +3,22 @@
 
 module Waziup.Sensors where
 
+import           Control.Monad.Except (throwError)
+import           Control.Monad.IO.Class
+import           Control.Monad
+import           Control.Lens hiding ((.=))
+import qualified Data.List as L
+import           Data.Time
+import           Keycloak as KC hiding (Scope) 
+import           MQTT hiding (info, warn, debug, err) 
+import           Orion as O hiding (info, warn, debug, err)
+import           Servant
+import           System.Log.Logger
 import           Waziup.Types
 import           Waziup.Utils
 import           Waziup.SensorData hiding (info, warn, debug, err)
 import           Waziup.Auth hiding (info, warn, debug, err)
 import           Waziup.Devices hiding (info, warn, debug, err)
-import           Control.Monad.Except (throwError)
-import           Control.Monad.IO.Class
-import qualified Data.List as L
-import           Data.Time
-import           Servant
-import           Keycloak as KC hiding (Scope) 
-import           Orion as O hiding (info, warn, debug, err)
-import           System.Log.Logger
-import           MQTT hiding (info, warn, debug, err) 
 
 getSensors :: AuthUser -> DeviceId -> Waziup [Sensor]
 getSensors tok did = do
@@ -115,7 +117,8 @@ putSensorValue' did sensor val@(SensorValue v ts dr) = do
   -- Push in DB
   runMongo $ postDatapoint $ Datapoint did (senId sensor) v ts dr
   -- publish on MQTT
-  publishSensorValue did (senId sensor) val
+  mqttAct <- view $ waziupConfig.serverConf.mqttActivated
+  when mqttAct $ publishSensorValue did (senId sensor) val
   return NoContent
 
 putSensorValues :: AuthUser -> DeviceId -> SensorId -> [SensorValue] -> Waziup NoContent

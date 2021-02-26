@@ -9,6 +9,8 @@ import           Waziup.Devices hiding (info, warn, debug, err)
 import           Waziup.Auth hiding (info, warn, debug, err)
 import           Control.Monad.Except (throwError)
 import           Control.Monad.IO.Class
+import           Control.Monad
+import           Control.Lens
 import qualified Data.List as L
 import           Data.Aeson as JSON
 import           Servant
@@ -90,7 +92,8 @@ putActuatorValue mtok did aid actVal = do
   case L.find (\s -> actId s == aid) (maybeToList' $ devActuators device) of
     Just act -> do
       liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromActuator (act {actValue = Just actVal}))
-      publishActuatorValue did aid actVal
+      mqttAct <- view $ waziupConfig.serverConf.mqttActivated
+      when mqttAct $ publishActuatorValue did aid actVal
       return NoContent
     Nothing -> do 
       warn "Actuator not found"

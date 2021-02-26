@@ -16,6 +16,7 @@ import           Waziup.Config
 import           Data.String.Conversions
 import           System.Log.Logger
 import           Control.Lens
+import           Control.Monad
 import           Control.Monad.IO.Class
 import           Control.Concurrent
 import           MQTT
@@ -35,11 +36,12 @@ main = do
   let kcRealm = waziupInfo ^. waziupConfig.keycloakConf.confAdapterConfig.confRealm
   let kcURL = waziupInfo ^. waziupConfig.keycloakConf.confAdapterConfig.confAuthServerUrl
   let keys = waziupInfo ^. waziupConfig.keycloakConf.confJWKs
+  let mqttAct = waziupInfo ^. waziupConfig.serverConf.mqttActivated
   Main.info $ "API server starting..."
   Main.info $ convertString $ "HTTP API is running on " <> host <> "/api/v2"
   Main.info $ convertString $ "MQTT is running on port " <> (show mqttPor)
   Main.info $ convertString $ "Documentation is on " <> host <> "/docs"
-  forkIO $ mqttProxy waziupInfo
+  when mqttAct $ void $ forkIO $ mqttProxy waziupInfo
   let jwtCfg = JWTSettings { signingKey = head keys
                            , jwtAlg = Nothing
                            , validationKeys = JWKSet keys

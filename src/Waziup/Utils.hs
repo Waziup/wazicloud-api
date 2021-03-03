@@ -23,7 +23,7 @@ import           Network.HTTP.Client as HC
 import           Servant
 import           Servant.Auth.Server hiding (JWT)
 import           Database.MongoDB as DB
-
+import           Debug.Trace
 
 getAuthUser :: AuthUser -> User
 getAuthUser (Authenticated user) = user 
@@ -123,3 +123,6 @@ rightToMaybe = either (const Nothing) Just
 (!?) :: (Eq k, Hashable k) => HashMap k v -> k -> Maybe v
 (!?) m k = H.lookup k m
 {-# INLINE (!?) #-}
+
+trace' :: Show a => String -> a -> a 
+trace' s a = trace (s ++ (show a)) a

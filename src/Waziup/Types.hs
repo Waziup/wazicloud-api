@@ -1153,7 +1153,7 @@ instance ToJWT User
 
 instance FromJWT User where
   decodeJWT claims = let ucs = (trace "Claims: " (claims ^. JWT.unregisteredClaims)) in
-          Right (User { userId        = Nothing 
+          Right (User { userId        = UserId <$> claims ^? claimSub . _Just . string
                       , userUsername  = fromJust $ join $ readString <$> HM.lookup "preferred_username" (trace "Unre: " ucs)
                       , userFirstName = join $ readString <$> HM.lookup "given_name" ucs 
                       , userLastName  = join $ readString <$> HM.lookup "family_name" ucs

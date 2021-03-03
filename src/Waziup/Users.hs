@@ -19,7 +19,11 @@ import           Data.Aeson as JSON
 import           Data.Aeson.Lens
 import           Data.Scientific
 import           Servant.Auth.Server
+import           Debug.Trace
+import           Safe hiding (at)
 
+getUsersMe :: AuthUser -> Waziup User
+getUsersMe au = return $ getAuthUser au
 
 getUsers :: AuthUser -> Maybe Limit -> Maybe Offset -> Maybe KC.Username -> Waziup [User]
 getUsers tok ml mo username = do
@@ -54,18 +58,24 @@ putUserCredit au uid@(UserId i)  c = do
   return NoContent
 
 toUser :: KC.User -> User
-toUser (KC.User i un fn ln mail subs) = let obj = Object <$> subs in 
+toUser (KC.User i un fn ln mail subs) =  
   User { userId        = UserId . KC.unUserId <$> i 
        , userUsername  = un
        , userFirstName = fn
        , userLastName  = ln 
        , userEmail     = mail
-       , userPhone     = preview (_Just . at "phone" . _Just . _String) subs
-       , userFacebook  = preview (_Just . at "facebook" . _Just . _String) subs
-       , userTwitter   = preview (_Just . at "twitter" . _Just . _String) subs
-       , userSmsCredit = preview (_Just . at "sms_credit"  . _Just . _Integral) subs
-       , userAdmin     = preview (_Just . at "admin" . _Just . _Bool) subs
+       , userPhone     = getAttr "phone"    subs
+       , userFacebook  = getAttr "facebook" subs
+       , userTwitter   = getAttr "twitter"  subs
+       , userSmsCredit = join $ (readMay . convertString) <$> getAttr "sms_credit" subs
+       , userAdmin     = (readBool' . convertString) <$> getAttr "admin" subs
        }
+
+readBool' :: Text -> Bool
+readBool' s = toLower s == "true"
+
+getAttr :: Text -> Maybe (HashMap Text Value) -> Maybe Text
+getAttr key attrs = preview (_Just . at key . _Just . nth 0 . _String) attrs
 
 fromUser :: User -> KC.User
 fromUser u@(User i usern fn ln email ph fb tw smsc admin) =

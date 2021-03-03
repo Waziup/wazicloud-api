@@ -264,6 +264,7 @@ type UsersAPI = Flat (
       :> Get '[JSON] [User]
     :<|> ReqBody '[JSON] User
       :> Post '[JSON] UserId
+    :<|> "me" :> Get '[JSON] User
     :<|> Capture "user_id" UserId :> (
            Get '[JSON] User
       :<|> "sms_credit" 

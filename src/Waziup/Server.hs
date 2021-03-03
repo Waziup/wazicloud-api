@@ -135,10 +135,12 @@ actuatorsServer u = getActuators u
 
 -- users server
 usersServer :: AuthResult User -> ServerT UsersAPI Waziup
-usersServer u = getUsers u
-         :<|> postUser u
-         :<|> getUser u
-         :<|> putUserCredit u
+usersServer u = 
+                getUsers u
+           :<|> postUser u
+           :<|> getUsersMe u
+           :<|> getUser u
+           :<|> putUserCredit u
 
 -- socials server
 socialsServer :: AuthResult User -> ServerT SocialsAPI Waziup

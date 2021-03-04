@@ -91,19 +91,34 @@ putNotifStatus tok nid status = do
 getNotifFromSub :: Subscription -> Maybe Notif
 getNotifFromSub (Subscription sid desc subj notif throt stat expir) = 
   case getNotifAction notif of
-    Just action -> Just $ Notif { notifId                = getNotifId <$> sid 
-                                , notifDescription       = desc 
-                                , notifCondition         = getNotifCondition subj 
-                                , notifAction            = action 
-                                , notifThrottling        = throt
-                                , notifStatus            = stat 
-                                , notifTimesSent         = subTimesSent notif 
-                                , notifLastNotif         = subLastNotification notif
-                                , notifLastSuccess       = subLastSuccess notif
-                                , notifLastSuccessCode   = subLastSuccessCode notif
-                                , notifLastFailure       = subLastFailure notif
-                                , notifLastFailureReason = subLastFailureReason notif
-                                , notifExpires           = expir}
+    Just (Right action) -> Just $ Notif { notifId                = getNotifId <$> sid 
+                                        , notifDescription       = desc 
+                                        , notifCondition         = getNotifCondition subj 
+                                        , notifAction            = Just action 
+                                        , notifActuationAction   = Nothing 
+                                        , notifThrottling        = throt
+                                        , notifStatus            = stat 
+                                        , notifTimesSent         = subTimesSent notif 
+                                        , notifLastNotif         = subLastNotification notif
+                                        , notifLastSuccess       = subLastSuccess notif
+                                        , notifLastSuccessCode   = subLastSuccessCode notif
+                                        , notifLastFailure       = subLastFailure notif
+                                        , notifLastFailureReason = subLastFailureReason notif
+                                        , notifExpires           = expir}
+    Just (Left actuationAction) -> Just $ Notif { notifId                = getNotifId <$> sid 
+                                        , notifDescription       = desc 
+                                        , notifCondition         = getNotifCondition subj 
+                                        , notifAction            = Nothing
+                                        , notifActuationAction   = Just actuationAction 
+                                        , notifThrottling        = throt
+                                        , notifStatus            = stat 
+                                        , notifTimesSent         = subTimesSent notif 
+                                        , notifLastNotif         = subLastNotification notif
+                                        , notifLastSuccess       = subLastSuccess notif
+                                        , notifLastSuccessCode   = subLastSuccessCode notif
+                                        , notifLastFailure       = subLastFailure notif
+                                        , notifLastFailureReason = subLastFailureReason notif
+                                        , notifExpires           = expir}
     Nothing -> Nothing
 
 getNotifId :: SubId -> NotifId
@@ -124,19 +139,31 @@ getDeviceId (EntityId eid) = DeviceId eid
 getSensorId :: AttributeId -> SensorId
 getSensorId (AttributeId aid) = SensorId aid
 
-getNotifAction :: SubNotif -> Maybe SocialMessageBatch
+getNotifAction :: SubNotif -> Maybe (Either ActuationValue SocialMessageBatch)
 getNotifAction subNot = 
-  if subMetadata subNot == ["waziup_notif"]
-    then JSON.decode <$> convertString $ urlDecode True $ convertString $ subPayload $ subHttpCustom subNot
-    else Nothing
+  case subMetadata subNot of
+    ["waziup_notif"] -> Right <$> getNotifSocial (subHttpCustom subNot)
+    ["waziup_actuation_notif"] -> Left <$> getNotifActuation (subHttpCustom subNot)
+    _ -> Nothing where
+
+getNotifSocial :: SubHttpCustom -> Maybe SocialMessageBatch
+getNotifSocial (SubHttpCustom _ payload _ _) = JSON.decode <$> convertString $ urlDecode True $ convertString $ payload
+
+getNotifActuation :: SubHttpCustom -> Maybe ActuationValue
+getNotifActuation (SubHttpCustom url payload _ _) = case decodePathSegments $ extractPath $ convertString url of
+  ("api":"v2":"devices":devId:"actuators":actId:_) -> case JSON.decode $ convertString $ urlDecode True $ convertString $ payload of
+    Just val -> Just $ ActuationValue (DeviceId devId) (ActuatorId actId) val
+    Nothing -> Nothing
+  _ -> Nothing
+
 
 getSubFromNotif :: Notif -> Text -> Waziup Subscription
-getSubFromNotif (Notif nid desc sub notif throt stat ts ln ls lsc lf lfr expi) host = do
+getSubFromNotif (Notif nid desc sub soc act throt stat ts ln ls lsc lf lfr expi) host = do
   return Subscription {
   subId           = getSubId <$> nid, 
   subDescription  = desc,
   subSubject      = getSubSubject sub, 
-  subNotification = getSubNotif notif ts ln ls lsc lf lfr host,
+  subNotification = getSubNotif soc act ts ln ls lsc lf lfr host,
   subThrottling   = throt,
   subStatus       = stat,
   subExpires      = expi}
@@ -147,10 +174,10 @@ getSubSubject (NotifCondition devs sens expr) =
               subCondition = SubCondition {subCondAttrs      = map (\(SensorId sid) -> AttributeId sid) sens,
                                            subCondExpression = M.singleton "q" expr}}
 
-getSubNotif :: SocialMessageBatch -> Maybe Int -> Maybe UTCTime -> Maybe UTCTime -> Maybe Int -> Maybe UTCTime -> Maybe String -> Text -> SubNotif
-getSubNotif smb ts ln ls lsc lf lfr host = do
+getSubNotif :: Maybe SocialMessageBatch -> Maybe ActuationValue -> Maybe Int -> Maybe UTCTime -> Maybe UTCTime -> Maybe Int -> Maybe UTCTime -> Maybe String -> Text -> SubNotif
+getSubNotif (Just smb) Nothing ts ln ls lsc lf lfr host = do
   SubNotif  {subHttpCustom = SubHttpCustom {subUrl = convertString $ host <> "/api/v2/socials/batch",
-                                            subPayload = convertString $ URI.urlEncode True $ convertString $ JSON.encode smb,
+                                            subPayload = convertString $ urlEncodeForbiddens $ convertString $ JSON.encode smb,
                                             subMethod = "POST",
                                             subHeaders = fromList [("Content-Type", "application/json"), ("accept", "application/json")]},
              subAttrs             = [],
@@ -162,9 +189,25 @@ getSubNotif smb ts ln ls lsc lf lfr host = do
              subLastSuccessCode   = lsc,
              subLastFailure       = lf,
              subLastFailureReason = lfr}
+getSubNotif Nothing (Just (ActuationValue (DeviceId devId) (ActuatorId actId) val)) ts ln ls lsc lf lfr host = do
+  SubNotif  {subHttpCustom = SubHttpCustom {subUrl = convertString $ host <> "/api/v2/devices/" <> devId <> "/actuators/" <> actId <> "/value",
+                                            subPayload = convertString $ URI.urlEncode True $ convertString $ JSON.encode val,
+                                            subMethod = "PUT",
+                                            subHeaders = fromList [("Content-Type", "application/json"), ("accept", "application/json")]},
+             subAttrs             = [],
+             subAttrsFormat       = "normalized",
+             subMetadata          = ["waziup_actuation_notif"],
+             subTimesSent         = ts, 
+             subLastNotification  = ln,
+             subLastSuccess       = ls,
+             subLastSuccessCode   = lsc,
+             subLastFailure       = lf,
+             subLastFailureReason = lfr}
 
 getSubId :: NotifId -> SubId
 getSubId (NotifId nid) = SubId nid
+
+
 
 -- Logging
 warn, info, debug, err :: (MonadIO m) => String -> m ()

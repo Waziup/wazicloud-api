@@ -487,7 +487,7 @@ instance FromHttpApiData [SensorId] where
 --Swagger instances
 instance ToSchema SensorId where
   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.unwrapUnaryRecords = True} proxy
-        & mapped.schema.example ?~ toJSON (SensorId "TC") 
+        & mapped.schema.example ?~ toJSON (SensorId "TC1") 
 
 instance ToParamSchema SensorId
 
@@ -902,7 +902,8 @@ data Notif = Notif
   { notifId                :: Maybe NotifId       -- ^ id of the notification (attributed by the server)
   , notifDescription       :: Text                -- ^ Description of the notification
   , notifCondition         :: NotifCondition      -- ^ What is looked at and with which condition 
-  , notifAction            :: SocialMessageBatch  -- ^ Where to send the notification
+  , notifAction            :: Maybe SocialMessageBatch         -- ^ Where to send the notification
+  , notifActuationAction   :: Maybe ActuationValue         -- ^ Where to send the notification
   , notifThrottling        :: NominalDiffTime     -- ^ minimum interval between two messages in seconds
   , notifStatus            :: Maybe O.SubStatus   -- ^ current status of the notification 
   , notifTimesSent         :: Maybe Int
@@ -918,8 +919,9 @@ defaultNotif :: Notif
 defaultNotif = Notif
   { notifId                = Nothing 
   , notifDescription       = "Test"               
-  , notifCondition         = NotifCondition [DeviceId "MyDevice"] [SensorId "TC"] "TC>40"
-  , notifAction            = defaultSocialMessageBatch
+  , notifCondition         = NotifCondition [DeviceId "MyDevice"] [SensorId "TC1"] "TC1>40"
+  , notifAction            = Nothing
+  , notifActuationAction   = Just defaultActuationValue         -- ^ Where to send the notification
   , notifThrottling        = 3600
   , notifStatus            = Nothing
   , notifTimesSent         = Nothing
@@ -928,7 +930,7 @@ defaultNotif = Notif
   , notifLastSuccessCode   = Nothing
   , notifLastFailure       = Nothing
   , notifLastFailureReason = Nothing
-  , notifExpires           = parseISO8601 "2016-06-08T18:20:27.873Z"
+  , notifExpires           = parseISO8601 "2025-06-08T18:20:27.873Z"
   }
 
 --JSON instances
@@ -972,6 +974,22 @@ instance ToJSON NotifCondition where
 
 --Swagger instance
 instance ToSchema NotifCondition
+
+-- | notification action
+data NotifAction = SocialAction SocialMessageBatch
+                 | ActuationAction ActuationValue
+  deriving (Show, Eq, Generic)
+
+instance ToJSON NotifAction where
+  toJSON = genericToJSON $ defaultOptions {AT.constructorTagModifier = unCapitalize, sumEncoding = ObjectWithSingleField} 
+
+instance FromJSON NotifAction where
+  parseJSON = genericParseJSON $ defaultOptions {AT.constructorTagModifier = unCapitalize, sumEncoding = ObjectWithSingleField} 
+
+--Swagger instance
+instance ToSchema NotifAction where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions {SW.constructorTagModifier = unCapitalize} proxy
+        & mapped.schema.example ?~ (toJSON $ ActuationAction defaultActuationValue)
 
 
 ---------------
@@ -1079,6 +1097,33 @@ instance ToSchema SocialMessageBatch where
    declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
         & mapped.schema.example ?~ toJSON defaultSocialMessageBatch 
 
+
+-- | A message to be sent to several users and socials
+data ActuationValue = ActuationValue
+  { actDeviceId      :: DeviceId 
+  , actActuatorId    :: ActuatorId 
+  , actActuatorValue :: Value 
+  } deriving (Show, Eq, Generic)
+
+defaultActuationValue :: ActuationValue 
+defaultActuationValue = ActuationValue 
+  { actDeviceId      = DeviceId "MyDevice"
+  , actActuatorId    = ActuatorId "Act1"
+  , actActuatorValue = String "Text"
+  }
+
+
+--JSON instances
+instance FromJSON ActuationValue where
+  parseJSON = genericParseJSON $ snakeDrop 3
+
+instance ToJSON ActuationValue where
+  toJSON = genericToJSON $ snakeDrop 3
+  
+  --Swagger instances
+instance ToSchema ActuationValue where
+   declareNamedSchema proxy = genericDeclareNamedSchema defaultSchemaOptions proxy
+        & mapped.schema.example ?~ toJSON defaultActuationValue
 
 -------------
 -- * Users --

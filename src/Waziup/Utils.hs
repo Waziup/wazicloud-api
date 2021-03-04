@@ -126,3 +126,17 @@ rightToMaybe = either (const Nothing) Just
 
 trace' :: Show a => String -> a -> a 
 trace' s a = trace (s ++ (show a)) a
+
+-- URI encode the forbidden characters of Orion
+urlEncodeForbiddens :: String -> String
+urlEncodeForbiddens bs = concatMap enc bs where
+  enc :: Char -> String
+  enc '<'  = "%3C"
+  enc '>'  = "%3E"
+  enc '\"' = "%22"
+  enc '\'' = "%27"
+  enc '='  = "%3D"
+  enc ';'  = "%3B"
+  enc '('  = "("
+  enc ')'  = ")"
+  enc a    = [a]

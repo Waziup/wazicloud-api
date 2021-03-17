@@ -23,8 +23,6 @@ RUN stack build --system-ghc --fast waziup:waziup-servant --copy-bins
 FROM ubuntu
 
 WORKDIR /opt/waziup
-COPY --from=build /root/.local/bin/waziup-servant .
-COPY data /opt/waziup/data
 ENV PATH /usr/bin:$PATH
 RUN apt-get update && apt-get install -y netbase ca-certificates locales 
 
@@ -33,6 +31,9 @@ RUN locale-gen en_US.UTF-8
 ENV LANG en_US.UTF-8  
 ENV LANGUAGE en_US:en  
 ENV LC_ALL en_US.UTF-8  
+
+COPY --from=build /root/.local/bin/waziup-servant .
+COPY data /opt/waziup/data
 
 CMD /opt/waziup/waziup-servant 
 

@@ -117,11 +117,11 @@ newtype SubId = SubId {unSubId :: Text} deriving (Show, Eq, Generic, ToJSON, Fro
 
 -- | one subscription
 data Subscription = Subscription {
-  subId           :: Maybe SubId,       -- ^ id of the subscription 
-  subDescription  :: Text,              -- ^ Description
-  subSubject      :: SubSubject,        -- ^ what is subscribed on, and conditions for triggering
-  subNotification :: SubNotif,          -- ^ what to do when triggered
-  subThrottling   :: NominalDiffTime,   -- ^ minimum interval between two messages in seconds
+  subId           :: Maybe SubId,           -- ^ id of the subscription 
+  subDescription  :: Maybe Text,            -- ^ Description
+  subSubject      :: SubSubject,            -- ^ what is subscribed on, and conditions for triggering
+  subNotification :: SubNotif,              -- ^ what to do when triggered
+  subThrottling   :: Maybe NominalDiffTime, -- ^ minimum interval between two messages in seconds
   subStatus       :: Maybe SubStatus,
   subExpires      :: Maybe UTCTime
   } deriving (Show, Eq, Generic)
@@ -134,7 +134,7 @@ instance FromJSON Subscription where
 
 data SubSubject = SubSubject {
   subEntities  :: [SubEntity],
-  subCondition :: SubCondition
+  subCondition :: Maybe SubCondition
   } deriving (Show, Eq, Generic)
 
 instance ToJSON SubSubject where
@@ -174,15 +174,15 @@ instance FromJSON SubNotif where
   parseJSON = genericParseJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 3}
 
 data SubCondition = SubCondition {
-  subCondAttrs      :: [AttributeId],
-  subCondExpression :: Map Text Text
+  subCondAttrs      :: Maybe [AttributeId],
+  subCondExpression :: Maybe (Map Text Text)
   } deriving (Show, Eq, Generic)
 
 instance ToJSON SubCondition where
-  toJSON = genericToJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 7}
+  toJSON = genericToJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 7, omitNothingFields = True}
 
 instance FromJSON SubCondition where
-  parseJSON = genericParseJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 7}
+  parseJSON = genericParseJSON $ defaultOptions {fieldLabelModifier = unCapitalize . drop 7, omitNothingFields = True}
 
 data SubHttpCustom = SubHttpCustom {
   subUrl :: Text,

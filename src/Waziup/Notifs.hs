@@ -17,7 +17,6 @@ import           Data.Aeson as JSON
 import           Data.Time
 import           Data.Map as M hiding (map)
 import           Servant
-import           Keycloak as KC hiding (Scope) 
 import           System.Log.Logger
 import           Control.Lens hiding ((.=))
 import           Orion as O hiding (info, warn, debug, err)
@@ -41,7 +40,7 @@ postNotif :: AuthUser -> Notif -> Waziup NotifId
 postNotif _ notif = do
   info $ "Post notif: " ++ (show notif)
   interval <- view (waziupConfig.serverConf.notifMinInterval)
-  let not2 = notif {notifThrottling = max interval (notifThrottling notif)}
+  let not2 = notif {notifThrottling = Just $ max interval (maybe 0 id (notifThrottling notif))}
   host <- view (waziupConfig.serverConf.serverHost)
   sub <- getSubFromNotif not2 host
   debug $ "sub: " ++ (convertString $ (encode sub) :: String)
@@ -63,7 +62,7 @@ patchNotif :: AuthUser -> NotifId -> Notif -> Waziup NoContent
 patchNotif _ (NotifId nid) notif = do
   info $ "Patch notif: " ++ (show notif)
   interval <- view (waziupConfig.serverConf.notifMinInterval)
-  let not2 = notif {notifThrottling = max interval (notifThrottling notif)}
+  let not2 = notif {notifThrottling = Just $ max interval (maybe 0 id (notifThrottling notif))}
   host <- view (waziupConfig.serverConf.serverHost)
   sub <- getSubFromNotif not2 host
   debug $ "sub: " ++ (convertString $ (encode sub) :: String)
@@ -91,47 +90,34 @@ putNotifStatus tok nid status = do
 getNotifFromSub :: Subscription -> Maybe Notif
 getNotifFromSub (Subscription sid desc subj notif throt stat expir) = 
   case getNotifAction notif of
-    Just (Right action) -> Just $ Notif { notifId                = getNotifId <$> sid 
-                                        , notifDescription       = desc 
-                                        , notifCondition         = getNotifCondition subj 
-                                        , notifAction            = Just action 
-                                        , notifActuationAction   = Nothing 
-                                        , notifThrottling        = throt
-                                        , notifStatus            = stat 
-                                        , notifTimesSent         = subTimesSent notif 
-                                        , notifLastNotif         = subLastNotification notif
-                                        , notifLastSuccess       = subLastSuccess notif
-                                        , notifLastSuccessCode   = subLastSuccessCode notif
-                                        , notifLastFailure       = subLastFailure notif
-                                        , notifLastFailureReason = subLastFailureReason notif
-                                        , notifExpires           = expir}
-    Just (Left actuationAction) -> Just $ Notif { notifId                = getNotifId <$> sid 
-                                        , notifDescription       = desc 
-                                        , notifCondition         = getNotifCondition subj 
-                                        , notifAction            = Nothing
-                                        , notifActuationAction   = Just actuationAction 
-                                        , notifThrottling        = throt
-                                        , notifStatus            = stat 
-                                        , notifTimesSent         = subTimesSent notif 
-                                        , notifLastNotif         = subLastNotification notif
-                                        , notifLastSuccess       = subLastSuccess notif
-                                        , notifLastSuccessCode   = subLastSuccessCode notif
-                                        , notifLastFailure       = subLastFailure notif
-                                        , notifLastFailureReason = subLastFailureReason notif
-                                        , notifExpires           = expir}
     Nothing -> Nothing
+    Just action -> Just $ Notif { notifId                = getNotifId <$> sid 
+                                , notifDescription       = desc 
+                                , notifCondition         = getNotifCondition subj 
+                                , notifAction            = action 
+                                , notifThrottling        = throt
+                                , notifStatus            = stat 
+                                , notifTimesSent         = subTimesSent notif 
+                                , notifLastNotif         = subLastNotification notif
+                                , notifLastSuccess       = subLastSuccess notif
+                                , notifLastSuccessCode   = subLastSuccessCode notif
+                                , notifLastFailure       = subLastFailure notif
+                                , notifLastFailureReason = subLastFailureReason notif
+                                , notifExpires           = expir}
 
 getNotifId :: SubId -> NotifId
 getNotifId (SubId sid) = NotifId sid
 
 getNotifCondition :: SubSubject -> NotifCondition
-getNotifCondition (SubSubject ents (SubCondition attrs expir)) = NotifCondition
+getNotifCondition (SubSubject ents (Just (SubCondition (Just attrs) expr))) = NotifCondition
   { notifDevices    = map getDeviceId (map subEntId ents)
-  , notifSensors    = map getSensorId attrs
+  , notifSensors    = (map getSensorId attrs)
   , notifExpression = qExpr} where
-    qExpr = case convertString <$> expir !? "q" of
-          Just q -> q
-          Nothing -> error "Cannot find q expression"
+    qExpr = case expr of
+      Just e -> case e !? "q" of
+          Just q -> convertString q
+          Nothing -> ""
+      Nothing -> ""
 
 getDeviceId :: EntityId -> DeviceId
 getDeviceId (EntityId eid) = DeviceId eid
@@ -139,11 +125,11 @@ getDeviceId (EntityId eid) = DeviceId eid
 getSensorId :: AttributeId -> SensorId
 getSensorId (AttributeId aid) = SensorId aid
 
-getNotifAction :: SubNotif -> Maybe (Either ActuationValue SocialMessageBatch)
+getNotifAction :: SubNotif -> Maybe NotifAction 
 getNotifAction subNot = 
   case subMetadata subNot of
-    ["waziup_notif"] -> Right <$> getNotifSocial (subHttpCustom subNot)
-    ["waziup_actuation_notif"] -> Left <$> getNotifActuation (subHttpCustom subNot)
+    ["waziup_notif"] -> SocialAction <$> getNotifSocial (subHttpCustom subNot)
+    ["waziup_actuation_notif"] -> ActuationAction <$> getNotifActuation (subHttpCustom subNot)
     _ -> Nothing where
 
 getNotifSocial :: SubHttpCustom -> Maybe SocialMessageBatch
@@ -158,12 +144,12 @@ getNotifActuation (SubHttpCustom url payload _ _) = case decodePathSegments $ ex
 
 
 getSubFromNotif :: Notif -> Text -> Waziup Subscription
-getSubFromNotif (Notif nid desc sub soc act throt stat ts ln ls lsc lf lfr expi) host = do
+getSubFromNotif (Notif nid desc sub act throt stat ts ln ls lsc lf lfr expi) host = do
   return Subscription {
   subId           = getSubId <$> nid, 
   subDescription  = desc,
   subSubject      = getSubSubject sub, 
-  subNotification = getSubNotif soc act ts ln ls lsc lf lfr host,
+  subNotification = getSubNotif act ts ln ls lsc lf lfr host,
   subThrottling   = throt,
   subStatus       = stat,
   subExpires      = expi}
@@ -171,11 +157,13 @@ getSubFromNotif (Notif nid desc sub soc act throt stat ts ln ls lsc lf lfr expi)
 getSubSubject :: NotifCondition -> SubSubject
 getSubSubject (NotifCondition devs sens expr) = 
   SubSubject {subEntities  = map (\(DeviceId did) -> SubEntity (EntityId did) Nothing) devs,
-              subCondition = SubCondition {subCondAttrs      = map (\(SensorId sid) -> AttributeId sid) sens,
-                                           subCondExpression = M.singleton "q" expr}}
+              subCondition = Just $ SubCondition {subCondAttrs      = Just $ map (\(SensorId sid) -> AttributeId sid) sens,
+                                                  subCondExpression = case expr of 
+                                                                        "" -> Nothing
+                                                                        e  -> Just $ M.singleton "q" e}}
 
-getSubNotif :: Maybe SocialMessageBatch -> Maybe ActuationValue -> Maybe Int -> Maybe UTCTime -> Maybe UTCTime -> Maybe Int -> Maybe UTCTime -> Maybe String -> Text -> SubNotif
-getSubNotif (Just smb) Nothing ts ln ls lsc lf lfr host = do
+getSubNotif :: NotifAction -> Maybe Int -> Maybe UTCTime -> Maybe UTCTime -> Maybe Int -> Maybe UTCTime -> Maybe String -> Text -> SubNotif
+getSubNotif (SocialAction smb) ts ln ls lsc lf lfr host = do
   SubNotif  {subHttpCustom = SubHttpCustom {subUrl = convertString $ host <> "/api/v2/socials/batch",
                                             subPayload = convertString $ urlEncodeForbiddens $ convertString $ JSON.encode smb,
                                             subMethod = "POST",
@@ -189,9 +177,9 @@ getSubNotif (Just smb) Nothing ts ln ls lsc lf lfr host = do
              subLastSuccessCode   = lsc,
              subLastFailure       = lf,
              subLastFailureReason = lfr}
-getSubNotif Nothing (Just (ActuationValue (DeviceId devId) (ActuatorId actId) val)) ts ln ls lsc lf lfr host = do
+getSubNotif (ActuationAction (ActuationValue (DeviceId devId) (ActuatorId actId) val)) ts ln ls lsc lf lfr host = do
   SubNotif  {subHttpCustom = SubHttpCustom {subUrl = convertString $ host <> "/api/v2/devices/" <> devId <> "/actuators/" <> actId <> "/value",
-                                            subPayload = convertString $ URI.urlEncode True $ convertString $ JSON.encode val,
+                                            subPayload = convertString $ urlEncodeForbiddens $ convertString $ JSON.encode val,
                                             subMethod = "PUT",
                                             subHeaders = fromList [("Content-Type", "application/json"), ("accept", "application/json")]},
              subAttrs             = [],

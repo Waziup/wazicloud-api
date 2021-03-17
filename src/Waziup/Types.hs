@@ -899,13 +899,12 @@ instance ToParamSchema NotifId
 
 -- | one notification
 data Notif = Notif
-  { notifId                :: Maybe NotifId       -- ^ id of the notification (attributed by the server)
-  , notifDescription       :: Text                -- ^ Description of the notification
-  , notifCondition         :: NotifCondition      -- ^ What is looked at and with which condition 
-  , notifAction            :: Maybe SocialMessageBatch         -- ^ Where to send the notification
-  , notifActuationAction   :: Maybe ActuationValue         -- ^ Where to send the notification
-  , notifThrottling        :: NominalDiffTime     -- ^ minimum interval between two messages in seconds
-  , notifStatus            :: Maybe O.SubStatus   -- ^ current status of the notification 
+  { notifId                :: Maybe NotifId         -- ^ id of the notification (attributed by the server)
+  , notifDescription       :: Maybe Text            -- ^ Description of the notification
+  , notifCondition         :: NotifCondition        -- ^ What is looked at and with which condition 
+  , notifAction            :: NotifAction           -- ^ Where to send the notification
+  , notifThrottling        :: Maybe NominalDiffTime -- ^ minimum interval between two messages in seconds
+  , notifStatus            :: Maybe O.SubStatus     -- ^ current status of the notification 
   , notifTimesSent         :: Maybe Int
   , notifLastNotif         :: Maybe UTCTime
   , notifLastSuccess       :: Maybe UTCTime
@@ -918,11 +917,10 @@ data Notif = Notif
 defaultNotif :: Notif
 defaultNotif = Notif
   { notifId                = Nothing 
-  , notifDescription       = "Test"               
+  , notifDescription       = Just "Test"               
   , notifCondition         = NotifCondition [DeviceId "MyDevice"] [SensorId "TC1"] "TC1>40"
-  , notifAction            = Nothing
-  , notifActuationAction   = Just defaultActuationValue         -- ^ Where to send the notification
-  , notifThrottling        = 3600
+  , notifAction            = ActuationAction defaultActuationValue
+  , notifThrottling        = Just 120
   , notifStatus            = Nothing
   , notifTimesSent         = Nothing
   , notifLastNotif         = Nothing
@@ -981,10 +979,10 @@ data NotifAction = SocialAction SocialMessageBatch
   deriving (Show, Eq, Generic)
 
 instance ToJSON NotifAction where
-  toJSON = genericToJSON $ defaultOptions {AT.constructorTagModifier = unCapitalize, sumEncoding = ObjectWithSingleField} 
+  toJSON = genericToJSON $ defaultOptions {sumEncoding = TaggedObject "type" "value"} 
 
 instance FromJSON NotifAction where
-  parseJSON = genericParseJSON $ defaultOptions {AT.constructorTagModifier = unCapitalize, sumEncoding = ObjectWithSingleField} 
+  parseJSON = genericParseJSON $ defaultOptions {sumEncoding = TaggedObject "type" "value"} 
 
 --Swagger instance
 instance ToSchema NotifAction where

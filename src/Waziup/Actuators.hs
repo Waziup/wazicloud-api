@@ -87,7 +87,8 @@ putActuatorValue mtok did aid actVal = do
   info $ "Put actuator value: " ++ (show actVal)
   device <- getDeviceOrion did
   debug "Check permissions"
-  checkPermResource mtok DevicesUpdate (PermDevice device)
+  -- TODO actuation notifications is not handling permissions well now.
+  --checkPermResource mtok DevicesUpdate (PermDevice device)
   debug "Permission granted, returning actuator"
   case L.find (\s -> actId s == aid) (maybeToList' $ devActuators device) of
     Just act -> do

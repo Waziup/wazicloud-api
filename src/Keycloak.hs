@@ -1,21 +1,12 @@
+module Keycloak (
+  module Keycloak.Tokens,
+  module Keycloak.Users,
+  module Keycloak.Authorizations,
+  module Keycloak.Types,
+  module Keycloak.Config) where
 
-module Keycloak (isAuthorized,
-                 getPermissions,
-                 checkPermission,
-                 getUserAuthToken,
-                 getClientAuthToken,
-                 getUsername,
-                 createResource,
-                 deleteResource,
-                 deleteAllResources,
-                 getResource,
-                 getAllResourceIds,
-                 updateResource,
-                 getUsers,
-                 getUser,
-                 createUser,
-                 updateUser, 
-                 module Keycloak.Types) where
-
-import Keycloak.Client
+import Keycloak.Tokens
+import Keycloak.Users
+import Keycloak.Authorizations
 import Keycloak.Types
+import Keycloak.Config

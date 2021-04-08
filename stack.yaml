@@ -1,5 +1,4 @@
-resolver: lts-13.5
+resolver: lts-16.20 
 extra-deps:
-- jwt-0.10.0
 packages:
 - .

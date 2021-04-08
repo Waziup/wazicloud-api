@@ -1,114 +1,115 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Keycloak.Types where
 
 import           Data.Aeson
 import           Data.Aeson.Casing
+import           Data.Hashable
 import           Data.Text hiding (head, tail, map, toLower, drop)
-import           Data.Text.Encoding
 import           Data.String.Conversions
 import           Data.Maybe
 import           Data.Map hiding (drop, map)
-import qualified Data.ByteString as BS
-import qualified Data.Word8 as W8 (isSpace, toLower)
+import qualified Data.HashMap.Strict as HM
 import           Data.Char
 import           Control.Monad.Except (ExceptT, runExceptT)
 import           Control.Monad.Reader as R
+import           Control.Monad.Time (MonadTime)
 import           Control.Lens hiding ((.=))
 import           GHC.Generics (Generic)
-import           Web.HttpApiData (FromHttpApiData(..), ToHttpApiData(..))
 import           Network.HTTP.Client as HC hiding (responseBody)
+import           Crypto.JWT as JWT
+
+-- | Our Json Web Token as returned by Keycloak
+type JWT = SignedJWT
 
 -- * Keycloak Monad
 
 -- | Keycloak Monad stack: a simple Reader monad containing the config, and an ExceptT to handle HTTPErrors and parse errors.
-type Keycloak a = ReaderT KCConfig (ExceptT KCError IO) a
+-- You can extract the value using 'runKeycloak'.
+-- Example: @keys <- runKeycloak getJWKs defaultKCConfig@
+type Keycloak a = KeycloakT IO a
+
+newtype KeycloakT m a = KeycloakT { unKeycloakT :: ReaderT KCConfig (ExceptT KCError m) a }
+    deriving newtype (Monad, Applicative, Functor, MonadIO, MonadTime)
+
+instance MonadTrans KeycloakT where
+    lift = KeycloakT . lift . lift
 
 -- | Contains HTTP errors and parse errors.
 data KCError = HTTPError HttpException  -- ^ Keycloak returned an HTTP error.
              | ParseError Text          -- ^ Failed when parsing the response
+             | JWTError JWTError        -- ^ Failed to decode the token
              | EmptyError               -- ^ Empty error to serve as a zero element for Monoid.
-             deriving (Show)
+             deriving stock (Show)
+
+instance AsJWTError KCError where
+  _JWTError = prism' JWTError up where
+    up (JWTError e) = Just e
+    up _ = Nothing
+
+instance AsError KCError where
+  _Error = _JWSError
+
+
+data KCConfig = KCConfig {
+  _confAdapterConfig :: AdapterConfig,
+  _confJWKs :: [JWK]}
+  deriving (Eq, Show, Generic)
+
+type Realm = Text
+type ClientId = Text
+type ServerURL = Text
 
 -- | Configuration of Keycloak.
-data KCConfig = KCConfig {
-  _confBaseUrl       :: Text,
-  _confRealm         :: Text,
-  _confClientId      :: Text,
-  _confClientSecret  :: Text} deriving (Eq, Show)
+data AdapterConfig = AdapterConfig {
+  _confRealm         :: Realm,              -- ^ realm to use
+  _confAuthServerUrl :: ServerURL,          -- ^ Base url where Keycloak resides
+  _confResource      :: ClientId,           -- ^ client id
+  _confCredentials   :: ClientCredentials}  -- ^ client secret, found in Client/Credentials tab
+  deriving stock (Eq, Show, Generic)
+
+instance ToJSON AdapterConfig where
+  toJSON = genericToJSON $ trainDrop 5
+
+instance FromJSON AdapterConfig where
+  parseJSON = genericParseJSON $ trainDrop 5
+
+data ClientCredentials = ClientCredentials {
+  _confSecret :: Text}
+  deriving stock (Eq, Show, Generic)
+
+instance ToJSON ClientCredentials where
+  toJSON = genericToJSON $ trainDrop 5
+
+instance FromJSON ClientCredentials where
+  parseJSON = genericParseJSON $ trainDrop 5
+
+trainDrop :: Int -> Options
+trainDrop n = defaultOptions {fieldLabelModifier = trainCase . drop n, omitNothingFields = True}
 
 -- | Default configuration
-defaultKCConfig :: KCConfig
-defaultKCConfig = KCConfig {
-  _confBaseUrl       = "http://localhost:8080/auth",
+defaultAdapterConfig :: AdapterConfig
+defaultAdapterConfig = AdapterConfig {
   _confRealm         = "waziup",
-  _confClientId      = "api-server",
-  _confClientSecret  = "4e9dcb80-efcd-484c-b3d7-1e95a0096ac0"}
+  _confAuthServerUrl = "http://localhost:8080/auth",
+  _confResource      = "api-server",
+  _confCredentials   = ClientCredentials "4e9dcb80-efcd-484c-b3d7-1e95a0096ac0"}
 
 -- | Run a Keycloak monad within IO.
-runKeycloak :: Keycloak a -> KCConfig -> IO (Either KCError a)
-runKeycloak kc conf = runExceptT $ runReaderT kc conf
+runKeycloak :: Monad m => KeycloakT m a -> KCConfig -> m (Either KCError a)
+runKeycloak kc conf = runExceptT $ runReaderT (unKeycloakT kc) conf
 
 type Path = Text
 
 
 -- * Token
-
--- | Wrapper for tokens.
-newtype Token = Token {unToken :: BS.ByteString} deriving (Eq, Show, Generic)
-
-instance ToJSON Token where
-  toJSON (Token t) = String $ convertString t
-
--- | parser for Authorization header
-instance FromHttpApiData Token where
-  parseQueryParam = parseHeader . encodeUtf8
-  parseHeader (extractBearerAuth -> Just tok) = Right $ Token tok
-  parseHeader _ = Left "cannot extract auth Bearer"
-
-extractBearerAuth :: BS.ByteString -> Maybe BS.ByteString
-extractBearerAuth bs =
-    let (x, y) = BS.break W8.isSpace bs
-    in if BS.map W8.toLower x == "bearer"
-        then Just $ BS.dropWhile W8.isSpace y
-        else Nothing
-
--- | Create Authorization header
-instance ToHttpApiData Token where
-  toQueryParam (Token token) = "Bearer " <> (decodeUtf8 token)
- 
--- | Keycloak Token additional claims
-tokNonce, tokAuthTime, tokSessionState, tokAtHash, tokCHash, tokName, tokGivenName, tokFamilyName, tokMiddleName, tokNickName, tokPreferredUsername, tokProfile, tokPicture, tokWebsite, tokEmail, tokEmailVerified, tokGender, tokBirthdate, tokZoneinfo, tokLocale, tokPhoneNumber, tokPhoneNumberVerified,tokAddress, tokUpdateAt, tokClaimsLocales, tokACR :: Text
-tokNonce               = "nonce";
-tokAuthTime            = "auth_time";
-tokSessionState        = "session_state";
-tokAtHash              = "at_hash";
-tokCHash               = "c_hash";
-tokName                = "name";
-tokGivenName           = "given_name";
-tokFamilyName          = "family_name";
-tokMiddleName          = "middle_name";
-tokNickName            = "nickname";
-tokPreferredUsername   = "preferred_username";
-tokProfile             = "profile";
-tokPicture             = "picture";
-tokWebsite             = "website";
-tokEmail               = "email";
-tokEmailVerified       = "email_verified";
-tokGender              = "gender";
-tokBirthdate           = "birthdate";
-tokZoneinfo            = "zoneinfo";
-tokLocale              = "locale";
-tokPhoneNumber         = "phone_number";
-tokPhoneNumberVerified = "phone_number_verified";
-tokAddress             = "address";
-tokUpdateAt            = "updated_at";
-tokClaimsLocales       = "claims_locales";
-tokACR                 = "acr";
 
 -- | Token reply from Keycloak
 data TokenRep = TokenRep {
@@ -119,7 +120,7 @@ data TokenRep = TokenRep {
   tokenType         :: Text,
   notBeforePolicy   :: Int,
   sessionState      :: Text,
-  tokenScope        :: Text} deriving (Show, Eq)
+  tokenScope        :: Text} deriving stock (Show, Eq)
 
 instance FromJSON TokenRep where
   parseJSON (Object v) = TokenRep <$> v .: "access_token"
@@ -134,8 +135,11 @@ instance FromJSON TokenRep where
 
 -- * Permissions
 
--- | Scope name
-newtype ScopeName = ScopeName {unScopeName :: Text} deriving (Eq, Generic, Ord)
+-- | Scope name, such as "houses:view"
+-- You need to create the scopes in Client/Authorization panel/Authorization scopes tab
+newtype ScopeName = ScopeName {unScopeName :: Text}
+    deriving stock (Eq, Generic, Ord)
+    deriving newtype (Hashable)
 
 --JSON instances
 instance ToJSON ScopeName where
@@ -169,11 +173,26 @@ instance ToJSON Scope where
 instance FromJSON Scope where
   parseJSON = genericParseJSON defaultOptions {fieldLabelModifier = unCapitalize . drop 5}
 
+-- | permission request
+-- You can perform a request on a specific resourse, or on all resources.
+-- You can request permission on multiple scopes at once.
+-- 
+data PermReq = PermReq 
+  { permReqResourceId :: Maybe ResourceId, -- ^ Requested ressource Ids. Nothing means "All resources".
+    permReqScopes     :: [ScopeName]       -- ^ Scopes requested. [] means "all scopes".
+  } deriving (Generic, Eq, Ord, Hashable)
+
+instance Show PermReq where
+  show (PermReq (Just (ResourceId res1)) scopes) = (show res1) <> " " <> (show scopes)
+  show (PermReq Nothing scopes)                  = "none " <> (show scopes)
+
 -- | Keycloak permission on a resource
+-- Returned by Keycloak after a permission request is made.
+-- 
 data Permission = Permission 
-  { permRsid   :: Maybe ResourceId,   -- Resource ID, can be Nothing in case of scope-only permission request
-    permRsname :: Maybe ResourceName, -- Resrouce Name
-    permScopes :: [ScopeName]         -- Scopes that are accessible Non empty
+  { permRsid   :: Maybe ResourceId,   -- ^ Resource ID, can be Nothing in case of scope-only permission request
+    permRsname :: Maybe ResourceName, -- ^ Resource Name, can be Nothing in case of scope-only permission request
+    permScopes :: [ScopeName]         -- ^ Scopes that are accessible (Non empty)
   } deriving (Generic, Show, Eq)
 
 instance ToJSON Permission where
@@ -181,16 +200,6 @@ instance ToJSON Permission where
 
 instance FromJSON Permission where
   parseJSON = genericParseJSON defaultOptions {fieldLabelModifier = unCapitalize . drop 4}
-
--- | permission request
-data PermReq = PermReq 
-  { permReqResourceId :: Maybe ResourceId, -- Requested ressource Ids. Nothing means "All resources".
-    permReqScopes     :: [ScopeName]       -- Scopes requested. [] means "all scopes".
-  } deriving (Generic, Eq, Ord)
-
-instance Show PermReq where
-  show (PermReq (Just (ResourceId res1)) scopes) = (show res1) <> " " <> (show scopes)
-  show (PermReq Nothing scopes)                  = "none " <> (show scopes)
 
 
 
@@ -213,12 +222,12 @@ instance FromJSON UserId where
 
 -- | User 
 data User = User
-  { userId        :: Maybe UserId   -- ^ The unique user ID 
-  , userUsername  :: Username       -- ^ Username
-  , userFirstName :: Maybe Text     -- ^ First name
-  , userLastName  :: Maybe Text     -- ^ Last name
-  , userEmail     :: Maybe Text     -- ^ Email
-  , userAttributes :: Maybe (Map Text [Text]) 
+  { userId         :: Maybe UserId   -- ^ The unique user ID 
+  , userUsername   :: Username       -- ^ Username
+  , userFirstName  :: Maybe Text     -- ^ First name
+  , userLastName   :: Maybe Text     -- ^ Last name
+  , userEmail      :: Maybe Text     -- ^ Email
+  , userAttributes :: Maybe (HM.HashMap Text Value)
   } deriving (Show, Eq, Generic)
 
 unCapitalize :: String -> String
@@ -254,7 +263,9 @@ type ResourceName = Text
 type ResourceType = Text
 
 -- | A resource Id
-newtype ResourceId = ResourceId {unResId :: Text} deriving (Show, Eq, Generic, Ord)
+newtype ResourceId = ResourceId {unResId :: Text}
+    deriving stock (Show, Eq, Generic, Ord)
+    deriving newtype (Hashable)
 
 -- JSON instances
 instance ToJSON ResourceId where
@@ -264,15 +275,17 @@ instance FromJSON ResourceId where
   parseJSON = genericParseJSON (defaultOptions {unwrapUnaryRecords = True})
 
 -- | A complete resource
+-- Resources are created in Keycloak in Client/
+-- You can create resources in Client/Authorization panel/Resources scopes tab
 data Resource = Resource {
-     resId                 :: Maybe ResourceId,
-     resName               :: ResourceName,
-     resType               :: Maybe ResourceType,
-     resUris               :: [Text],
-     resScopes             :: [Scope],
-     resOwner              :: Owner,
-     resOwnerManagedAccess :: Bool,
-     resAttributes         :: [Attribute]
+     resId                 :: Maybe ResourceId,   -- ^ the Keycloak resource ID
+     resName               :: ResourceName,       -- ^ the Keycloak resource name
+     resType               :: Maybe ResourceType, -- ^ Optional resource type
+     resUris               :: [Text],             -- ^ Optional resource URI
+     resScopes             :: [Scope],            -- ^ All the possible scopes for that resource
+     resOwner              :: Owner,              -- ^ The Owner or the resource
+     resOwnerManagedAccess :: Bool,               -- ^ Whether the owner can manage his own resources (e.g. resource sharing with others)
+     resAttributes         :: [Attribute]         -- ^ Resource attributes
   } deriving (Generic, Show)
 
 instance FromJSON Resource where
@@ -315,3 +328,5 @@ instance ToJSON Attribute where
 
 
 makeLenses ''KCConfig
+makeLenses ''ClientCredentials
+makeLenses ''AdapterConfig

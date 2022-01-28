@@ -53,7 +53,7 @@ redir :: ServerT Redir Waziup
 redir = do
   wi <- ask
   let host = _serverHost $ _serverConf $ _waziupConfig wi
-  throwError $ err301 { errHeaders = [("Location", convertString $ host <> "/docs")] }
+  throwError $ err301 { errHeaders = [("Location", convertString $ "/docs")] }
 
 -- All API servers
 resourcesServer :: AuthResult User -> ServerT ResourcesAPI Waziup

@@ -177,7 +177,7 @@ ontologiesServer = getSensorKinds
 -- Swagger docs
 swaggerDoc :: S.Swagger
 swaggerDoc = toSwagger ((Proxy :: Proxy WaziupAPI))
-  & S.basePath ?~ "./api/v2"
+  & S.basePath ?~ "/api/v2"
   & S.info . S.title       .~ "Waziup API"
   & S.info . S.version     .~ "v2.0.0"
   & S.info . S.description ?~ "This API allows you to access all Waziup services.\n\

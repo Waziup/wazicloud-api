@@ -50,10 +50,7 @@ waziupServer = resourcesServer
 
 -- redirect root queries to docs
 redir :: ServerT Redir Waziup
-redir = do
-  wi <- ask
-  let host = _serverHost $ _serverConf $ _waziupConfig wi
-  throwError $ err301 { errHeaders = [("Location", convertString $ host <> "/docs")] }
+redir = throwError $ err301 { errHeaders = [("Location", "/docs")] }
 
 -- All API servers
 resourcesServer :: AuthResult User -> ServerT ResourcesAPI Waziup

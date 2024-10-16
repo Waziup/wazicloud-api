@@ -110,6 +110,18 @@ putDeviceName mtok did name = do
   liftOrion $ O.postTextAttributeOrion (toEntityId did) devTyp (AttributeId "name") name
   return NoContent
 
+putDeviceMetaField :: AuthUser -> DeviceId -> MetadataValue -> Waziup NoContent
+putDeviceMetaField mtok did val = do
+  info $ "Put device metadata field: " ++ (show did) ++ " = " ++ (show val)
+  device <- getDevice mtok did
+  debug "Check permissions"
+  checkPermResource mtok DevicesUpdate (PermDevice device) -- check if it should update from keycloak permissions
+  debug "Update Orion resource"
+  liftOrion $ O.postValueAttributeOrion (toEntityId did) devTyp (AttributeId "meta") val
+  return NoContent
+
+
+
 putDeviceGatewayId :: AuthUser -> DeviceId -> GatewayId -> Waziup NoContent
 putDeviceGatewayId mtok did (GatewayId gid) = do
   info $ "Put device gateway ID: " ++ (show gid)
@@ -169,6 +181,7 @@ getDeviceFromEntity (O.Entity (EntityId eId) _ attrs) =
            devDomain       = fromSimpleAttribute (AttributeId "domain") attrs,
            devVisibility   = fromSimpleAttribute (AttributeId "visibility") attrs >>= toVisibility,
            devDeployed     = fromBoolAttribute (AttributeId "deployed") attrs,
+           devMeta         = fromValueAttribute (AttributeId "meta") attrs,
            devDateCreated  = fromSimpleAttribute (AttributeId "dateCreated") attrs >>= parseISO8601.unpack,
            devDateModified = fromSimpleAttribute (AttributeId "dateModified") attrs >>= parseISO8601.unpack,
            devSensors      = Just $ mapMaybe getSensorFromAttribute (toList attrs),
@@ -242,10 +255,11 @@ isNull _    = False
 -- * From Waziup to Orion types
 
 getEntityFromDevice :: Device -> O.Entity
-getEntityFromDevice (Device (DeviceId sid) sgid sname sloc sdom svis sensors acts sown sdep _ _) = 
+getEntityFromDevice (Device (DeviceId sid) sgid sname sloc sdom svis sensors acts sown smeta sdep _ _) = 
   O.Entity (EntityId sid) (fromJust devTyp) $ fromList $ catMaybes [getSimpleAttr (AttributeId "name")        <$> sname,
                                                            getSimpleAttr (AttributeId "gateway_id")  <$> (unGatewayId <$> sgid),
                                                            getSimpleAttr (AttributeId "owner")       <$> sown,
+                                                           getValueAttr  (AttributeId "meta")       <$>  smeta,
                                                            getSimpleAttr (AttributeId "domain")      <$> sdom,
                                                            getSimpleAttr (AttributeId "visibility")  <$> (fromVisibility <$> svis),
                                                            Just (AttributeId "deployed", O.Attribute "Bool" (Just $ toJSON sdep) M.empty),

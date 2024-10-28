@@ -83,6 +83,7 @@ devicesServer u = getDevices u
            :<|> getDevice u
            :<|> deleteDevice u
            :<|> putDeviceName u
+           :<|> putDeviceMetaField u
            :<|> putDeviceLocation u
            :<|> putDeviceGatewayId u
            :<|> putDeviceVisibility u
@@ -96,6 +97,7 @@ sensorsServer u = getSensors u
            :<|> getSensor u
            :<|> deleteSensor u
            :<|> putSensorName u
+           :<|> putSensorMetaField u
            :<|> putSensorSensorKind u
            :<|> putSensorQuantityKind u
            :<|> putSensorUnit u
@@ -126,6 +128,7 @@ actuatorsServer u = getActuators u
              :<|> getActuator u
              :<|> deleteActuator u
              :<|> putActuatorName u
+             :<|> putActuatorMetaField u
              :<|> putActActuatorKind u
              :<|> putActuatorValueType u
              :<|> putActuatorValue u

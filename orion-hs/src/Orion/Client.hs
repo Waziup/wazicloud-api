@@ -36,6 +36,7 @@ import           System.Log.Logger
 import           GHC.Generics (Generic)
 import           Debug.Trace
 import           Safe
+import Data.String.Conversions.Monomorphic (toString)
 
 -- * Entities
 
@@ -110,6 +111,15 @@ postTextAttributeOrion (EntityId eid) mtyp attId val = do
        Just t -> [("type", Just $ encodeUtf8 t)]
        Nothing -> []
   void $ orionPost ("/v2/entities/" <> eid <> "/attrs" <> (convertString $ renderQuery True typ)) (toJSON $ fromList [getSimpleAttr attId val])
+
+postValueAttributeOrion :: EntityId -> Maybe EntityType -> AttributeId -> Value -> Orion ()
+postValueAttributeOrion (EntityId eid) mtyp attId val = do
+  debug $ convertString $ "put attribute in Orion: " <> show val
+  let typ = case mtyp of
+       Just t -> [("type", Just $ encodeUtf8 t)]
+       Nothing -> []
+  void $ orionPost ("/v2/entities/" <> eid <> "/attrs" <> (convertString $ renderQuery True typ)) (toJSON $ fromList [getValueAttr attId val])
+
 
 deleteAttribute :: EntityId -> Maybe EntityType -> AttributeId -> Orion ()
 deleteAttribute (EntityId eid) mtyp (AttributeId attId) = do
@@ -268,11 +278,21 @@ fromSimpleAttribute attId attrs = do
   val <- mval
   getString val
 
+fromValueAttribute :: AttributeId -> Map AttributeId Attribute -> Maybe Value
+fromValueAttribute attId attrs = do
+  (Attribute _ mval _) <- attrs !? attId
+  mval
+
 fromSimpleMetadata :: MetadataId -> Map MetadataId Metadata -> Maybe Text
 fromSimpleMetadata mid mets = do
   (Metadata _ mval) <- mets !? mid
   val <- mval
   getString val
+
+fromValueMetadata :: MetadataId -> Map MetadataId Metadata -> Maybe Value
+fromValueMetadata mid mets = do
+  (Metadata _ mval) <- mets !? mid
+  mval
 
 getString :: Value -> Maybe Text
 getString (String s) = Just s
@@ -281,8 +301,14 @@ getString _ = Nothing
 getSimpleAttr :: AttributeId -> Text -> (AttributeId, Attribute)
 getSimpleAttr attId val = (attId, Attribute "String" (Just $ toJSON val) empty)
 
+getValueAttr :: AttributeId -> Value -> (AttributeId, Attribute)
+getValueAttr attId val = (attId, Attribute "Value" (Just val ) empty)
+
 getTextMetadata :: MetadataId -> Text -> (MetadataId, Metadata)
 getTextMetadata metId val = (metId, Metadata (Just "String") (Just $ toJSON val))
+
+getValueMetadata :: MetadataId -> Value ->(MetadataId, Metadata)
+getValueMetadata metId val = (metId, Metadata (Just "Value") (Just val))
 
 getTimeMetadata :: MetadataId -> UTCTime -> (MetadataId, Metadata)
 getTimeMetadata metId val = (metId, (Metadata (Just "DateTime") (Just $ toJSON $ formatISO8601 val)))

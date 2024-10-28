@@ -70,6 +70,13 @@ putActuatorName mtok did aid name = do
   updateActuatorField mtok did aid $ \act -> do 
     liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromActuator (act {actName = Just name}))
 
+putActuatorMetaField :: AuthUser -> DeviceId -> ActuatorId -> MetadataValue -> Waziup NoContent
+putActuatorMetaField mtok did aid meta = do
+  info $ "Put actuator metafield: " ++ (show meta)
+  updateActuatorField mtok did aid $ \act -> do 
+    liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromActuator (act {actMeta = Just meta}))
+
+
 putActActuatorKind :: AuthUser -> DeviceId -> ActuatorId -> ActuatorKindId -> Waziup NoContent
 putActActuatorKind mtok did aid ak = do
   info $ "Put actuator kind: " ++ (show ak)

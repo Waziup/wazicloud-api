@@ -204,7 +204,8 @@ getSensorFromAttribute (AttributeId name, O.Attribute aType value mets) =
                          senSensorKind    = SensorKindId   <$> fromSimpleMetadata (MetadataId "sensing_device") mets,
                          senUnit          = UnitId         <$> fromSimpleMetadata (MetadataId "unit") mets,
                          senValue         = getSensorValue value mets cal,
-                         senCalib         = cal}
+                         senCalib         = cal,
+                         senMeta          = fromValueMetadata (MetadataId "meta") mets}
     else Nothing where
       cal = getSensorCalib mets
 
@@ -216,7 +217,8 @@ getActuatorFromAttribute (AttributeId name, O.Attribute aType value mets) =
                            actName              = fromSimpleMetadata (MetadataId "name") mets,
                            actActuatorKind      = ActuatorKindId <$> fromSimpleMetadata (MetadataId "actuator_kind") mets,
                            actActuatorValueType = join $ readValueType  <$> fromSimpleMetadata (MetadataId "actuator_value_type") mets,
-                           actValue             = value}
+                           actValue             = value,
+                           actMeta              = fromValueMetadata (MetadataId "meta") mets}
     else Nothing
 
 getSensorValue :: Maybe Value -> Map O.MetadataId O.Metadata -> Maybe Calib -> Maybe SensorValue
@@ -271,7 +273,7 @@ getLocationAttr :: Location -> (O.AttributeId, O.Attribute)
 getLocationAttr (Location (Latitude lat) (Longitude lon)) = (AttributeId "location", O.Attribute "geo:json" (Just $ object ["type" .= ("Point" :: Text), "coordinates" .= [lon, lat]]) M.empty)
 
 getAttFromSensor :: Sensor -> (O.AttributeId, O.Attribute)
-getAttFromSensor (Sensor (SensorId sid) name sd qk u lv cal) = 
+getAttFromSensor (Sensor (SensorId sid) name sd qk u lv cal meta) = 
   (AttributeId sid, O.Attribute "Sensor"
                      (senValValue <$> lv)
                      (fromList $ catMaybes [getTextMetadata (MetadataId "name")           <$> name,
@@ -279,15 +281,17 @@ getAttFromSensor (Sensor (SensorId sid) name sd qk u lv cal) =
                                             getTextMetadata (MetadataId "sensing_device") <$> unSensorKindId <$> sd,
                                             getTextMetadata (MetadataId "unit")           <$> unUnitId <$> u,
                                             getTimeMetadata (MetadataId "timestamp")      <$> (join $ senValTimestamp <$> lv),
-                                            if (isJust cal) then Just $ (MetadataId "calib", Metadata  (Just "Calib") (toJSON <$> cal)) else Nothing]))
+                                            if (isJust cal) then Just $ (MetadataId "calib", Metadata  (Just "Calib") (toJSON <$> cal)) else Nothing,
+                                            getValueMetadata (MetadataId "meta")          <$> meta]))
 
 getAttFromActuator :: Actuator -> (O.AttributeId, O.Attribute)
-getAttFromActuator (Actuator (ActuatorId aid) name ak avt av) = 
+getAttFromActuator (Actuator (ActuatorId aid) name ak avt av meta) = 
   (AttributeId aid, O.Attribute "Actuator"
                      av
                      (fromList $ catMaybes [getTextMetadata (MetadataId "name")           <$> name,
                                             getTextMetadata (MetadataId "actuator_kind")  <$> unActuatorKindId <$> ak,
-                                            getTextMetadata (MetadataId "actuator_value_type") <$> convertString.show <$> avt]))
+                                            getTextMetadata (MetadataId "actuator_value_type") <$> convertString.show <$> avt,
+                                            getValueMetadata (MetadataId "meta")          <$> meta]))
 
 
 toEntityId :: DeviceId -> EntityId
@@ -305,11 +309,11 @@ postDatapoint d = do
   void $ insert "waziup_history" (bsonifyBound ob)
 
 postDatapointFromSensor :: DeviceId -> Sensor -> Action IO ()
-postDatapointFromSensor did (Sensor sid _ _ _ _ (Just (SensorValue v t rt)) _) = postDatapoint $ Datapoint did sid v t rt
+postDatapointFromSensor did (Sensor sid _ _ _ _ (Just (SensorValue v t rt)) _ _) = postDatapoint $ Datapoint did sid v t rt
 postDatapointFromSensor _ _ = return ()
 
 postDatapointsFromDevice :: Device -> Action IO ()
-postDatapointsFromDevice (Device did _ _ _ _ _ ss _ _ _ _ _) = void $ forM (maybeToList' ss) $ postDatapointFromSensor did
+postDatapointsFromDevice (Device did _ _ _ _ _ ss _ _ _ _ _ _) = void $ forM (maybeToList' ss) $ postDatapointFromSensor did
 
 deleteSensorDatapoints :: DeviceId -> SensorId -> Action IO ()
 deleteSensorDatapoints (DeviceId did) (SensorId sid) = do

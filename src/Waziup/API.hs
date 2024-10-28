@@ -87,6 +87,10 @@ type DevicesAPI = Flat (
       :<|> "name"       
            :> ReqBody '[PlainText, JSON] DeviceName
            :> PutNoContent    '[JSON] NoContent
+      :<|> "meta"       
+           :> ReqBody '[JSON] MetadataValue
+           :> PutNoContent    '[JSON] NoContent
+      
       :<|> "location"
            :> ReqBody '[JSON] Location
            :> PutNoContent    '[JSON] NoContent
@@ -120,6 +124,9 @@ type SensorsAPI = Flat (
         :<|> DeleteNoContent '[JSON] NoContent
         :<|> "name"          
            :> ReqBody '[PlainText, JSON] SensorName
+           :> PutNoContent '[JSON] NoContent
+        :<|> "meta"          
+           :> ReqBody '[JSON] MetadataValue
            :> PutNoContent '[JSON] NoContent
         :<|> "sensor_kind"  
            :> ReqBody '[PlainText, JSON] SensorKindId
@@ -186,6 +193,9 @@ type ActuatorsAPI = Flat (
         :<|> "name"
           :> ReqBody '[PlainText, JSON] ActuatorName
           :> PutNoContent '[JSON] NoContent
+        :<|> "meta"          
+           :> ReqBody '[JSON] MetadataValue
+           :> PutNoContent '[JSON] NoContent
         :<|> "actuator_kind"
           :> ReqBody '[PlainText, JSON] ActuatorKindId
           :> PutNoContent '[JSON] NoContent

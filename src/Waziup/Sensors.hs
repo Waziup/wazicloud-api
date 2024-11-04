@@ -72,6 +72,13 @@ putSensorName mtok did sid name = do
   updateSensorField mtok did sid $ \sensor -> do 
     liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromSensor (sensor {senName = Just name}))
 
+putSensorMetaField :: AuthUser -> DeviceId -> SensorId -> MetadataValue -> Waziup NoContent
+putSensorMetaField mtok did sid meta = do
+  info $ "Put sensor metafield: " ++ (show meta)
+  updateSensorField mtok did sid $ \sensor -> do 
+    liftOrion $ O.postAttribute (toEntityId did) devTyp (getAttFromSensor (sensor {senMeta = Just meta}))
+
+
 putSensorSensorKind :: AuthUser -> DeviceId -> SensorId -> SensorKindId -> Waziup NoContent
 putSensorSensorKind mtok did sid sk = do
   info $ "Put sensor sensor kind: " ++ (show sk)

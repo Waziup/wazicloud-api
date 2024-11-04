@@ -327,6 +327,7 @@ type Policy = User -> PermResource -> IsPermitted
 type DeviceName    = Text
 type Domain        = Text
 type DevicesQuery  = Text
+type MetadataValue = Value
 
 -- Id of a device
 newtype DeviceId = DeviceId {unDeviceId :: Text} deriving (Show, Eq, Generic, Ord)
@@ -363,6 +364,7 @@ data Device = Device
   , devSensors      :: Maybe [Sensor]
   , devActuators    :: Maybe [Actuator]
   , devOwner        :: Maybe Username   -- ^ owner of the device node (output only)
+  , devMeta         :: Maybe Value      -- ^ metadata of the device node (output only)             
   , devDeployed     :: Maybe Bool       -- ^ whether the device is deployed or not 
   , devDateCreated  :: Maybe UTCTime    -- ^ creation date of the device (output only)
   , devDateModified :: Maybe UTCTime    -- ^ last update date of the device node (output only)
@@ -378,8 +380,9 @@ defaultDevice = Device
   , devVisibility   = Just Public
   , devSensors      = Just [defaultSensor]
   , devActuators    = Just [defaultActuator]
+  , devMeta         = (decode "{}")
+  , devDeployed     = Nothing
   , devOwner        = Nothing
-  , devDeployed     = Just False 
   , devDateCreated  = Nothing
   , devDateModified = Nothing
   }
@@ -501,6 +504,7 @@ data Sensor = Sensor
   , senUnit          :: Maybe UnitId           -- ^ unit of the measurement, from https://github.com/Waziup/waziup-js/blob/master/src/model/Units.js
   , senValue         :: Maybe SensorValue      -- ^ last value received by the platform
   , senCalib         :: Maybe Calib
+  , senMeta          :: Maybe Value
   } deriving (Show, Eq, Generic)
 
 defaultSensor :: Sensor
@@ -512,6 +516,7 @@ defaultSensor = Sensor
   , senUnit          = Just $ UnitId "DegreeCelsius"
   , senValue         = Nothing
   , senCalib         = Nothing
+  , senMeta          = (decode "{}")
   } 
 
 instance FromJSON Sensor where
@@ -754,6 +759,7 @@ data Actuator = Actuator
   , actActuatorKind       :: Maybe ActuatorKindId
   , actActuatorValueType  :: Maybe ActuatorValueTypeId
   , actValue              :: Maybe Value
+  , actMeta               :: Maybe Value
   } deriving (Show, Eq, Generic)
 
 defaultActuator :: Actuator
@@ -763,6 +769,7 @@ defaultActuator = Actuator
   , actActuatorKind      = Just $ ActuatorKindId "Buzzer"
   , actActuatorValueType = Just ActBool
   , actValue             = Just $ toJSON True
+  , actMeta              = (decode "{}")
   } 
 
 instance FromJSON Actuator where

@@ -218,6 +218,8 @@ type GatewaysAPI = Flat (
        :> Get  '[JSON] [Gateway]
     :<|>  ReqBody '[JSON] Gateway
        :> Post '[PlainText, JSON] NoContent
+    :<|> "vpn"
+       :> Get '[JSON] [Gateway]
     :<|> Capture "gw_id" GatewayId :> (
            QueryParam "full" Bool
         :> Get '[JSON] Gateway
@@ -230,6 +232,10 @@ type GatewaysAPI = Flat (
       :<|> "owner"       
            :> ReqBody '[PlainText, JSON] Username
            :> PutNoContent    '[JSON] NoContent
+      :<|> "vpn" :> (
+            Get '[OctetStream] (Headers '[Header "Content-Disposition" T.Text] BS.ByteString)
+        :<|> DeleteNoContent '[JSON] NoContent
+        )
       :<|> "location"       
            :> ReqBody '[JSON] Location
            :> PutNoContent    '[JSON] NoContent

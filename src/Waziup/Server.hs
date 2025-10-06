@@ -114,11 +114,14 @@ sensorDataServer u = getDatapoints u
 gatewaysServer :: AuthResult User -> ServerT GatewaysAPI Waziup
 gatewaysServer u = getGateways u
             :<|> postGateway u
+            :<|> getAllGatewaysInVPN u
             :<|> getGateway u
             :<|> deleteGateway u
             :<|> putHeartbeat u
             :<|> putGatewayName u
             :<|> putGatewayOwner u
+            :<|> getGatewayVpnFile u
+            :<|> removeWazigate u
             :<|> putGatewayLocation u
 
 -- Actuators server

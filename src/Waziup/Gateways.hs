@@ -22,16 +22,6 @@ import           Data.Time
 import qualified Data.List as L
 import           Data.Text hiding (find, map, filter)
 
-import System.Process (readProcessWithExitCode)
-import System.Exit (ExitCode(..))
-import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
-import Control.Exception (try, IOException)
-import System.IO (withFile, IOMode(..))
-import System.Directory (renameFile)
-import System.FilePath ((</>))
-import qualified Data.Text as T
-
 -- * Projects API
 
 -- | Get all permissions. If no token is passed, the guest token will be used.
@@ -79,13 +69,6 @@ postGateway au g = do
     Left e -> throwError err500 {errBody = (convertString $ show e)}
   return NoContent
 
-getAllGatewaysInVPN :: IO (Either String T.Text)
-getAllWazigate = do
-  result <- try (TIO.readFile "/app/openvpn_clients_dynamic.hosts") :: IO (Either IOException T.Text)
-  case result of
-    Left err  -> pure (Left (show err))     -- on error
-    Right txt -> pure (Right txt)           -- on success
-
 getGateway :: AuthUser -> GatewayId -> Maybe Bool -> Waziup Gateway
 getGateway tok gid mfull = do
   info "Get gateway"
@@ -97,19 +80,6 @@ getGateway tok gid mfull = do
   case mfull of
     Just True -> getFullGateway tok g
     _ -> return g
-
-getGatewayWithoutAuth :: GatewayId -> Maybe Bool -> Waziup Gateway
-getGatewayWithoutAuth gid mfull = do
-  info "Get gateway"
-  mg <- runMongo $ getGatewayMongo gid
-  g <- case mg of
-    Just g  -> return g
-    Nothing -> throwError err404 { errBody = "Cannot get gateway: id not found" }
-
-  -- Skip permission check since no AuthUser
-  case mfull of
-    Just True -> getFullGateway g
-    _         -> return g
 
 getFullGateway :: AuthUser -> Gateway -> Waziup Gateway
 getFullGateway tok g = do
@@ -166,73 +136,6 @@ putGatewayOwner tok gid owner = do
          return True
        _ -> return False 
   return NoContent
-
-getGatewayVpnFile ::  GatewayId -> Handler (Headers '[Header "Content-Disposition" T.Text] BS.ByteString)
-getGatewayVpnFile gwId = do
-  info "Registers gateway to vpn network"
-  g <- getGatewayWithoutAuth gid Nothing
-  let name = gwName g
-  liftIO $ putStrLn ("Gateway name is: " ++ T.unpack name)
-  result <- liftIO (newWazigate name)
-  case result of
-    Left errMsg -> throwError $ err400 { errBody = TE.encodeUtf8 (T.pack errMsg) }
-    Right _ -> do
-      let safeName  = takeBaseName gwId
-          filePath  = "/app/data" </> safeName <.> "ovpn"
-          dispValue = T.pack ("attachment; filename=" ++ safeName ++ ".ovpn")
-      fileData <- liftIO (BS.readFile filePath)
-      pure (addHeader dispValue fileData)
-
-removeWazigate :: T.Text -> IO (Either String ())
-removeWazigate host = do
-  info "Removes gateway to vpn network"
-  -- 1️⃣ Run the shell script
-  (exitCode, out, errOut) <- readProcessWithExitCode "bash" ["./services/remove-client.sh", T.unpack host] ""
-
-  case exitCode of
-    ExitSuccess -> putStrLn out
-    ExitFailure _ ->
-      return $ Left $ "Failed to revoke client " ++ T.unpack host ++ 
-                      ": " ++ errOut ++ "\nOutput: " ++ out
-
-  -- 2️⃣ Open and read the file
-  let filename = "/app/openvpn_clients_dynamic.hosts"
-  fileResult <- try (TIO.readFile filename) :: IO (Either IOException T.Text)
-  case fileResult of
-    Left e -> return $ Left $ "Failed to open file: " ++ show e
-    Right content -> do
-      -- 3️⃣ Process lines
-      let lines' = T.lines content
-          filtered = filter (not . matchesHost host) lines'
-
-      -- 4️⃣ Write to a temporary file
-      let tmpFile = filename ++ ".tmp"
-      writeResult <- try (TIO.writeFile tmpFile (T.unlines filtered)) :: IO (Either IOException ())
-      case writeResult of
-        Left e -> return $ Left $ "Failed to write file: " ++ show e
-        Right _ -> do
-          -- 5️⃣ Replace old file atomically
-          renameResult <- try (renameFile tmpFile filename) :: IO (Either IOException ())
-          case renameResult of
-            Left e -> return $ Left $ "Failed to replace file: " ++ show e
-            Right _ -> return $ Right ()
-
-  where
-    matchesHost :: T.Text -> T.Text -> Bool
-    matchesHost h line =
-      case T.words line of
-        [] -> False
-        fields ->
-          let client = last fields
-          in client == h
-
-newWazigate :: String -> IO (Either String ())
-newWazigate name = do
-  result <- try (callProcess "bash" ["./services/shell.sh", name]) :: IO (Either SomeException ())
-  case result of
-    Left err -> pure (Left (show err))
-    Right _  -> pure (Right ())
-
 
 putGatewayLocation :: AuthUser -> GatewayId -> Location -> Waziup NoContent
 putGatewayLocation mtok gid loc = do

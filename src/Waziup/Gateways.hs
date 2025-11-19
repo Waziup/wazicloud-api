@@ -11,16 +11,23 @@ import           Keycloak hiding (User(..))
 import           Control.Monad.IO.Class
 import           Control.Monad.Catch as C
 import           Control.Monad
-import           Data.String.Conversions
+import           Control.Lens hiding ((.=))
 import           Servant
 import           System.Log.Logger
+import           System.FilePath ((</>))
+import           System.Cmd
 import           Database.MongoDB as DB hiding (Username)
+import           Data.String.Conversions
 import           Data.Aeson as JSON
 import           Data.AesonBson
 import           Data.Maybe
 import           Data.Time
 import qualified Data.List as L
 import           Data.Text hiding (find, map, filter)
+import           Paths_Waziup_Servant
+import qualified Data.Text.IO as DTIO
+import           Network.Wreq as W (get, post, defaults, responseBody)
+import           Network.HTTP.Client hiding (responseBody)-- (HttpException(..) )
 
 -- * Projects API
 
@@ -67,7 +74,21 @@ postGateway au g = do
     Right _ -> return ()
     Left (CompoundFailure [WriteFailure _ _ _]) -> throwError err422 {errBody = "Gateway ID already exists"}
     Left e -> throwError err500 {errBody = (convertString $ show e)}
-  return NoContent
+  -- Create VPN client
+  (VpnConfig host) <- view (waziupConfig.vpnConf)
+  let path = convertString $ host <> "/v1/clients/"
+  let dat = VPNClient (unGatewayId $ gwId g) Nothing Nothing
+  info $ "Issuing VPN server POST " ++ (show path) ++ " " ++ (show dat)
+  eRes <- liftIO $ C.try $ W.post path (toJSON dat)
+  case eRes of 
+    Right res -> do
+      return NoContent
+    Left (HttpExceptionRequest _ (StatusCodeException _ er)) -> do
+      warn $ "VPN Server HTTP error: " ++ (show er)
+      throwError err500 {errBody = convertString $ "VPN Server error: " ++ (show er)}
+    Left (HttpExceptionRequest _ er) -> do
+      warn $ "VPN Server HTTP error: " ++ (show er)
+      throwError err500 {errBody = convertString $ "VPN Server error: " ++ (show er)}
 
 getGateway :: AuthUser -> GatewayId -> Maybe Bool -> Waziup Gateway
 getGateway tok gid mfull = do
@@ -154,6 +175,25 @@ putGatewayLocation mtok gid loc = do
     then return NoContent
     else throwError err404 {errBody = "Cannot update gateway: id not found"}
   return NoContent
+
+getGatewayVPNFile :: AuthUser -> GatewayId -> Waziup VPNFile
+getGatewayVPNFile mtok gid = do
+  info $ "get gateway VPN file"
+  g <- getGateway mtok gid Nothing
+  checkPermResource mtok GatewaysUpdate (PermGateway g)
+  (VpnConfig host) <- view (waziupConfig.vpnConf)
+  let path = convertString $ host <> "/v1/clients/" <> (unGatewayId gid)
+  info $ "Issuing VPN server GET " ++ (show path) 
+  eRes <- liftIO $ C.try $ W.get path
+  case eRes of 
+    Right res -> do
+      return $ convertString $ fromJust $ res ^? responseBody
+    Left (HttpExceptionRequest _ (StatusCodeException _ er)) -> do
+      warn $ "VPN Server HTTP error: " ++ (show er)
+      throwError err500 {errBody = convertString $ "VPN Server error: " ++ (show er)}
+    Left (HttpExceptionRequest _ er) -> do
+      warn $ "VPN Server HTTP error: " ++ (show er)
+      throwError err500 {errBody = convertString $ "VPN Server error: " ++ (show er)}
 
 -- * Helpers
 

@@ -233,6 +233,8 @@ type GatewaysAPI = Flat (
       :<|> "location"       
            :> ReqBody '[JSON] Location
            :> PutNoContent    '[JSON] NoContent
+      :<|> "vpn"       
+           :> Get '[JSON] VPNFile
     )))
 
 

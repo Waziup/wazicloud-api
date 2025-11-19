@@ -66,6 +66,7 @@ Library waziup-lib
                      , net-mqtt
                      , network-uri
                      , orion-hs
+                     , process
                      , resource-pool
                      , safe
                      , scientific

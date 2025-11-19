@@ -79,7 +79,8 @@ data WaziupConfig = WaziupConfig {
   _orionConf          :: O.OrionConfig,
   _mqttConf           :: MQTTConfig,
   _twitterConf        :: TWInfo,
-  _plivoConf          :: PlivoConfig
+  _plivoConf          :: PlivoConfig,
+  _vpnConf            :: VpnConfig
   } deriving (Eq, Show)
 
 -- | Server or client configuration, specifying the host and port to query or serve on.
@@ -139,7 +140,7 @@ defaultTwitterConf =
           twCredential = Credential [ ("oauth_token", "<Your OAuth token>"), 
                                       ("oauth_token_secret", "<Your OAuth token secret>")]}}
 
-data PlivoConfig = PlivoConfig {
+data PlivoConfig = PlivoConfig { 
   _plivoHost  :: Text,
   _plivoID    :: Text,
   _plivoToken :: Text} deriving (Show, Eq)
@@ -149,6 +150,14 @@ defaultPlivoConf = PlivoConfig {
   _plivoHost  = "https://api.plivo.com",
   _plivoID    = "<Your Plivo ID>",
   _plivoToken = "<Your Plivo token>"}
+
+
+data VpnConfig = VpnConfig {
+  _vpnHost :: Text} deriving (Show, Eq)
+
+defaultVpnConf :: VpnConfig
+defaultVpnConf = VpnConfig {
+  _vpnHost = "http://3.125.6.177:5000"}
 
 --------------------------------------
 -- * Authentication & authorization --
@@ -788,6 +797,7 @@ instance ToSchema Actuator where
 ----------------
 
 type GatewayName = Text
+type VPNFile = Text
 
 -- Id of a gateway
 newtype GatewayId = GatewayId {unGatewayId :: Text} deriving (Show, Eq, Generic, Ord)
@@ -844,6 +854,14 @@ defaultGateway = Gateway
   , gwConnected    = Nothing 
   , gwLastSeen     = Nothing
   }
+
+data VPNClient = VPNClient {
+  vpnClientName :: Text,
+  vpnClientIP :: Maybe Text, 
+  vpnClientDomain :: Maybe Text} deriving (Show, Eq, Generic)
+
+instance ToJSON VPNClient where
+  toJSON = genericToJSON $ defaultOptions {fieldLabelModifier = snakeCase . drop 3, omitNothingFields = True}
 
 --JSON instances
 instance FromJSON Gateway where
@@ -1530,4 +1548,5 @@ makeLenses ''MQTTConfig
 makeLenses ''WaziupInfo
 makeLenses ''MongoConfig
 makeLenses ''PlivoConfig
+makeLenses ''VpnConfig
 makeLenses ''Ontologies

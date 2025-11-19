@@ -120,6 +120,7 @@ gatewaysServer u = getGateways u
             :<|> putGatewayName u
             :<|> putGatewayOwner u
             :<|> putGatewayLocation u
+            :<|> getGatewayVPNFile u
 
 -- Actuators server
 actuatorsServer :: AuthResult User -> ServerT ActuatorsAPI Waziup

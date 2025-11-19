@@ -58,6 +58,7 @@ configureWaziup = do
   envCacheActivated   <- lookupEnv "CACHE_ACTIVATED"
   envCacheDuration    <- lookupEnv "CACHE_DURATION"
   envLogLevel         <- lookupEnv "LOG_LEVEL"
+  envVpnHost          <- lookupEnv "VPN_SERVER_URL"
   let kcAdapterConfig = defaultAdapterConfig & confAuthServerUrl  .~? (convertString    <$> envKCUrl)
   let orionConfig  = defaultOrionConfig  & orionUrl           .~? (convertString    <$> envOrUrl)
   let mongoConfig  = defaultMongoConfig  & mongoUrl           .~? (convertString    <$> envMongUrl)
@@ -82,12 +83,14 @@ configureWaziup = do
           else defaultTwitterConf
   let plivoConfig = defaultPlivoConf & plivoID    .~? (convertString <$> envPlivoID)
                                      & plivoToken .~? (convertString <$> envPlivoToken)
+  
+  let vpnConfig = defaultVpnConf & vpnHost .~? (convertString <$> envVpnHost)
 
   -- retrieve keys from Keycloak
   jwks <- getJWKs (_confRealm kcAdapterConfig) (_confAuthServerUrl kcAdapterConfig)
   let kcConfig = KCConfig kcAdapterConfig jwks 
 
-  let confParser = waziupConfigParser serverConfig mongoConfig kcConfig orionConfig mqttConfig twitterConfig plivoConfig
+  let confParser = waziupConfigParser serverConfig mongoConfig kcConfig orionConfig mqttConfig twitterConfig plivoConfig vpnConfig
   let confParser' = Opts.info (confParser <**> helper) (fullDesc <> progDesc "Create a server for Waziup API" <> header "Waziup API server")
   conf <- execParser confParser'
   let logLev = conf ^. serverConf . logLevel  
@@ -97,13 +100,13 @@ configureWaziup = do
   onto <- loadOntologies
   return $ WaziupInfo pool conf onto
 
-waziupConfigParser :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> MQTTConfig -> TWInfo -> PlivoConfig -> Parser WaziupConfig
-waziupConfigParser servDef mDef kcDef oDef mqttDef twittDef plivoDef = do
+waziupConfigParser :: ServerConfig -> MongoConfig -> KCConfig -> OrionConfig -> MQTTConfig -> TWInfo -> PlivoConfig -> VpnConfig -> Parser WaziupConfig
+waziupConfigParser servDef mDef kcDef oDef mqttDef twittDef plivoDef vpnConfig = do
   serv <- serverConfigParser servDef
   m    <- mongoConfigParser mDef
   kc   <- kcConfigParser kcDef
   o    <- orionConfigParser oDef
-  return $ WaziupConfig serv m kc o mqttDef twittDef plivoDef
+  return $ WaziupConfig serv m kc o mqttDef twittDef plivoDef vpnConfig
 
 serverConfigParser :: ServerConfig -> Parser ServerConfig
 serverConfigParser (ServerConfig defUrl defPort defPortMQTT defGueLog defGuePass defNotif defActCache defCacheVal defLog defMqttAct) = do

@@ -26,7 +26,7 @@ import qualified Data.List as L
 import           Data.Text hiding (find, map, filter)
 import           Paths_Waziup_Servant
 import qualified Data.Text.IO as DTIO
-import           Network.Wreq as W (get, post, defaults, responseBody)
+import           Network.Wreq as W (get, post, delete, defaults, responseBody)
 import           Network.HTTP.Client hiding (responseBody)-- (HttpException(..) )
 
 -- * Projects API
@@ -116,6 +116,21 @@ deleteGateway tok gid = do
   if res
     then return NoContent
     else throwError err404 {errBody = "Cannot delete project: id not found"}
+  -- Delete VPN client
+  (VpnConfig host) <- view (waziupConfig.vpnConf)
+  let path = convertString $ host <> "/v1/clients/" <> (unGatewayId gid)
+  info $ "Issuing VPN server DELETE " ++ (show path) 
+  eRes <- liftIO $ C.try $ W.delete path
+  case eRes of 
+    Right res -> do
+      return NoContent
+    Left (HttpExceptionRequest _ (StatusCodeException _ er)) -> do
+      warn $ "VPN Server HTTP error: " ++ (show er)
+      throwError err500 {errBody = convertString $ "VPN Server error: " ++ (show er)}
+    Left (HttpExceptionRequest _ er) -> do
+      warn $ "VPN Server HTTP error: " ++ (show er)
+      throwError err500 {errBody = convertString $ "VPN Server error: " ++ (show er)}
+
 
 putHeartbeat :: AuthUser -> GatewayId -> Waziup NoContent
 putHeartbeat tok gid = do
@@ -211,7 +226,7 @@ deleteGatewayMongo (GatewayId pid) = do
   mdoc <- findOne (select sel "gateways")
   case mdoc of
      Just _ -> do
-       delete (select sel "gateways")
+       DB.delete (select sel "gateways")
        return True
      _ -> return False 
 

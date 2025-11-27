@@ -197,7 +197,7 @@ getGatewayVPNFile mtok gid = do
   g <- getGateway mtok gid Nothing
   checkPermResource mtok GatewaysUpdate (PermGateway g)
   (VpnConfig host) <- view (waziupConfig.vpnConf)
-  let path = convertString $ host <> "/v1/clients/gateway-" <> (unGatewayId gid) <> "ovpn"
+  let path = convertString $ host <> "/v1/clients/gateway-" <> (unGatewayId gid) <> "/ovpn"
   info $ "Issuing VPN server GET " ++ (show path) 
   eRes <- liftIO $ C.try $ W.get path
   case eRes of 

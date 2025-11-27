@@ -76,8 +76,8 @@ postGateway au g = do
     Left e -> throwError err500 {errBody = (convertString $ show e)}
   -- Create VPN client
   (VpnConfig host) <- view (waziupConfig.vpnConf)
-  let path = convertString $ host <> "/v1/clients/"
-  let dat = VPNClient (unGatewayId $ gwId g) Nothing Nothing
+  let path = convertString $ host <> "/v1/clients"
+  let dat = VPNClient ("gateway-" <> (unGatewayId $ gwId g)) Nothing Nothing
   info $ "Issuing VPN server POST " ++ (show path) ++ " " ++ (show dat)
   eRes <- liftIO $ C.try $ W.post path (toJSON dat)
   case eRes of 
@@ -197,7 +197,7 @@ getGatewayVPNFile mtok gid = do
   g <- getGateway mtok gid Nothing
   checkPermResource mtok GatewaysUpdate (PermGateway g)
   (VpnConfig host) <- view (waziupConfig.vpnConf)
-  let path = convertString $ host <> "/v1/clients/" <> (unGatewayId gid)
+  let path = convertString $ host <> "/v1/clients/gateway-" <> (unGatewayId gid)
   info $ "Issuing VPN server GET " ++ (show path) 
   eRes <- liftIO $ C.try $ W.get path
   case eRes of 

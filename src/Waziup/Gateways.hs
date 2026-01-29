@@ -83,9 +83,11 @@ postGateway au g = do
   case eRes of 
     Right res -> do
       return NoContent
-    Left (HttpExceptionRequest _ (StatusCodeException _ er)) -> do
+    --Client already exists
+    Left (HttpExceptionRequest _ (StatusCodeException 409 er)) -> do
       warn $ "VPN Server HTTP error: " ++ (show er)
-      throwError err500 {errBody = convertString $ "VPN Server error: " ++ (show er)}
+      return NoContent 
+    --All other errors
     Left (HttpExceptionRequest _ er) -> do
       warn $ "VPN Server HTTP error: " ++ (show er)
       throwError err500 {errBody = convertString $ "VPN Server error: " ++ (show er)}

@@ -27,7 +27,8 @@ import           Data.Text hiding (find, map, filter)
 import           Paths_Waziup_Servant
 import qualified Data.Text.IO as DTIO
 import           Network.Wreq as W (get, post, delete, defaults, responseBody)
-import           Network.HTTP.Client hiding (responseBody)-- (HttpException(..) )
+import           Network.HTTP.Client as HC hiding (responseBody)
+import qualified Network.HTTP.Types.Status as HT
 
 -- * Projects API
 
@@ -83,9 +84,15 @@ postGateway au g = do
   case eRes of 
     Right res -> do
       return NoContent
-    Left (HttpExceptionRequest _ (StatusCodeException _ er)) -> do
-      warn $ "VPN Server HTTP error: " ++ (show er)
-      throwError err500 {errBody = convertString $ "VPN Server error: " ++ (show er)}
+    Left (HttpExceptionRequest _ (StatusCodeException resp er)) -> do
+      case HT.statusCode (HC.responseStatus resp) of
+        409 -> do --Client already exists
+          warn $ "VPN Server HTTP error: " ++ (show er)
+          return NoContent 
+        _ -> do
+          warn $ "VPN Server HTTP error: " ++ (show er)
+          throwError err500 {errBody = convertString $ "VPN Server error: " ++ (show er)}
+    --All other errors
     Left (HttpExceptionRequest _ er) -> do
       warn $ "VPN Server HTTP error: " ++ (show er)
       throwError err500 {errBody = convertString $ "VPN Server error: " ++ (show er)}

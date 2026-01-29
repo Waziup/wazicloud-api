@@ -131,9 +131,14 @@ deleteGateway tok gid = do
   case eRes of 
     Right res -> do
       return NoContent
-    Left (HttpExceptionRequest _ (StatusCodeException _ er)) -> do
-      warn $ "VPN Server HTTP error: " ++ (show er)
-      throwError err500 {errBody = convertString $ "VPN Server error: " ++ (show er)}
+    Left (HttpExceptionRequest _ (StatusCodeException resp er)) -> do
+      case HT.statusCode (HC.responseStatus resp) of
+        404 -> do --Client not found
+          warn $ "VPN Server HTTP error: " ++ (show er)
+          return NoContent 
+        _ -> do
+          warn $ "VPN Server HTTP error: " ++ (show er)
+          throwError err500 {errBody = convertString $ "VPN Server error: " ++ (show er)}
     Left (HttpExceptionRequest _ er) -> do
       warn $ "VPN Server HTTP error: " ++ (show er)
       throwError err500 {errBody = convertString $ "VPN Server error: " ++ (show er)}
